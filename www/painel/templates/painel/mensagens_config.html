@@ -1,0 +1,99 @@
+{% extends "painel/base.html" %}
+{% block title %}Mensagens & Prompt{% endblock %}
+{% block content %}
+<h1>Mensagens & Prompt</h1>
+<p class="muted">Textos usados pelo atendimento automático via WhatsApp. Fale sempre em primeira pessoa, como se fosse você mesmo respondendo.</p>
+
+<form method="post">
+  {% csrf_token %}
+
+  <div class="card">
+    <h2>Prompt da IA</h2>
+    <p class="muted">Instruções que a IA segue para classificar a intenção do cliente e montar a resposta sugerida. Editar com cuidado: preserva as regras de negócio (dados literais dos contratos, FAQ, escopo, bloco do 0800/CAIXA/leilões).</p>
+    <label class="field-label" for="{{ form.system_prompt.id_for_label }}">system_prompt</label>
+    {{ form.system_prompt }}
+    {% if form.system_prompt.errors %}<div class="field-error">{{ form.system_prompt.errors }}</div>{% endif %}
+    <div class="actions" style="margin-top:0.5rem;">
+      <button type="submit" form="restaurar-system_prompt" class="btn small">Restaurar padrão</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Mensagens fixas</h2>
+    <p class="muted">Mensagens automáticas enviadas em pontos específicos da conversa (fora da IA).</p>
+
+    <label class="field-label" for="{{ form.msg_cadastro_nao_localizado.id_for_label }}">Cadastro não localizado</label>
+    <div class="muted">Enviada quando o número que escreveu no WhatsApp não é encontrado no cadastro de clientes.</div>
+    {{ form.msg_cadastro_nao_localizado }}
+    {% if form.msg_cadastro_nao_localizado.errors %}<div class="field-error">{{ form.msg_cadastro_nao_localizado.errors }}</div>{% endif %}
+    <div class="actions" style="margin-top:0.5rem; margin-bottom:1rem;">
+      <button type="submit" form="restaurar-msg_cadastro_nao_localizado" class="btn small">Restaurar padrão</button>
+    </div>
+
+    <label class="field-label" for="{{ form.msg_pedir_cpf.id_for_label }}">Pedir CPF</label>
+    <div class="muted">Enviada quando é preciso confirmar a identidade do cliente (verificação inicial ou a cada 7 dias).</div>
+    {{ form.msg_pedir_cpf }}
+    {% if form.msg_pedir_cpf.errors %}<div class="field-error">{{ form.msg_pedir_cpf.errors }}</div>{% endif %}
+    <div class="actions" style="margin-top:0.5rem; margin-bottom:1rem;">
+      <button type="submit" form="restaurar-msg_pedir_cpf" class="btn small">Restaurar padrão</button>
+    </div>
+
+    <label class="field-label" for="{{ form.msg_verificacao_ok.id_for_label }}">Verificação confirmada</label>
+    <div class="muted">Enviada assim que os 3 últimos dígitos do CPF batem com o cadastro.</div>
+    {{ form.msg_verificacao_ok }}
+    {% if form.msg_verificacao_ok.errors %}<div class="field-error">{{ form.msg_verificacao_ok.errors }}</div>{% endif %}
+    <div class="actions" style="margin-top:0.5rem; margin-bottom:1rem;">
+      <button type="submit" form="restaurar-msg_verificacao_ok" class="btn small">Restaurar padrão</button>
+    </div>
+
+    <label class="field-label" for="{{ form.msg_verificacao_falhou.id_for_label }}">Verificação falhou</label>
+    <div class="muted">Enviada quando os dígitos do CPF informados não batem com o cadastro.</div>
+    {{ form.msg_verificacao_falhou }}
+    {% if form.msg_verificacao_falhou.errors %}<div class="field-error">{{ form.msg_verificacao_falhou.errors }}</div>{% endif %}
+    <div class="actions" style="margin-top:0.5rem; margin-bottom:1rem;">
+      <button type="submit" form="restaurar-msg_verificacao_falhou" class="btn small">Restaurar padrão</button>
+    </div>
+
+    <label class="field-label" for="{{ form.msg_neutra_padrao.id_for_label }}">Mensagem neutra (fallback da IA)</label>
+    <div class="muted">Enviada quando a IA não consegue processar a mensagem (sem chave configurada, erro ao chamar o Gemini, etc.) — o pedido cai para revisão manual.</div>
+    {{ form.msg_neutra_padrao }}
+    {% if form.msg_neutra_padrao.errors %}<div class="field-error">{{ form.msg_neutra_padrao.errors }}</div>{% endif %}
+    <div class="actions" style="margin-top:0.5rem; margin-bottom:1rem;">
+      <button type="submit" form="restaurar-msg_neutra_padrao" class="btn small">Restaurar padrão</button>
+    </div>
+
+    <label class="field-label" for="{{ form.msg_boleto_intro.id_for_label }}">Introdução do boleto</label>
+    <div class="muted">Enviada uma única vez, antes do primeiro PDF, quando há boletos pendentes para o cliente.</div>
+    {{ form.msg_boleto_intro }}
+    {% if form.msg_boleto_intro.errors %}<div class="field-error">{{ form.msg_boleto_intro.errors }}</div>{% endif %}
+    <div class="actions" style="margin-top:0.5rem;">
+      <button type="submit" form="restaurar-msg_boleto_intro" class="btn small">Restaurar padrão</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Mensagens do novo fluxo</h2>
+    <p class="muted">Mensagens usadas pelos gates de CPF, database, segunda via, pós-boleto e atendimento humano.</p>
+    {% for item in novos_campos %}
+      <label class="field-label">{{ item.rotulo }} ({{ item.campo }})</label>
+      <div class="muted">{{ item.ajuda }}</div>
+      {{ item.html|safe }}
+      <div class="actions" style="margin-top:0.5rem; margin-bottom:1rem;">
+        <button type="submit" form="restaurar-{{ item.campo }}" class="btn small">Restaurar padrão</button>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="actions">
+    <button type="submit" class="btn primary">Salvar tudo</button>
+  </div>
+</form>
+
+{% for campo in campos_restauraveis %}
+<form id="restaurar-{{ campo }}" method="post" class="inline">
+  {% csrf_token %}
+  <input type="hidden" name="acao" value="restaurar">
+  <input type="hidden" name="campo" value="{{ campo }}">
+</form>
+{% endfor %}
+{% endblock %}

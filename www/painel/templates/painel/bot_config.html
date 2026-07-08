@@ -1,0 +1,44 @@
+{% extends "painel/base.html" %}
+{% block title %}Configuração do bot{% endblock %}
+{% block content %}
+<h1>Configuração do bot</h1>
+<p class="muted">Operação do atendimento automático. O bot também pode ser ligado/desligado na tela de Conexão WhatsApp.</p>
+
+<div class="card">
+  <h2>Estado atual</h2>
+  <p>
+    <strong>{{ config.ativo|yesno:"Ativo,Desativado" }}</strong>
+    · Última atualização da base: {% if config.ultima_atualizacao_dados %}{{ config.ultima_atualizacao_dados|date:"d/m/Y H:i" }}{% else %}—{% endif %}
+    · Database: <strong>{{ config.database_atualizada|yesno:"atualizada,desatualizada" }}</strong>
+  </p>
+</div>
+
+<form method="post">
+  {% csrf_token %}
+  <div class="card">
+    <h2>Operação</h2>
+
+    <label class="field-label">Bot ativo</label>
+    <div>{{ form.ativo }} ligar o atendimento automático</div>
+
+    <label class="field-label" for="{{ form.horario_encerramento.id_for_label }}">Horário de encerramento (automático)</label>
+    <div class="muted">Hora (America/Sao_Paulo) em que o bot desliga sozinho. Vazio = não desliga automaticamente. Permite reativá-lo à mão depois.</div>
+    {{ form.horario_encerramento }}
+
+    <label class="field-label" for="{{ form.freshness_horas.id_for_label }}">Freshness da database (horas)</label>
+    <div class="muted">Idade máxima do último <code>import_sqlite</code> para considerar a base atualizada. Fora disso, o bot não repassa dados de contrato.</div>
+    {{ form.freshness_horas }}
+
+    <label class="field-label">Responder desconhecidos</label>
+    <div>{{ form.responder_desconhecidos }} saudar contatos não salvos (se desligado, só atende clientes cadastrados)</div>
+
+    <label class="field-label" for="{{ form.dias_resgate_garantia.id_for_label }}">Dias p/ resgate de garantias</label>
+    <div class="muted">Dias após a quitação a partir de quando o cliente pode resgatar as garantias (usado na mensagem pós-boleto).</div>
+    {{ form.dias_resgate_garantia }}
+  </div>
+
+  <div class="actions">
+    <button type="submit" class="btn primary">Salvar</button>
+  </div>
+</form>
+{% endblock %}

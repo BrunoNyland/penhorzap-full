@@ -1,0 +1,50 @@
+{% extends "painel/base.html" %}
+{% block title %}Conexão WhatsApp{% endblock %}
+{% block head_extra %}
+  {% if state != "open" %}<meta http-equiv="refresh" content="20">{% endif %}
+{% endblock %}
+{% block content %}
+<h1>Conexão do WhatsApp</h1>
+
+<div class="card">
+  {% if state == "open" %}
+    <p class="status open">&#10004; Conectado e pronto para receber mensagens</p>
+  {% else %}
+    <p class="status pending">Status atual: {{ state }} &mdash; abra o WhatsApp no celular do chip dedicado, vá em
+      <strong>Aparelhos conectados &rarr; Conectar um aparelho</strong> e escaneie o código abaixo.</p>
+
+    {% if qrcode_base64 %}
+      <p><img class="qr-image" src="data:image/png;base64,{{ qrcode_base64 }}" alt="QR code de pareamento" width="300" height="300"></p>
+    {% else %}
+      <p class="missing">Não foi possível obter o QR code agora. A página vai tentar de novo em instantes.</p>
+    {% endif %}
+
+    <p class="muted">Esta página atualiza sozinha a cada 20 segundos até a conexão ficar ativa (o QR expira rápido).</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Bot de atendimento automático</h2>
+  <div class="bot-panel">
+    <span>
+      Status:
+      {% if bot_config.ativo %}
+        <span class="badge on">ativado</span>
+      {% else %}
+        <span class="badge off">desativado</span>
+      {% endif %}
+    </span>
+    <form method="post" action="{% url 'whatsapp:toggle_bot' %}" class="inline">
+      {% csrf_token %}
+      {% if bot_config.ativo %}
+        <button type="submit" class="btn desativar">Desativar bot</button>
+      {% else %}
+        <button type="submit" class="btn ativar">Ativar bot</button>
+      {% endif %}
+    </form>
+  </div>
+  {% if not bot_config.ativo %}
+    <p class="muted">Com o bot desativado, as mensagens recebidas continuam sendo gravadas, mas ninguém responde automaticamente ao cliente.</p>
+  {% endif %}
+</div>
+{% endblock %}

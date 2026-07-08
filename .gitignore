@@ -1,0 +1,59 @@
+# PenhorZap — Global .gitignore for Monorepo (Django Backend + Angular Frontend)
+
+# Virtual Environment
+venv/
+.venv/
+env/
+ENV/
+
+# Django Backend
+www/__pycache__/
+www/*.py[cod]
+www/*$py.class
+www/*.sqlite3
+www/staticfiles/
+www/media/
+www/schema.yml
+www/graphify-out/
+graphify-out/
+
+# Environments / Secrets
+.env
+.env.*
+!.env.example
+www/.env
+frontend/.env
+
+# Angular Frontend
+frontend/dist/
+frontend/tmp/
+frontend/out-tsc/
+frontend/bazel-out/
+frontend/node_modules/
+frontend/.angular/cache
+frontend/connect.lock
+frontend/coverage
+frontend/libpeerconnection.log
+frontend/testem.log
+frontend/typings
+
+# IDEs and Editors
+.idea/
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.history/*
+
+# OS Files
+.DS_Store
+Thumbs.db
+*.swp
+*.log

@@ -1,0 +1,1106 @@
+import json
+from datetime import timedelta
+from django.utils import timezone
+from django.db.models import Count, Q
+from django.db.models.functions import ExtractDay, ExtractWeekDay, TruncDate
+from django.contrib.auth import login, logout, authenticate
+from django.contrib.auth.models import User
+
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.utils.decorators import method_decorator
+
+from django_q.tasks import async_task
+from rest_framework import mixins, status, viewsets, permissions, serializers
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.generics import GenericAPIView
+from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
+from rest_framework.authtoken.models import Token
+from rest_framework.views import exception_handler
+from drf_spectacular.utils import extend_schema, inline_serializer
+
+from core.models import (
+    Boleto,
+    Cliente,
+    ContratoPenhor,
+    Mensagem,
+    Solicitacao,
+    BotConfig,
+    MensagensConfig,
+    FAQ,
+    FAQResposta,
+    Conversa,
+)
+
+from .serializers import (
+    BoletoSerializer,
+    SolicitacaoSerializer,
+    SolicitacaoUpdateSerializer,
+    UserSerializer,
+    LoginSerializer,
+    BotConfigSerializer,
+    MensagensConfigSerializer,
+    FAQSerializer,
+    FAQRespostaSerializer,
+    ClienteListSerializer,
+    ClienteDetailSerializer,
+    ConversaListSerializer,
+    ConversaDetailSerializer,
+)
+
+from ia.services import extrair_intencao
+from whatsapp.evolution_client import get_client
+
+
+def custom_exception_handler(exc, context):
+    response = exception_handler(exc, context)
+    if response is not None and response.status_code == 401:
+        request = context.get('request')
+        if request and (not request.user or not request.user.is_authenticated):
+            response.status_code = 403
+    return response
+
+
+@method_decorator(ensure_csrf_cookie, name='dispatch')
+class AuthView(GenericAPIView):
+    permission_classes = [permissions.AllowAny]
+    serializer_class = serializers.Serializer
+
+    @extend_schema(
+        request=inline_serializer(
+            name="AuthLegacyRequest",
+            fields={
+                "action": serializers.CharField(required=False),
+                "username": serializers.CharField(required=False),
+                "password": serializers.CharField(required=False),
+            }
+        ),
+        responses={
+            200: inline_serializer(
+                name="AuthLegacyResponse",
+                fields={
+                    "authenticated": serializers.BooleanField(),
+                    "username": serializers.CharField(required=False),
+                    "is_staff": serializers.BooleanField(required=False),
+                }
+            )
+        }
+    )
+    def get(self, request):
+        if request.user and request.user.is_authenticated:
+            return Response({
+                "authenticated": True,
+                "username": request.user.username,
+                "is_staff": request.user.is_staff
+            })
+        return Response({"authenticated": False})
+
+    def post(self, request):
+        action_param = request.data.get("action")
+        if action_param == "login":
+            username = request.data.get("username")
+            password = request.data.get("password")
+            user = authenticate(request, username=username, password=password)
+            if user is not None:
+                if not user.is_staff:
+                    return Response({"detail": "Acesso restrito a administradores."}, status=status.HTTP_403_FORBIDDEN)
+                login(request, user)
+                return Response({
+                    "authenticated": True,
+                    "username": user.username,
+                    "is_staff": user.is_staff
+                })
+            return Response({"detail": "Usuário ou senha incorretos."}, status=status.HTTP_401_UNAUTHORIZED)
+        elif action_param == "logout":
+            logout(request)
+            return Response({"authenticated": False})
+        else:
+            return Response({"detail": "Invalid action."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class LoginAPIView(GenericAPIView):
+    permission_classes = [permissions.AllowAny]
+    serializer_class = LoginSerializer
+
+    @extend_schema(
+        request=LoginSerializer,
+        responses={
+            200: inline_serializer(
+                name="LoginResponse",
+                fields={
+                    "token": serializers.CharField(),
+                    "user": UserSerializer(),
+                }
+            )
+        }
+    )
+    def post(self, request):
+        serializer = LoginSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        username = serializer.validated_data["username"]
+        password = serializer.validated_data["password"]
+        user = authenticate(request, username=username, password=password)
+
+        if user is not None:
+            login(request, user)
+            token, _ = Token.objects.get_or_create(user=user)
+            return Response({
+                "token": token.key,
+                "user": UserSerializer(user).data
+            })
+        else:
+            return Response({"detail": "Credenciais inválidas."}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class LogoutAPIView(GenericAPIView):
+    permission_classes = [permissions.IsAdminUser]
+    serializer_class = serializers.Serializer
+
+    @extend_schema(
+        request=None,
+        responses={
+            200: inline_serializer(
+                name="LogoutResponse",
+                fields={"detail": serializers.CharField()}
+            )
+        }
+    )
+    def post(self, request):
+        if request.auth:
+            request.auth.delete()
+        logout(request)
+        return Response({"detail": "Logout efetuado com sucesso."})
+
+
+class UserAPIView(GenericAPIView):
+    permission_classes = [permissions.IsAdminUser]
+    serializer_class = UserSerializer
+
+    @extend_schema(
+        responses={200: UserSerializer}
+    )
+    def get(self, request):
+        return Response(UserSerializer(request.user).data)
+
+
+class DashboardStatsAPIView(GenericAPIView):
+    permission_classes = [permissions.IsAdminUser]
+    serializer_class = serializers.Serializer
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="DashboardStatsResponse",
+                fields={
+                    "por_tipo": serializers.ListField(child=serializers.JSONField()),
+                    "por_status": serializers.ListField(child=serializers.JSONField()),
+                    "serie_30_dias": serializers.ListField(child=serializers.JSONField()),
+                    "maior_valor_serie": serializers.IntegerField(),
+                    "total_clientes": serializers.IntegerField(),
+                    "clientes_com_telefone": serializers.IntegerField(),
+                    "clientes_com_conversa": serializers.IntegerField(),
+                    "clientes_bloqueados": serializers.IntegerField(),
+                    "total_solicitacoes": serializers.IntegerField(),
+                    "solicitacoes_precisa_humano": serializers.IntegerField(),
+                    "taxa_solicitacoes_humano": serializers.FloatField(),
+                    "total_conversas": serializers.IntegerField(),
+                    "conversas_precisa_revisao": serializers.IntegerField(),
+                    "taxa_conversas_revisao": serializers.FloatField(),
+                    "total_boletos": serializers.IntegerField(),
+                    "boletos_enviados": serializers.IntegerField(),
+                    "por_dia_semana": serializers.ListField(child=serializers.JSONField()),
+                    "maior_valor_semana": serializers.IntegerField(),
+                    "buckets_dia_mes": serializers.JSONField(),
+                    "maior_valor_bucket": serializers.IntegerField(),
+                }
+            )
+        }
+    )
+    def get(self, request):
+        hoje = timezone.localdate()
+        inicio_30 = hoje - timedelta(days=29)
+        inicio_180 = hoje - timedelta(days=180)
+
+        # Solicitações por tipo/status
+        tipo_labels = dict(Solicitacao.Tipo.choices)
+        status_labels = dict(Solicitacao.Status.choices)
+        por_tipo = list(Solicitacao.objects.values("tipo").annotate(total=Count("id")).order_by("tipo"))
+        for row in por_tipo:
+            row["label"] = tipo_labels.get(row["tipo"], row["tipo"])
+        por_status = list(Solicitacao.objects.values("status").annotate(total=Count("id")).order_by("status"))
+        for row in por_status:
+            row["label"] = status_labels.get(row["status"], row["status"])
+
+        # Volume de mensagens/conversas/boletos por dia (últimos 30 dias)
+        mensagens_raw = list(
+            Mensagem.objects.filter(criado_em__date__gte=inicio_30)
+            .annotate(dia=TruncDate("criado_em"))
+            .values("dia", "direcao")
+            .annotate(total=Count("id"))
+        )
+        mapa_mensagens = {}
+        for row in mensagens_raw:
+            mapa_mensagens.setdefault(row["dia"], {"in": 0, "out": 0})[row["direcao"]] = row["total"]
+
+        conversas_novas_raw = list(
+            Conversa.objects.filter(criado_em__date__gte=inicio_30)
+            .annotate(dia=TruncDate("criado_em"))
+            .values("dia")
+            .annotate(total=Count("id"))
+        )
+        mapa_conversas_novas = {row["dia"]: row["total"] for row in conversas_novas_raw}
+
+        boletos_raw = list(
+            Boleto.objects.filter(enviado_em__date__gte=inicio_30, enviado_em__isnull=False)
+            .annotate(dia=TruncDate("enviado_em"))
+            .values("dia")
+            .annotate(total=Count("id"))
+        )
+        mapa_boletos = {row["dia"]: row["total"] for row in boletos_raw}
+
+        serie_30_dias = []
+        maior_valor_serie = 1
+        for i in range(30):
+            dia = inicio_30 + timedelta(days=i)
+            msgs = mapa_mensagens.get(dia, {})
+            recebidas = msgs.get("in", 0)
+            enviadas = msgs.get("out", 0)
+            serie_30_dias.append({
+                "dia": dia.isoformat(),
+                "recebidas": recebidas,
+                "enviadas": enviadas,
+                "conversas_novas": mapa_conversas_novas.get(dia, 0),
+                "boletos_enviados": mapa_boletos.get(dia, 0),
+            })
+            maior_valor_serie = max(maior_valor_serie, recebidas, enviadas)
+
+        # Cobertura de clientes
+        total_clientes = Cliente.objects.count()
+        clientes_com_telefone = Cliente.objects.filter(telefones__isnull=False).distinct().count()
+        clientes_com_conversa = Cliente.objects.filter(conversas__isnull=False).distinct().count()
+        clientes_bloqueados = Cliente.objects.filter(bloqueado_ia=True).count()
+
+        # Qualidade da IA
+        total_solicitacoes = Solicitacao.objects.count()
+        solicitacoes_precisa_humano = Solicitacao.objects.filter(precisa_humano=True).count()
+        taxa_solicitacoes_humano = (
+            solicitacoes_precisa_humano / total_solicitacoes * 100 if total_solicitacoes else 0
+        )
+        total_conversas = Conversa.objects.count()
+        conversas_precisa_revisao = Conversa.objects.filter(precisa_revisao_humana=True).count()
+        taxa_conversas_revisao = (
+            conversas_precisa_revisao / total_conversas * 100 if total_conversas else 0
+        )
+
+        # Boletos
+        total_boletos = Boleto.objects.count()
+        boletos_enviados = Boleto.objects.filter(enviado_em__isnull=False).count()
+
+        # Padrões sazonais (janela de 180 dias)
+        janela_qs = Mensagem.objects.filter(criado_em__date__gte=inicio_180)
+        por_dia_semana_raw = list(
+            janela_qs.annotate(dow=ExtractWeekDay("criado_em")).values("dow").annotate(total=Count("id"))
+        )
+        DIAS_SEMANA_PT = {1: "Domingo", 2: "Segunda", 3: "Terça", 4: "Quarta", 5: "Quinta", 6: "Sexta", 7: "Sábado"}
+        mapa_semana = {row["dow"]: row["total"] for row in por_dia_semana_raw}
+        por_dia_semana = [
+            {"label": DIAS_SEMANA_PT[dow], "total": mapa_semana.get(dow, 0)} for dow in range(1, 8)
+        ]
+        maior_valor_semana = max([row["total"] for row in por_dia_semana] + [1])
+
+        por_dia_mes_raw = list(
+            janela_qs.annotate(dom=ExtractDay("criado_em")).values("dom").annotate(total=Count("id"))
+        )
+        buckets = {"1-7": 0, "8-15": 0, "16-23": 0, "24-31": 0}
+        for row in por_dia_mes_raw:
+            dom = row["dom"]
+            if dom <= 7:
+                buckets["1-7"] += row["total"]
+            elif dom <= 15:
+                buckets["8-15"] += row["total"]
+            elif dom <= 23:
+                buckets["16-23"] += row["total"]
+            else:
+                buckets["24-31"] += row["total"]
+        maior_valor_bucket = max(list(buckets.values()) + [1])
+
+        data = {
+            "por_tipo": por_tipo,
+            "por_status": por_status,
+            "serie_30_dias": serie_30_dias,
+            "maior_valor_serie": maior_valor_serie,
+            "total_clientes": total_clientes,
+            "clientes_com_telefone": clientes_com_telefone,
+            "clientes_com_conversa": clientes_com_conversa,
+            "clientes_bloqueados": clientes_bloqueados,
+            "total_solicitacoes": total_solicitacoes,
+            "solicitacoes_precisa_humano": solicitacoes_precisa_humano,
+            "taxa_solicitacoes_humano": taxa_solicitacoes_humano,
+            "total_conversas": total_conversas,
+            "conversas_precisa_revisao": conversas_precisa_revisao,
+            "taxa_conversas_revisao": taxa_conversas_revisao,
+            "total_boletos": total_boletos,
+            "boletos_enviados": boletos_enviados,
+            "por_dia_semana": por_dia_semana,
+            "maior_valor_semana": maior_valor_semana,
+            "buckets_dia_mes": buckets,
+            "maior_valor_bucket": maior_valor_bucket,
+        }
+        return Response(data)
+
+
+class BotConfigAPIView(GenericAPIView):
+    permission_classes = [permissions.IsAdminUser]
+    serializer_class = BotConfigSerializer
+
+    @extend_schema(
+        responses={200: BotConfigSerializer}
+    )
+    def get(self, request):
+        config = BotConfig.get_solo()
+        serializer = BotConfigSerializer(config)
+        return Response(serializer.data)
+
+    @extend_schema(
+        request=BotConfigSerializer,
+        responses={200: BotConfigSerializer}
+    )
+    def patch(self, request):
+        config = BotConfig.get_solo()
+        serializer = BotConfigSerializer(config, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class MensagensConfigAPIView(GenericAPIView):
+    permission_classes = [permissions.IsAdminUser]
+    serializer_class = MensagensConfigSerializer
+
+    @extend_schema(
+        responses={200: MensagensConfigSerializer}
+    )
+    def get(self, request):
+        config = MensagensConfig.get_solo()
+        serializer = MensagensConfigSerializer(config)
+        return Response(serializer.data)
+
+    @extend_schema(
+        request=MensagensConfigSerializer,
+        responses={200: MensagensConfigSerializer}
+    )
+    def patch(self, request):
+        config = MensagensConfig.get_solo()
+        serializer = MensagensConfigSerializer(config, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        request=inline_serializer(
+            name="RestoreRequestInline",
+            fields={"campo": serializers.CharField(required=True)}
+        ),
+        responses={200: MensagensConfigSerializer}
+    )
+    def post(self, request):
+        config = MensagensConfig.get_solo()
+        campo = request.data.get("campo", "").strip()
+
+        from core.mensagens_defaults import (
+            DEFAULT_MSG_BOLETO_INTRO,
+            DEFAULT_MSG_CADASTRO_NAO_LOCALIZADO,
+            DEFAULT_MSG_CPF_INVALIDO,
+            DEFAULT_MSG_CPF_NAO_BATE,
+            DEFAULT_MSG_DB_DESATUALIZADA,
+            DEFAULT_MSG_INSISTIU_HUMANO,
+            DEFAULT_MSG_NEUTRA_PADRAO,
+            DEFAULT_MSG_PEDIR_CPF,
+            DEFAULT_MSG_QUITACAO_GARANTIA,
+            DEFAULT_MSG_RENOVACAO_PROXIMO_VENCIMENTO,
+            DEFAULT_MSG_SAUDACAO,
+            DEFAULT_MSG_SEM_CONTRATOS_ATIVOS,
+            DEFAULT_MSG_SEM_INFO_FAQ,
+            DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
+            DEFAULT_MSG_SOLICITACAO_CRIADA,
+            DEFAULT_MSG_VERIFICACAO_FALHOU,
+            DEFAULT_MSG_VERIFICACAO_OK,
+            DEFAULT_SYSTEM_PROMPT,
+        )
+
+        defaults = {
+            "system_prompt": DEFAULT_SYSTEM_PROMPT,
+            "msg_saudacao": DEFAULT_MSG_SAUDACAO,
+            "msg_cadastro_nao_localizado": DEFAULT_MSG_CADASTRO_NAO_LOCALIZADO,
+            "msg_pedir_cpf": DEFAULT_MSG_PEDIR_CPF,
+            "msg_cpf_invalido": DEFAULT_MSG_CPF_INVALIDO,
+            "msg_cpf_nao_bate": DEFAULT_MSG_CPF_NAO_BATE,
+            "msg_verificacao_ok": DEFAULT_MSG_VERIFICACAO_OK,
+            "msg_verificacao_falhou": DEFAULT_MSG_VERIFICACAO_FALHOU,
+            "msg_sem_info_faq": DEFAULT_MSG_SEM_INFO_FAQ,
+            "msg_db_desatualizada": DEFAULT_MSG_DB_DESATUALIZADA,
+            "msg_sem_contratos_ativos": DEFAULT_MSG_SEM_CONTRATOS_ATIVOS,
+            "msg_solicitacao_criada": DEFAULT_MSG_SOLICITACAO_CRIADA,
+            "msg_boleto_intro": DEFAULT_MSG_BOLETO_INTRO,
+            "msg_renovacao_proximo_vencimento": DEFAULT_MSG_RENOVACAO_PROXIMO_VENCIMENTO,
+            "msg_quitacao_garantia": DEFAULT_MSG_QUITACAO_GARANTIA,
+            "msg_segunda_via_confirma": DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
+            "msg_insistiu_humano": DEFAULT_MSG_INSISTIU_HUMANO,
+            "msg_neutra_padrao": DEFAULT_MSG_NEUTRA_PADRAO,
+        }
+
+        if campo in defaults:
+            setattr(config, campo, defaults[campo])
+            config.save(update_fields=[campo, "atualizado_em"])
+            serializer = MensagensConfigSerializer(config)
+            return Response(serializer.data)
+        else:
+            return Response({"detail": "Campo inválido para restauração."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class MensagensConfigRestoreAPIView(GenericAPIView):
+    permission_classes = [permissions.IsAdminUser]
+    serializer_class = MensagensConfigSerializer
+
+    @extend_schema(
+        request=inline_serializer(
+            name="RestoreRequest",
+            fields={"campo": serializers.CharField(required=False)}
+        ),
+        responses={200: MensagensConfigSerializer}
+    )
+    def post(self, request):
+        config = MensagensConfig.get_solo()
+        campo = request.data.get("campo", "").strip()
+
+        from core.mensagens_defaults import (
+            DEFAULT_MSG_BOLETO_INTRO,
+            DEFAULT_MSG_CADASTRO_NAO_LOCALIZADO,
+            DEFAULT_MSG_CPF_INVALIDO,
+            DEFAULT_MSG_CPF_NAO_BATE,
+            DEFAULT_MSG_DB_DESATUALIZADA,
+            DEFAULT_MSG_INSISTIU_HUMANO,
+            DEFAULT_MSG_NEUTRA_PADRAO,
+            DEFAULT_MSG_PEDIR_CPF,
+            DEFAULT_MSG_QUITACAO_GARANTIA,
+            DEFAULT_MSG_RENOVACAO_PROXIMO_VENCIMENTO,
+            DEFAULT_MSG_SAUDACAO,
+            DEFAULT_MSG_SEM_CONTRATOS_ATIVOS,
+            DEFAULT_MSG_SEM_INFO_FAQ,
+            DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
+            DEFAULT_MSG_SOLICITACAO_CRIADA,
+            DEFAULT_MSG_VERIFICACAO_FALHOU,
+            DEFAULT_MSG_VERIFICACAO_OK,
+            DEFAULT_SYSTEM_PROMPT,
+        )
+
+        defaults = {
+            "system_prompt": DEFAULT_SYSTEM_PROMPT,
+            "msg_saudacao": DEFAULT_MSG_SAUDACAO,
+            "msg_cadastro_nao_localizado": DEFAULT_MSG_CADASTRO_NAO_LOCALIZADO,
+            "msg_pedir_cpf": DEFAULT_MSG_PEDIR_CPF,
+            "msg_cpf_invalido": DEFAULT_MSG_CPF_INVALIDO,
+            "msg_cpf_nao_bate": DEFAULT_MSG_CPF_NAO_BATE,
+            "msg_verificacao_ok": DEFAULT_MSG_VERIFICACAO_OK,
+            "msg_verificacao_falhou": DEFAULT_MSG_VERIFICACAO_FALHOU,
+            "msg_sem_info_faq": DEFAULT_MSG_SEM_INFO_FAQ,
+            "msg_db_desatualizada": DEFAULT_MSG_DB_DESATUALIZADA,
+            "msg_sem_contratos_ativos": DEFAULT_MSG_SEM_CONTRATOS_ATIVOS,
+            "msg_solicitacao_criada": DEFAULT_MSG_SOLICITACAO_CRIADA,
+            "msg_boleto_intro": DEFAULT_MSG_BOLETO_INTRO,
+            "msg_renovacao_proximo_vencimento": DEFAULT_MSG_RENOVACAO_PROXIMO_VENCIMENTO,
+            "msg_quitacao_garantia": DEFAULT_MSG_QUITACAO_GARANTIA,
+            "msg_segunda_via_confirma": DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
+            "msg_insistiu_humano": DEFAULT_MSG_INSISTIU_HUMANO,
+            "msg_neutra_padrao": DEFAULT_MSG_NEUTRA_PADRAO,
+        }
+
+        if campo in defaults:
+            setattr(config, campo, defaults[campo])
+            config.save(update_fields=[campo, "atualizado_em"])
+            serializer = MensagensConfigSerializer(config)
+            return Response(serializer.data)
+        elif campo == "all" or not campo:
+            for key, val in defaults.items():
+                setattr(config, key, val)
+            config.save()
+            serializer = MensagensConfigSerializer(config)
+            return Response(serializer.data)
+        else:
+            return Response({"detail": f"Campo '{campo}' inválido para restauração."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class FAQViewSet(viewsets.ModelViewSet):
+    queryset = FAQ.objects.prefetch_related("respostas").all()
+    serializer_class = FAQSerializer
+    permission_classes = [permissions.IsAdminUser]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    pagination_class = None
+
+    def get_queryset(self):
+        return self.queryset.order_by("pergunta")
+
+    def get_serializer(self, *args, **kwargs):
+        # Handle custom multipart form-data where "faq" is a JSON string
+        # and file fields are sent separately as "arquivo_X" where X is the index
+        if "faq" in self.request.data:
+            try:
+                data = json.loads(self.request.data["faq"])
+                # Clean up empty/null string fields in answers representing files,
+                # but preserve valid path strings for WritableFileField
+                if "respostas" in data:
+                    for resp in data["respostas"]:
+                        if "arquivo" in resp and isinstance(resp["arquivo"], str):
+                            val = resp["arquivo"].strip()
+                            if not val or val == "null":
+                                resp.pop("arquivo")
+
+                # Attach file objects from request.FILES or request.data
+                files_source = self.request.FILES if self.request.FILES else self.request.data
+                for key, value in files_source.items():
+                    if key.startswith("arquivo_"):
+                        try:
+                            idx = int(key.split("_")[1])
+                            if "respostas" in data and idx < len(data["respostas"]):
+                                data["respostas"][idx]["arquivo"] = value
+                        except (ValueError, IndexError):
+                            pass
+                kwargs["data"] = data
+            except (ValueError, TypeError):
+                pass
+        return super().get_serializer(*args, **kwargs)
+
+    @action(detail=True, methods=["post"])
+    def toggle(self, request, pk=None):
+        faq = self.get_object()
+        faq.ativo = not faq.ativo
+        faq.save(update_fields=["ativo"])
+        return Response(FAQSerializer(faq).data)
+
+
+class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Cliente.objects.prefetch_related("telefones", "contratos_penhor").all()
+    permission_classes = [permissions.IsAdminUser]
+    lookup_field = "cpf"
+    lookup_url_kwarg = "pk"
+    pagination_class = None
+
+    def get_serializer_class(self):
+        if self.action == "retrieve":
+            return ClienteDetailSerializer
+        return ClienteListSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action == "list":
+            qs = qs.annotate(
+                num_telefones=Count("telefones", distinct=True),
+                num_conversas=Count("conversas", distinct=True),
+            )
+        q = self.request.query_params.get("q", "").strip()
+        if q:
+            qs = qs.filter(Q(cpf__icontains=q) | Q(nome__icontains=q))
+        bloqueado = self.request.query_params.get("bloqueado")
+        if bloqueado == "1":
+            qs = qs.filter(bloqueado_ia=True)
+        return qs.order_by("nome")
+
+    @action(detail=True, methods=["post"], url_path="toggle-bloqueio")
+    def toggle_bloqueio(self, request, pk=None):
+        cliente = self.get_object()
+        bloquear = request.data.get("bloquear")
+        acao = request.data.get("acao")
+        motivo = request.data.get("motivo", "").strip()
+
+        should_block = None
+        if bloquear is not None:
+            should_block = bool(bloquear)
+        elif acao is not None:
+            should_block = (acao == "bloquear")
+        else:
+            should_block = not cliente.bloqueado_ia
+
+        if should_block:
+            cliente.bloqueado_ia = True
+            cliente.bloqueado_motivo = motivo
+            cliente.bloqueado_em = timezone.now()
+        else:
+            cliente.bloqueado_ia = False
+            cliente.bloqueado_motivo = ""
+            cliente.bloqueado_em = None
+
+        cliente.save(update_fields=["bloqueado_ia", "bloqueado_motivo", "bloqueado_em"])
+        return Response(ClienteDetailSerializer(cliente).data)
+
+    @action(detail=True, methods=["post"], url_path="toggle-ia")
+    def toggle_ia(self, request, pk=None):
+        return self.toggle_bloqueio(request, pk=pk)
+
+
+class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Conversa.objects.select_related("cliente").prefetch_related("mensagens")
+    permission_classes = [permissions.IsAdminUser]
+    pagination_class = None
+
+    def get_serializer_class(self):
+        if self.action == "retrieve":
+            return ConversaDetailSerializer
+        return ConversaListSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        estado = self.request.query_params.get("estado")
+        revisao = self.request.query_params.get("revisao")
+        q = self.request.query_params.get("q", "").strip()
+
+        if estado:
+            qs = qs.filter(estado=estado)
+        if revisao == "1":
+            qs = qs.filter(precisa_revisao_humana=True)
+        if q:
+            qs = qs.filter(
+                Q(remote_jid__icontains=q) |
+                Q(cliente__cpf__icontains=q) |
+                Q(cliente__nome__icontains=q)
+            )
+        return qs.order_by("-ultima_interacao")
+
+    @action(detail=True, methods=["post"], url_path="toggle-revisao")
+    def toggle_revisao(self, request, pk=None):
+        conversa = self.get_object()
+        conversa.precisa_revisao_humana = not conversa.precisa_revisao_humana
+        conversa.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
+        return Response(ConversaDetailSerializer(conversa).data)
+
+
+class SimulatorView(GenericAPIView):
+    permission_classes = [permissions.IsAdminUser]
+    serializer_class = serializers.Serializer
+
+    def _get_estado(self, request):
+        from painel.views import SIMULADOR_SESSION_KEY
+        estado = request.session.get(SIMULADOR_SESSION_KEY)
+        if estado is None:
+            estado = {"cliente_cpf": None, "turnos": []}
+            request.session[SIMULADOR_SESSION_KEY] = estado
+        return estado
+
+    def _response_data(self, request, estado):
+        cliente = None
+        if estado["cliente_cpf"]:
+            cliente = Cliente.objects.filter(cpf=estado["cliente_cpf"]).first()
+        
+        cliente_data = None
+        if cliente:
+            cliente_data = ClienteDetailSerializer(cliente).data
+
+        return {
+            "cliente": cliente_data,
+            "turnos": estado["turnos"]
+        }
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="SimulatorGetResponse",
+                fields={
+                    "cliente": serializers.JSONField(allow_null=True),
+                    "turnos": serializers.ListField(child=serializers.JSONField())
+                }
+            )
+        }
+    )
+    def get(self, request):
+        estado = self._get_estado(request)
+        return Response(self._response_data(request, estado))
+
+    @extend_schema(
+        request=inline_serializer(
+            name="SimulatorPostRequest",
+            fields={
+                "acao": serializers.CharField(),
+                "cpf": serializers.CharField(required=False),
+                "mensagem": serializers.CharField(required=False),
+            }
+        ),
+        responses={
+            200: inline_serializer(
+                name="SimulatorPostResponse",
+                fields={
+                    "cliente": serializers.JSONField(allow_null=True),
+                    "turnos": serializers.ListField(child=serializers.JSONField())
+                }
+            )
+        }
+    )
+    def post(self, request):
+        estado = self._get_estado(request)
+        acao = request.data.get("acao")
+
+        from painel.views import SIMULADOR_SESSION_KEY
+
+        if acao == "selecionar_cliente":
+            cpf = request.data.get("cpf", "").strip()
+            if cpf and Cliente.objects.filter(cpf=cpf).exists():
+                estado["cliente_cpf"] = cpf
+                estado["turnos"] = []
+                request.session[SIMULADOR_SESSION_KEY] = estado
+                request.session.modified = True
+
+        elif acao == "remover_cliente":
+            estado["cliente_cpf"] = None
+            estado["turnos"] = []
+            request.session[SIMULADOR_SESSION_KEY] = estado
+            request.session.modified = True
+
+        elif acao == "reiniciar":
+            estado["turnos"] = []
+            request.session[SIMULADOR_SESSION_KEY] = estado
+            request.session.modified = True
+
+        elif acao == "enviar":
+            texto = request.data.get("mensagem", "").strip()
+            if texto:
+                cliente = None
+                if estado["cliente_cpf"]:
+                    cliente = Cliente.objects.filter(cpf=estado["cliente_cpf"]).first()
+
+                from whatsapp.tasks import HISTORICO_TAMANHO, _contratos_ativos_values
+                historico = [
+                    {"direcao": turno["direcao"], "texto": turno["texto"]}
+                    for turno in estado["turnos"][-HISTORICO_TAMANHO:]
+                ]
+                contratos_cliente = []
+                if cliente is not None:
+                    contratos_cliente = _contratos_ativos_values(cliente)
+                
+                faqs = list(FAQ.objects.filter(ativo=True).values("id", "pergunta"))
+
+                resultado = extrair_intencao(
+                    texto,
+                    historico,
+                    contratos_cliente,
+                    faqs,
+                    cpf_verificado=True,
+                    db_atualizada=True,
+                    contato_tipo="cliente",
+                    cliente_cpf=cliente.cpf if cliente else "",
+                    cliente_nome=cliente.nome if cliente else "",
+                )
+
+                estado["turnos"].append({"direcao": "in", "texto": texto})
+                estado["turnos"].append({
+                    "direcao": "out",
+                    "texto": resultado.resposta_sugerida,
+                    "debug": {
+                        "tipo_intencao": resultado.tipo_intencao.value if resultado.tipo_intencao else None,
+                        "precisa_humano": resultado.precisa_humano,
+                        "solicitacoes": [s.model_dump() for s in resultado.solicitacoes],
+                        "pronto_para_criar_solicitacao": resultado.pronto_para_criar_solicitacao,
+                        "cpf_extraido": resultado.cpf_extraido,
+                        "duvida_cliente": resultado.duvida_cliente,
+                    },
+                })
+                request.session[SIMULADOR_SESSION_KEY] = estado
+                request.session.modified = True
+
+        return Response(self._response_data(request, estado))
+
+
+class SimulatorChatAPIView(GenericAPIView):
+    permission_classes = [permissions.IsAdminUser]
+    serializer_class = serializers.Serializer
+
+    @extend_schema(
+        request=inline_serializer(
+            name="SimulatorChatRequest",
+            fields={
+                "mensagem": serializers.CharField(),
+                "cliente_cpf": serializers.CharField(required=False, allow_blank=True),
+                "historico": serializers.ListField(child=serializers.JSONField(), required=False, allow_null=True)
+            }
+        ),
+        responses={
+            200: inline_serializer(
+                name="SimulatorChatResponse",
+                fields={
+                    "resposta_sugerida": serializers.CharField(),
+                    "debug": serializers.JSONField(),
+                    "historico": serializers.ListField(child=serializers.JSONField())
+                }
+            )
+        }
+    )
+    def post(self, request):
+        mensagem = request.data.get("mensagem", "").strip()
+        cliente_cpf = request.data.get("cliente_cpf", "").strip()
+        historico = request.data.get("historico")
+
+        if not mensagem:
+            return Response({"detail": "mensagem is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        cliente = None
+        if cliente_cpf:
+            cliente = Cliente.objects.filter(cpf=cliente_cpf).first()
+
+        if historico is None:
+            session_state = request.session.get("api_simulador_ia")
+            if not session_state or session_state.get("cliente_cpf") != cliente_cpf:
+                session_state = {"cliente_cpf": cliente_cpf, "turnos": []}
+            historico_turnos = session_state["turnos"]
+        else:
+            historico_turnos = historico
+
+        from whatsapp.tasks import HISTORICO_TAMANHO, _contratos_ativos_values
+        historico_ia = [
+            {"direcao": h.get("direcao"), "texto": h.get("texto")}
+            for h in historico_turnos[-HISTORICO_TAMANHO:]
+        ]
+
+        contratos_cliente = []
+        if cliente is not None:
+            contratos_cliente = _contratos_ativos_values(cliente)
+
+        faqs = list(FAQ.objects.filter(ativo=True).values("id", "pergunta"))
+
+        resultado = extrair_intencao(
+            mensagem,
+            historico_ia,
+            contratos_cliente,
+            faqs,
+            cpf_verificado=True,
+            db_atualizada=True,
+            contato_tipo="cliente",
+            cliente_cpf=cliente.cpf if cliente else "",
+            cliente_nome=cliente.nome if cliente else "",
+        )
+
+        new_turn_in = {"direcao": "in", "texto": mensagem}
+        new_turn_out = {
+            "direcao": "out",
+            "texto": resultado.resposta_sugerida,
+            "debug": {
+                "tipo_intencao": resultado.tipo_intencao.value if resultado.tipo_intencao else None,
+                "precisa_humano": resultado.precisa_humano,
+                "solicitacoes": [s.model_dump() for s in resultado.solicitacoes],
+                "pronto_para_criar_solicitacao": resultado.pronto_para_criar_solicitacao,
+                "cpf_extraido": resultado.cpf_extraido,
+                "duvida_cliente": resultado.duvida_cliente,
+            }
+        }
+        historico_turnos.append(new_turn_in)
+        historico_turnos.append(new_turn_out)
+
+        if historico is None:
+            session_state["turnos"] = historico_turnos
+            request.session["api_simulador_ia"] = session_state
+            request.session.modified = True
+
+        return Response({
+            "resposta_sugerida": resultado.resposta_sugerida,
+            "debug": new_turn_out["debug"],
+            "historico": historico_turnos
+        })
+
+
+class WhatsappConnectionView(GenericAPIView):
+    permission_classes = [permissions.IsAdminUser]
+    serializer_class = serializers.Serializer
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="WhatsappConnectionGetResponse",
+                fields={
+                    "state": serializers.CharField(),
+                    "bot_ativo": serializers.BooleanField(),
+                    "qrcode_base64": serializers.CharField(required=False),
+                }
+            )
+        }
+    )
+    def get(self, request):
+        client = get_client()
+        state = client.get_connection_state()
+        bot_config = BotConfig.get_solo()
+        data = {
+            "state": state,
+            "bot_ativo": bot_config.ativo
+        }
+        if state != "open":
+            data["qrcode_base64"] = client.get_qrcode_base64()
+        return Response(data)
+
+    @extend_schema(
+        request=None,
+        responses={
+            200: inline_serializer(
+                name="WhatsappConnectionPostResponse",
+                fields={
+                    "state": serializers.CharField(),
+                    "bot_ativo": serializers.BooleanField(),
+                    "qrcode_base64": serializers.CharField(required=False),
+                }
+            )
+        }
+    )
+    def post(self, request):
+        bot_config = BotConfig.get_solo()
+        bot_config.ativo = not bot_config.ativo
+        bot_config.save(update_fields=["ativo", "atualizado_em"])
+        
+        if bot_config.ativo:
+            async_task("whatsapp.tasks.sincronizar_contatos")
+            async_task("whatsapp.tasks.processar_nao_lidas")
+            
+        client = get_client()
+        state = client.get_connection_state()
+        data = {
+            "state": state,
+            "bot_ativo": bot_config.ativo
+        }
+        if state != "open":
+            data["qrcode_base64"] = client.get_qrcode_base64()
+        return Response(data)
+
+
+class WhatsAppStatusAPIView(GenericAPIView):
+    permission_classes = [permissions.IsAdminUser]
+    serializer_class = serializers.Serializer
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="WhatsAppStatusResponse",
+                fields={
+                    "state": serializers.CharField(),
+                    "bot_ativo": serializers.BooleanField()
+                }
+            )
+        }
+    )
+    def get(self, request):
+        client = get_client()
+        state = client.get_connection_state()
+        bot_config = BotConfig.get_solo()
+        return Response({
+            "state": state,
+            "bot_ativo": bot_config.ativo
+        })
+
+
+class WhatsAppConectarAPIView(GenericAPIView):
+    permission_classes = [permissions.IsAdminUser]
+    serializer_class = serializers.Serializer
+
+    @extend_schema(
+        request=None,
+        responses={
+            200: inline_serializer(
+                name="WhatsAppConectarResponse",
+                fields={
+                    "state": serializers.CharField(),
+                    "qrcode_base64": serializers.CharField(allow_null=True)
+                }
+            )
+        }
+    )
+    def post(self, request):
+        client = get_client()
+        state = client.get_connection_state()
+        qrcode_base64 = None
+        if state != "open":
+            qrcode_base64 = client.get_qrcode_base64()
+        return Response({
+            "state": state,
+            "qrcode_base64": qrcode_base64
+        })
+
+
+class WhatsAppDesconectarAPIView(GenericAPIView):
+    permission_classes = [permissions.IsAdminUser]
+    serializer_class = serializers.Serializer
+
+    @extend_schema(
+        request=None,
+        responses={
+            200: inline_serializer(
+                name="WhatsAppDesconectarResponse",
+                fields={
+                    "success": serializers.BooleanField(),
+                    "state": serializers.CharField()
+                }
+            )
+        }
+    )
+    def post(self, request):
+        client = get_client()
+        success = client.logout()
+        state = client.get_connection_state()
+        return Response({
+            "success": success,
+            "state": state
+        })
+
+
+class SolicitacaoViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Backoffice API: operadores humanos consultam solicitações pendentes,
+    mudam status e fazem upload dos boletos que o sistema reenvia ao cliente."""
+
+    queryset = Solicitacao.objects.select_related("cliente", "conversa").prefetch_related(
+        "contratos", "boletos"
+    )
+    http_method_names = ["get", "patch", "post", "head", "options"]
+    permission_classes = [permissions.IsAdminUser]
+    pagination_class = None
+
+    def get_serializer_class(self):
+        if self.action in ("partial_update", "update"):
+            return SolicitacaoUpdateSerializer
+        return SolicitacaoSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        status_param = self.request.query_params.get("status")
+        if status_param:
+            qs = qs.filter(status=status_param)
+        return qs.order_by("-criado_em")
+
+    def partial_update(self, request, *args, **kwargs):
+        response = super().partial_update(request, *args, **kwargs)
+        instance = self.get_object()
+        response.data = SolicitacaoSerializer(instance, context=self.get_serializer_context()).data
+        return response
+
+    @action(detail=True, methods=["post"], url_path="boletos")
+    def boletos(self, request, pk=None):
+        solicitacao = self.get_object()
+        arquivos = request.FILES.getlist("arquivo") or (
+            [request.FILES["arquivo"]] if "arquivo" in request.FILES else []
+        )
+        if not arquivos:
+            return Response({"detail": "Envie ao menos um PDF no campo 'arquivo'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        linhas = request.POST.getlist("linha_digitavel")
+
+        criados = []
+        for i, arquivo in enumerate(arquivos):
+            linha_digitavel = linhas[i].strip() if i < len(linhas) else ""
+            boleto = Boleto.objects.create(solicitacao=solicitacao, arquivo=arquivo, linha_digitavel=linha_digitavel)
+            criados.append(boleto)
+
+        async_task("api.tasks.enviar_boletos", solicitacao.id)
+
+        return Response(
+            BoletoSerializer(criados, many=True).data,
+            status=status.HTTP_201_CREATED,
+        )

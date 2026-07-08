@@ -1,0 +1,64 @@
+{% extends "painel/base.html" %}
+{% block title %}Atendimento{% endblock %}
+{% block content %}
+<h1>
+  {% if conversa.cliente %}
+    <a href="{% url 'painel:cliente_detail' conversa.cliente.cpf %}">{{ conversa.cliente.nome|default:conversa.cliente.cpf }}</a>
+  {% else %}
+    Conversa não identificada
+  {% endif %}
+  <span class="muted subtle-inline">{{ conversa.remote_jid }}</span>
+</h1>
+
+<div class="card">
+  <div class="grid">
+    <div class="stat-tile">
+      <span class="label">Estado</span>
+      <span class="value" style="font-size:1.1rem;">{{ conversa.get_estado_display }}</span>
+    </div>
+    <div class="stat-tile">
+      <span class="label">Revisão humana</span>
+      <span class="value" style="font-size:1.1rem;">
+        {% if conversa.precisa_revisao_humana %}<span class="badge off">sim</span>{% else %}<span class="badge neutral">não</span>{% endif %}
+      </span>
+    </div>
+    <div class="stat-tile">
+      <span class="label">Verificado em</span>
+      <span class="value" style="font-size:1.1rem;">{{ conversa.verified_at|date:"d/m/Y H:i"|default:"—" }}</span>
+    </div>
+  </div>
+</div>
+
+{% if solicitacoes %}
+<div class="card">
+  <h2>Solicitações desta conversa</h2>
+  <table class="painel-table">
+    <thead><tr><th>Tipo</th><th>Escopo</th><th>Status</th><th>Criada em</th></tr></thead>
+    <tbody>
+      {% for solicitacao in solicitacoes %}
+      <tr>
+        <td>{{ solicitacao.get_tipo_display }}</td>
+        <td>{{ solicitacao.get_escopo_display }}</td>
+        <td>{{ solicitacao.get_status_display }}</td>
+        <td>{{ solicitacao.criado_em|date:"d/m/Y H:i" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Histórico de mensagens</h2>
+  <div class="chat-log">
+    {% for mensagem in mensagens %}
+    <div class="msg {{ mensagem.direcao }}">
+      <div>{{ mensagem.texto|linebreaksbr }}</div>
+      <div class="meta">{{ mensagem.criado_em|date:"d/m/Y H:i" }} · {% if mensagem.direcao == "in" %}recebida{% else %}enviada{% endif %}</div>
+    </div>
+    {% empty %}
+    <p class="muted">Nenhuma mensagem registrada nesta conversa.</p>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

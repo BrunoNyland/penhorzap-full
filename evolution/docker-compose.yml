@@ -1,0 +1,77 @@
+name: penhorzap-evolution
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: penhorzap_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg_data_evolution:/var/lib/postgresql/data
+    networks:
+      - penhorzap_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Sem "ports": só acessível dentro da rede penhorzap_net, não exposto no host.
+
+  evolution-api:
+    image: evoapicloud/evolution-api:v2.3.7
+    container_name: penhorzap_evolution_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      # Banco de dados (Postgres dedicado deste compose)
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=evolution_api
+      DATABASE_CONNECTION_CLIENT_NAME: penhorzap_evolution
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+      DATABASE_SAVE_DATA_LABELS: "true"
+      DATABASE_SAVE_DATA_HISTORIC: "true"
+
+      # Autenticação da API (header "apikey")
+      AUTHENTICATION_API_KEY: ${AUTHENTICATION_API_KEY}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
+
+      # Webhook global -> backend Django (ainda em construção / sem DNS por enquanto)
+      WEBHOOK_GLOBAL_URL: https://pwa.brunonyland.com/webhook/whatsapp/
+      WEBHOOK_GLOBAL_ENABLED: "true"
+      WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS: "false"
+      WEBHOOK_EVENTS_MESSAGES_UPSERT: "true"
+      WEBHOOK_EVENTS_CONNECTION_UPDATE: "true"
+
+      LANGUAGE: pt-BR
+
+      # Sem Redis provisionado neste stack (fora do escopo desta fase) -
+      # desabilita explicitamente para evitar tentativas de conexão e
+      # usa cache local em memória/fs no lugar.
+      CACHE_REDIS_ENABLED: "false"
+      CACHE_LOCAL_ENABLED: "true"
+    volumes:
+      - evolution_instances:/evolution/instances
+    networks:
+      - penhorzap_net
+
+volumes:
+  pg_data_evolution:
+    name: pg_data_evolution
+  evolution_instances:
+    name: evolution_instances
+
+networks:
+  penhorzap_net:
+    name: penhorzap_net
+    driver: bridge

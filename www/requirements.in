@@ -1,0 +1,10 @@
+Django>=5.2,<5.3
+djangorestframework
+drf-spectacular
+mysqlclient
+python-dotenv
+django-q2
+google-genai
+requests
+Pillow
+gunicorn

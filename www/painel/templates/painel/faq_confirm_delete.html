@@ -1,0 +1,16 @@
+{% extends "painel/base.html" %}
+{% block title %}Excluir FAQ{% endblock %}
+{% block content %}
+<h1>Excluir FAQ</h1>
+<div class="card narrow">
+  <p>Tem certeza que deseja excluir esta FAQ?</p>
+  <p><strong>{{ faq.pergunta }}</strong></p>
+  <form method="post">
+    {% csrf_token %}
+    <div class="actions">
+      <button type="submit" class="btn danger">Confirmar exclusão</button>
+      <a class="btn" href="{% url 'painel:faq_list' %}">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
