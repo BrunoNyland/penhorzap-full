@@ -1,10 +1,13 @@
 import json
+import os
+import tempfile
 from datetime import timedelta
 from django.utils import timezone
 from django.db.models import Count, Q
 from django.db.models.functions import ExtractDay, ExtractWeekDay, TruncDate
 from django.contrib.auth import login, logout, authenticate
 from django.contrib.auth.models import User
+from django.shortcuts import get_object_or_404
 
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.utils.decorators import method_decorator
@@ -23,6 +26,7 @@ from core.models import (
     Boleto,
     Cliente,
     ContratoPenhor,
+    ImportDataJob,
     Mensagem,
     Solicitacao,
     BotConfig,
@@ -48,6 +52,7 @@ from .serializers import (
     ConversaDetailSerializer,
 )
 
+from core.services import importar_sqlite_arquivo
 from ia.services import extrair_intencao
 from whatsapp.evolution_client import get_client
 
@@ -1104,3 +1109,200 @@ class SolicitacaoViewSet(
             BoletoSerializer(criados, many=True).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class ImportSqliteAPIView(GenericAPIView):
+    permission_classes = [permissions.IsAdminUser]
+    serializer_class = serializers.Serializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    pagination_class = None
+
+    @extend_schema(
+        request=None,
+        responses={
+            201: inline_serializer(
+                name="ImportSqliteResponse",
+                fields={
+                    "id": serializers.IntegerField(),
+                    "status": serializers.CharField(),
+                    "arquivo": serializers.CharField(),
+                    "criado_em": serializers.DateTimeField(),
+                }
+            )
+        }
+    )
+    def post(self, request):
+        arquivos = request.FILES.getlist("arquivo")
+        if not arquivos:
+            return Response(
+                {"detail": "Envie um arquivo SQLite no campo 'arquivo'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        arquivo = arquivos[0]
+
+        header = arquivo.read(16)
+        arquivo.seek(0)
+        if header != b"SQLite format 3\x00":
+            return Response(
+                {"detail": "Arquivo não é um banco SQLite válido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        job = ImportDataJob.objects.create(
+            arquivo=arquivo,
+            usuario=request.user,
+            status=ImportDataJob.Status.PENDING,
+        )
+        async_task("core.tasks.run_import_job", job.id)
+
+        return Response(
+            {
+                "id": job.id,
+                "status": job.status,
+                "arquivo": job.arquivo.name,
+                "criado_em": job.criado_em,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class ImportSqliteStatusAPIView(GenericAPIView):
+    permission_classes = [permissions.IsAdminUser]
+    serializer_class = serializers.Serializer
+    pagination_class = None
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="ImportSqliteStatusResponse",
+                fields={
+                    "id": serializers.IntegerField(),
+                    "status": serializers.CharField(),
+                    "counts": serializers.JSONField(),
+                    "erro": serializers.CharField(),
+                    "criado_em": serializers.DateTimeField(),
+                    "finalizado_em": serializers.DateTimeField(allow_null=True),
+                }
+            )
+        }
+    )
+    def get(self, request, pk):
+        job = get_object_or_404(ImportDataJob, pk=pk)
+        return Response(
+            {
+                "id": job.id,
+                "status": job.status,
+                "counts": job.counts,
+                "erro": job.erro,
+                "arquivo": job.arquivo.name,
+                "criado_em": job.criado_em,
+                "finalizado_em": job.finalizado_em,
+            }
+        )
+
+
+class ImportSqliteLatestAPIView(GenericAPIView):
+    permission_classes = [permissions.IsAdminUser]
+    serializer_class = serializers.Serializer
+    pagination_class = None
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="ImportSqliteLatestResponse",
+                fields={
+                    "results": serializers.ListField(child=serializers.JSONField())
+                }
+            )
+        }
+    )
+    def get(self, request):
+        jobs = ImportDataJob.objects.order_by("-criado_em")[:10].values(
+            "id", "status", "counts", "erro", "arquivo", "criado_em", "finalizado_em"
+        )
+        return Response(list(jobs))
+
+
+_ImportSqliteSyncErrorResponse = inline_serializer(
+    name="ImportSqliteSyncErrorResponse",
+    fields={"detail": serializers.CharField()},
+)
+
+
+class ImportSqliteSyncAPIView(GenericAPIView):
+    permission_classes = [permissions.IsAdminUser]
+    serializer_class = serializers.Serializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    pagination_class = None
+
+    @extend_schema(
+        request=None,
+        responses={
+            200: inline_serializer(
+                name="ImportSqliteSyncResponse",
+                fields={
+                    "status": serializers.CharField(),
+                    "counts": serializers.JSONField(),
+                },
+            ),
+            400: _ImportSqliteSyncErrorResponse,
+            413: _ImportSqliteSyncErrorResponse,
+            500: _ImportSqliteSyncErrorResponse,
+        },
+    )
+    def post(self, request):
+        arquivos = request.FILES.getlist("arquivo")
+        if not arquivos:
+            return Response(
+                {"detail": "Envie um arquivo SQLite no campo 'arquivo'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        arquivo = arquivos[0]
+
+        if arquivo.size > 80 * 1024 * 1024:
+            return Response(
+                {"detail": "Arquivo maior que 80MB. Use o endpoint assíncrono /api/import/sqlite/ para arquivos grandes."},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+
+        header = arquivo.read(16)
+        arquivo.seek(0)
+        if header != b"SQLite format 3\x00":
+            return Response(
+                {"detail": "Arquivo não é um banco SQLite válido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".sqlite3") as tmp:
+            for chunk in arquivo.chunks(64 * 1024):
+                tmp.write(chunk)
+            temp_path = tmp.name
+
+        job = ImportDataJob.objects.create(
+            arquivo=arquivo,
+            usuario=request.user,
+            status=ImportDataJob.Status.RUNNING,
+        )
+
+        try:
+            counts = importar_sqlite_arquivo(temp_path)
+        except Exception as exc:
+            job.status = ImportDataJob.Status.FAILED
+            job.erro = str(exc)
+            job.finalizado_em = timezone.now()
+            job.save(update_fields=["status", "erro", "finalizado_em"])
+            return Response(
+                {"status": "falhou", "erro": str(exc)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        else:
+            job.status = ImportDataJob.Status.SUCCESS
+            job.counts = counts
+            job.finalizado_em = timezone.now()
+            job.save(update_fields=["status", "counts", "finalizado_em"])
+            return Response({"status": "concluido", "counts": counts})
+        finally:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass

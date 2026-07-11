@@ -498,3 +498,35 @@ class Boleto(models.Model):
 
     def __str__(self):
         return f"Boleto de {self.solicitacao} ({self.arquivo.name})"
+
+
+class ImportDataJob(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pendente", "Pendente"
+        RUNNING = "andamento", "Em andamento"
+        SUCCESS = "concluido", "Concluído"
+        FAILED = "falhou", "Falhou"
+
+    arquivo = models.FileField(upload_to="import_sqlite/", verbose_name="Arquivo SQLite")
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name="Status"
+    )
+    counts = models.JSONField(default=dict, blank=True, verbose_name="Contagens")
+    erro = models.TextField(blank=True, default="", verbose_name="Erro")
+    criado_em = models.DateTimeField(auto_now_add=True, verbose_name="Criado em")
+    finalizado_em = models.DateTimeField(null=True, blank=True, verbose_name="Finalizado em")
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        verbose_name="Usuário",
+    )
+
+    class Meta:
+        verbose_name = "Importação de dados"
+        verbose_name_plural = "Importações de dados"
+        ordering = ["-criado_em"]
+
+    def __str__(self):
+        name = self.arquivo.name.split("/")[-1] if self.arquivo.name else "(sem arquivo)"
+        return f"{name} — {self.get_status_display()} — {self.criado_em:%d/%m/%Y %H:%M}"

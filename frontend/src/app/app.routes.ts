@@ -7,6 +7,7 @@ import { ConversationsComponent } from './components/conversations/conversations
 import { CustomersComponent } from './components/customers/customers.component';
 import { ConfigComponent } from './components/config/config.component';
 import { WhatsappComponent } from './components/whatsapp/whatsapp.component';
+import { ImportDataComponent } from './components/import-data/import-data.component';
 import { SimulatorComponent } from './components/simulator/simulator.component';
 
 export const routes: Routes = [
@@ -21,6 +22,7 @@ export const routes: Routes = [
       { path: 'customers', component: CustomersComponent },
       { path: 'config', component: ConfigComponent },
       { path: 'whatsapp', component: WhatsappComponent },
+      { path: 'importar-dados', component: ImportDataComponent },
       { path: 'simulator', component: SimulatorComponent },
       { path: '', redirectTo: 'dashboard', pathMatch: 'full' }
     ]

@@ -9,6 +9,7 @@ from .models import (
     ContratoPenhor,
     FAQ,
     FAQResposta,
+    ImportDataJob,
     Licitacao,
     Mensagem,
     MensagensConfig,
@@ -120,3 +121,9 @@ class MensagensConfigAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(ImportDataJob)
+class ImportDataJobAdmin(admin.ModelAdmin):
+    list_display = ("arquivo", "status", "criado_em", "finalizado_em", "usuario")
+    readonly_fields = ("counts", "criado_em", "finalizado_em")

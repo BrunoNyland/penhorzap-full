@@ -120,4 +120,16 @@ export class ApiService {
   uploadBoleto(solicitacaoId: number, formData: FormData): Observable<any> {
     return this.http.post(`/api/solicitacoes/${solicitacaoId}/boletos/`, formData);
   }
+
+  uploadSqlite(formData: FormData): Observable<any> {
+    return this.http.post('/api/import/sqlite/', formData);
+  }
+
+  getImportStatus(jobId: number): Observable<any> {
+    return this.http.get(`/api/import/sqlite/${jobId}/status/`);
+  }
+
+  getImportHistory(): Observable<any[]> {
+    return this.http.get<any[]>('/api/import/sqlite/latest/');
+  }
 }

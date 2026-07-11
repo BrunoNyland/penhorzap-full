@@ -1,0 +1,106 @@
+<div class="import-wrapper">
+  <div class="import-header">
+    <h1>Importar dados do Brilhante</h1>
+    <p class="text-muted">
+      Envie um arquivo SQLite exportado pelo app Brilhante. O sistema vai importar
+      clientes, contratos, agências e licitações sobrescrevendo os dados atuais
+      (operação idempotente — reenviar o mesmo arquivo apenas atualiza).
+    </p>
+  </div>
+
+  <div class="card import-card">
+    <h2>Arquivo SQLite</h2>
+
+    <div class="file-row margin-top">
+      <input
+        type="file"
+        accept=".sqlite,.db,.sqlite3"
+        (change)="onFileSelected($event)"
+        [disabled]="loading() || polling()"
+      />
+      <button
+        class="btn btn-primary"
+        (click)="onUpload()"
+        [disabled]="!selectedFile || loading() || polling()"
+      >
+        {{ loading() ? 'Enviando...' : 'Importar' }}
+      </button>
+    </div>
+
+    @if (arquivoNome()) {
+      <p class="text-muted text-small margin-top-xs">Arquivo selecionado: <strong>{{ arquivoNome() }}</strong></p>
+    }
+
+    @if (jobId() !== null) {
+      <div class="status-area margin-top">
+        @if (status() === 'pendente' || status() === 'andamento') {
+          <div class="status-progress flex align-center gap-2">
+            <div class="spinner-sm"></div>
+            <span>Processando importação... ({{ statusLabel(status()) }})</span>
+          </div>
+        }
+
+        @if (status() === 'concluido') {
+          <div class="status-success">
+            <span class="status-badge success">✓ Importação concluída</span>
+            @if (counts()) {
+              <table class="counts-table margin-top-sm">
+                <thead>
+                  <tr>
+                    <th>Tabela</th>
+                    <th>Registros importados</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of countRows; track row.key) {
+                    <tr>
+                      <td>{{ row.label }}</td>
+                      <td>{{ counts()[row.key] ?? 0 }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            }
+          </div>
+        }
+
+        @if (status() === 'falhou') {
+          <div class="status-failed">
+            <span class="status-badge failed">✕ Falha na importação</span>
+            @if (erro()) {
+              <p class="text-danger text-small margin-top-xs">{{ erro() }}</p>
+            }
+          </div>
+        }
+      </div>
+    }
+  </div>
+
+  <div class="card import-card margin-top">
+    <h2>Importações recentes</h2>
+
+    @if (historico().length === 0) {
+      <p class="text-muted text-small margin-top-sm">Nenhuma importação registrada ainda.</p>
+    } @else {
+      <ul class="historico-list margin-top">
+        @for (item of historico(); track item.id) {
+          <li class="historico-item">
+            <div class="historico-main">
+              <strong>{{ item.arquivo || ('Job #' + item.id) }}</strong>
+              <span [class]="statusBadgeClass(item.status)">{{ statusLabel(item.status) }}</span>
+            </div>
+            <div class="historico-meta text-muted text-small">
+              <span>Criado: {{ item.criado_em | date: 'dd/MM/yyyy HH:mm' }}</span>
+              @if (item.finalizado_em) {
+                <span> · Finalizado: {{ item.finalizado_em | date: 'dd/MM/yyyy HH:mm' }}</span>
+              }
+              @if (item.status === 'falhou' && item.erro) {
+                <span class="text-danger"> · {{ item.erro }}</span>
+              }
+            </div>
+          </li>
+        }
+      </ul>
+    }
+  </div>
+</div>

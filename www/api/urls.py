@@ -21,6 +21,10 @@ from .views import (
     LogoutAPIView,
     UserAPIView,
     AuthView,
+    ImportSqliteAPIView,
+    ImportSqliteSyncAPIView,
+    ImportSqliteStatusAPIView,
+    ImportSqliteLatestAPIView,
 )
 
 router = DefaultRouter()
@@ -57,4 +61,8 @@ urlpatterns = router.urls + [
     path("auth/login/", LoginAPIView.as_view(), name="auth-login"),
     path("auth/logout/", LogoutAPIView.as_view(), name="auth-logout"),
     path("auth/user/", UserAPIView.as_view(), name="auth-user"),
+    path("import/sqlite/", ImportSqliteAPIView.as_view(), name="import-sqlite"),
+    path("import/sqlite/sync/", ImportSqliteSyncAPIView.as_view(), name="import-sqlite-sync"),
+    path("import/sqlite/<int:pk>/status/", ImportSqliteStatusAPIView.as_view(), name="import-sqlite-status"),
+    path("import/sqlite/latest/", ImportSqliteLatestAPIView.as_view(), name="import-sqlite-latest"),
 ]
