@@ -148,7 +148,29 @@ import { IconComponent } from '../../shared/icon/icon.component';
             @for (msg of activeChat().mensagens; track msg.id) {
               <div class="message-wrapper" [class.incoming]="msg.direcao === 'in'">
                 <div class="message-balloon">
-                  <div class="message-text">{{ msg.texto }}</div>
+                  @if (msg.possui_midia) {
+                    <div class="message-media">
+                      @if (msg.tipo_midia === 'image') {
+                        <a [href]="'/api/conversas/' + activeChat().id + '/mensagens/' + msg.id + '/media/'" target="_blank">
+                          <img [src]="'/api/conversas/' + activeChat().id + '/mensagens/' + msg.id + '/media/'" alt="Imagem" class="chat-media-image" />
+                        </a>
+                        @if (msg.legenda) {
+                          <div class="message-text margin-top-xs">{{ msg.legenda }}</div>
+                        }
+                      } @else if (msg.tipo_midia === 'audio') {
+                        <audio controls [src]="'/api/conversas/' + activeChat().id + '/mensagens/' + msg.id + '/media/'" class="chat-media-audio"></audio>
+                      } @else if (msg.tipo_midia === 'video') {
+                        <video controls [src]="'/api/conversas/' + activeChat().id + '/mensagens/' + msg.id + '/media/'" class="chat-media-video"></video>
+                      } @else if (msg.tipo_midia === 'document') {
+                        <a [href]="'/api/conversas/' + activeChat().id + '/mensagens/' + msg.id + '/media/'" target="_blank" download class="chat-media-document">
+                          <app-icon name="file-text" [size]="18"></app-icon>
+                          <span>{{ msg.legenda || 'Baixar Documento' }}</span>
+                        </a>
+                      }
+                    </div>
+                  } @else {
+                    <div class="message-text">{{ msg.texto }}</div>
+                  }
                   <div class="message-time text-muted">{{ msg.criado_em | date:'HH:mm' }}</div>
                 </div>
               </div>
@@ -489,6 +511,49 @@ import { IconComponent } from '../../shared/icon/icon.component';
       width: 20px;
       height: 20px;
       border-width: 2px;
+    }
+    .chat-media-image {
+      max-width: 100%;
+      max-height: 300px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: block;
+      margin-bottom: 4px;
+    }
+    .chat-media-audio {
+      max-width: 260px;
+      display: block;
+    }
+    .chat-media-video {
+      max-width: 100%;
+      max-height: 300px;
+      border-radius: var(--radius-sm);
+      display: block;
+    }
+    .chat-media-document {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: rgba(0, 0, 0, 0.05);
+      border-radius: var(--radius-sm);
+      text-decoration: none;
+      color: var(--text-primary);
+      transition: background var(--transition-fast);
+    }
+    .chat-media-document:hover {
+      background: rgba(0, 0, 0, 0.1);
+    }
+    .message-wrapper:not(.incoming) .chat-media-document {
+      background: rgba(255, 255, 255, 0.15);
+      color: white;
+    }
+    .message-wrapper:not(.incoming) .chat-media-document:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+    .chat-media-document span {
+      text-decoration: underline;
+      font-size: 13px;
     }
   `]
 })

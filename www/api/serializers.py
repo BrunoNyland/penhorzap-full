@@ -170,6 +170,10 @@ class MensagemMiniSerializer(serializers.ModelSerializer):
 
 
 class MensagemSerializer(serializers.ModelSerializer):
+    possui_midia = serializers.SerializerMethodField()
+    tipo_midia = serializers.SerializerMethodField()
+    legenda = serializers.SerializerMethodField()
+
     class Meta:
         model = Mensagem
         fields = [
@@ -180,7 +184,43 @@ class MensagemSerializer(serializers.ModelSerializer):
             "push_name",
             "payload_bruto",
             "criado_em",
+            "possui_midia",
+            "tipo_midia",
+            "legenda",
         ]
+
+    def _get_media_message_node(self, obj):
+        payload = obj.payload_bruto or {}
+        data = payload.get("data", {})
+        message = data.get("message", {})
+        if not message:
+            return None, None
+        for key in ["imageMessage", "audioMessage", "documentMessage", "videoMessage"]:
+            if key in message:
+                return key, message[key]
+        return None, None
+
+    def get_possui_midia(self, obj) -> bool:
+        media_type, _ = self._get_media_message_node(obj)
+        return media_type is not None
+
+    def get_tipo_midia(self, obj) -> str:
+        media_type, _ = self._get_media_message_node(obj)
+        if media_type == "imageMessage":
+            return "image"
+        elif media_type == "audioMessage":
+            return "audio"
+        elif media_type == "documentMessage":
+            return "document"
+        elif media_type == "videoMessage":
+            return "video"
+        return "text"
+
+    def get_legenda(self, obj) -> str:
+        _, media_node = self._get_media_message_node(obj)
+        if media_node:
+            return media_node.get("caption") or ""
+        return ""
 
 
 class BoletoSerializer(serializers.ModelSerializer):

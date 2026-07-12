@@ -736,10 +736,95 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(
             {
                 "enviado": enviado,
-                " mensagens": ConversaDetailSerializer(conversa).data.get("mensagens", []),
+                "mensagens": ConversaDetailSerializer(conversa).data.get("mensagens", []),
             },
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=True, methods=["get"], url_path="mensagens/(?P<mensagem_id>[^/.]+)/media")
+    def baixar_media_mensagem(self, request, pk=None, mensagem_id=None):
+        import base64
+        import requests
+        from django.http import HttpResponse, Http404
+
+        conversa = self.get_object()
+        mensagem = conversa.mensagens.filter(id=mensagem_id).first()
+        if not mensagem:
+            raise Http404("Mensagem não encontrada nesta conversa.")
+
+        payload = mensagem.payload_bruto or {}
+        data_node = payload.get("data", {})
+        message_node = data_node.get("message", {})
+        if not message_node:
+            raise Http404("Mensagem não possui payload de mídia.")
+
+        # Verifica se possui algum nó de mídia
+        media_type = None
+        media_node = None
+        for key in ["imageMessage", "audioMessage", "documentMessage", "videoMessage"]:
+            if key in message_node:
+                media_type = key
+                media_node = message_node[key]
+                break
+
+        if not media_type or not media_node:
+            raise Http404("Esta mensagem não é do tipo mídia ou não contém arquivo.")
+
+        # Obtém credenciais da Evolution API da settings
+        url = f"{settings.EVOLUTION_API_URL.rstrip('/')}/chat/getBase64FromMediaMessage/{settings.EVOLUTION_INSTANCE}"
+        headers = {
+            "Content-Type": "application/json",
+            "apikey": settings.EVOLUTION_API_KEY,
+        }
+
+        # Faz requisição para descriptografar e baixar a mídia
+        try:
+            resp = requests.post(url, json={"message": data_node}, headers=headers, timeout=20)
+            if resp.status_code != 201:
+                logger.error("Evolution API retornou status %s ao obter mídia", resp.status_code)
+                return Response(
+                    {"detail": "Não foi possível obter a mídia com o gateway do WhatsApp."},
+                    status=status.HTTP_502_BAD_GATEWAY
+                )
+            res_json = resp.json()
+        except requests.RequestException:
+            logger.exception("Falha de conexão com a Evolution API ao baixar mídia")
+            return Response(
+                {"detail": "Falha de conexão com o gateway do WhatsApp."},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+        except ValueError:
+            logger.error("Resposta não-JSON da Evolution API ao baixar mídia")
+            return Response(
+                {"detail": "Resposta inválida do gateway do WhatsApp."},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+
+        base64_str = res_json.get("base64")
+        if not base64_str:
+            return Response(
+                {"detail": "Mídia não retornou dados de conteúdo (base64)."},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+
+        # Decodifica o base64 para binário
+        try:
+            file_data = base64.b64decode(base64_str)
+        except Exception:
+            return Response(
+                {"detail": "Erro ao descriptografar o conteúdo do arquivo."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        mimetype = res_json.get("mimetype") or media_node.get("mimetype") or "application/octet-stream"
+        
+        response = HttpResponse(file_data, content_type=mimetype)
+        # Se for um documento/arquivo que o navegador não exibe em tela, adiciona Content-Disposition para download
+        if media_type == "documentMessage":
+            filename = res_json.get("fileName") or media_node.get("fileName") or "arquivo"
+            response["Content-Disposition"] = f'attachment; filename="{filename}"'
+            
+        return response
 
 
 class SimulatorView(GenericAPIView):
