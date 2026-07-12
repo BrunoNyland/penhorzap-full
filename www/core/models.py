@@ -67,6 +67,18 @@ class Cliente(models.Model):
     def __str__(self):
         return f"{self.nome} ({self.cpf})"
 
+    @classmethod
+    def buscar_por_cpf(cls, cpf_raw):
+        """Busca um cliente pelo CPF de forma flexível, aceitando tanto
+        formatado (com pontos e traço) quanto somente dígitos (limpo).
+        """
+        if not cpf_raw:
+            return None
+        from core.utils import normalizar_cpf, formatar_cpf_pontuado
+        clean = normalizar_cpf(cpf_raw)
+        formatted = formatar_cpf_pontuado(cpf_raw)
+        return cls.objects.filter(cpf__in=[clean, formatted]).first()
+
 
 class Telefone(models.Model):
     """Normalized phone numbers for a Cliente, used to match WhatsApp remoteJid."""

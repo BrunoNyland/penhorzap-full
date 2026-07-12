@@ -129,6 +129,16 @@ def normalizar_cpf(cpf: str) -> str:
     return digits if len(digits) == 11 else ""
 
 
+def formatar_cpf_pontuado(cpf: str) -> str:
+    """Retorna o CPF no formato 000.000.000-00 se tiver 11 dígitos.
+    Caso contrário, retorna o CPF limpo (somente dígitos).
+    """
+    clean = normalizar_cpf(cpf)
+    if len(clean) == 11:
+        return f"{clean[:3]}.{clean[3:6]}.{clean[6:9]}-{clean[9:]}"
+    return clean
+
+
 def parse_nome_salvo(nome: str):
     """Extrai (cpf, nome) de um contato salvo no padrão PHN_<cpf>_<nome>.
 

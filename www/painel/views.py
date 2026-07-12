@@ -483,7 +483,7 @@ def simulador_chat(request):
             if texto:
                 cliente = None
                 if estado["cliente_cpf"]:
-                    cliente = Cliente.objects.filter(cpf=estado["cliente_cpf"]).first()
+                    cliente = Cliente.buscar_por_cpf(estado["cliente_cpf"])
 
                 historico = [
                     {"direcao": turno["direcao"], "texto": turno["texto"]}
@@ -529,8 +529,9 @@ def simulador_chat(request):
 
         elif acao == "selecionar_cliente":
             cpf = request.POST.get("cpf", "").strip()
-            if cpf and Cliente.objects.filter(cpf=cpf).exists():
-                estado["cliente_cpf"] = cpf
+            cli_obj = Cliente.buscar_por_cpf(cpf) if cpf else None
+            if cli_obj:
+                estado["cliente_cpf"] = cli_obj.cpf
                 estado["turnos"] = []
                 request.session.modified = True
 
@@ -543,7 +544,7 @@ def simulador_chat(request):
 
     cliente = None
     if estado["cliente_cpf"]:
-        cliente = Cliente.objects.filter(cpf=estado["cliente_cpf"]).first()
+        cliente = Cliente.buscar_por_cpf(estado["cliente_cpf"])
 
     q = request.GET.get("q", "").strip()
     resultados_busca = []

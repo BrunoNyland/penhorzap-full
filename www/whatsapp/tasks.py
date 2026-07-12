@@ -98,15 +98,8 @@ def _extrair_cpf_texto(texto: str) -> str:
 
 
 def _buscar_cliente_por_cpf(cpf_digits: str):
-    """Tenta achar um Cliente pelo CPF, tolerando formatação diferente no PK."""
-    c = Cliente.objects.filter(cpf=cpf_digits).first()
-    if c:
-        return c
-    tail = cpf_digits[-8:]
-    for cand in Cliente.objects.filter(cpf__icontains=tail)[:50]:
-        if normalizar_cpf(cand.cpf) == cpf_digits:
-            return cand
-    return None
+    """Tenta achar um Cliente pelo CPF de forma flexível."""
+    return Cliente.buscar_por_cpf(cpf_digits)
 
 def _buscar_telefone_flexivel(numero_normalizado: str):
     """Busca um objeto Telefone de forma flexível, considerando que o número no

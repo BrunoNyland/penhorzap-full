@@ -757,7 +757,7 @@ class SimulatorView(GenericAPIView):
     def _response_data(self, request, estado):
         cliente = None
         if estado["cliente_cpf"]:
-            cliente = Cliente.objects.filter(cpf=estado["cliente_cpf"]).first()
+            cliente = Cliente.buscar_por_cpf(estado["cliente_cpf"])
         
         cliente_data = None
         if cliente:
@@ -810,8 +810,9 @@ class SimulatorView(GenericAPIView):
 
         if acao == "selecionar_cliente":
             cpf = request.data.get("cpf", "").strip()
-            if cpf and Cliente.objects.filter(cpf=cpf).exists():
-                estado["cliente_cpf"] = cpf
+            cli_obj = Cliente.buscar_por_cpf(cpf) if cpf else None
+            if cli_obj:
+                estado["cliente_cpf"] = cli_obj.cpf
                 estado["turnos"] = []
                 request.session[SIMULADOR_SESSION_KEY] = estado
                 request.session.modified = True
@@ -832,7 +833,7 @@ class SimulatorView(GenericAPIView):
             if texto:
                 cliente = None
                 if estado["cliente_cpf"]:
-                    cliente = Cliente.objects.filter(cpf=estado["cliente_cpf"]).first()
+                    cliente = Cliente.buscar_por_cpf(estado["cliente_cpf"])
 
                 from whatsapp.tasks import HISTORICO_TAMANHO, _contratos_ativos_values
                 historico = [
@@ -910,7 +911,7 @@ class SimulatorChatAPIView(GenericAPIView):
 
         cliente = None
         if cliente_cpf:
-            cliente = Cliente.objects.filter(cpf=cliente_cpf).first()
+            cliente = Cliente.buscar_por_cpf(cliente_cpf)
 
         if historico is None:
             session_state = request.session.get("api_simulador_ia")
