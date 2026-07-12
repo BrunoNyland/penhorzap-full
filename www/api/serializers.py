@@ -232,6 +232,7 @@ class SolicitacaoUpdateSerializer(serializers.ModelSerializer):
 class ConversaListSerializer(serializers.ModelSerializer):
     cliente_nome = serializers.CharField(source="cliente.nome", read_only=True)
     cliente_cpf = serializers.CharField(source="cliente.cpf", read_only=True)
+    num_contratos_ativos = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = Conversa
@@ -246,6 +247,7 @@ class ConversaListSerializer(serializers.ModelSerializer):
             "ultima_interacao",
             "cliente_nome",
             "cliente_cpf",
+            "num_contratos_ativos",
         ]
 
 

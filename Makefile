@@ -32,20 +32,20 @@ help: ## Mostra esta ajuda
 
 # ── Testes ─────────────────────────────────────────────────────────────────────
 test: ## Roda testes unitários da API (41 testes)
-	$(TEST_ENV) $(MANAGE) test api -v2
+	cd www && $(TEST_ENV) $(PYTHON) manage.py test api -v2
 
 test-int: ## Roda testes de integração (API + SPA + Nginx)
-	$(TEST_ENV) $(MANAGE) test api.tests_integration -v2
+	cd www && $(TEST_ENV) $(PYTHON) manage.py test api.tests_integration -v2
 
 test-all: test test-int ## Roda todos os testes
 
 # ── Lint / Checks ──────────────────────────────────────────────────────────────
 lint: ## Verificações básicas de integridade
 	@echo "🔍 Verificando importações Django..."
-	$(TEST_ENV) $(MANAGE) check --deploy 2>&1 | grep -v "^$$" || true
+	cd www && $(TEST_ENV) $(PYTHON) manage.py check --deploy 2>&1 | grep -v "^$$" || true
 	@echo ""
 	@echo "🔍 Verificando migrations pendentes..."
-	$(TEST_ENV) $(MANAGE) makemigrations --check --dry-run 2>&1 || true
+	cd www && $(TEST_ENV) $(PYTHON) manage.py makemigrations --check --dry-run 2>&1 || true
 	@echo ""
 	@echo "🔍 Verificando Angular build..."
 	cd $(FRONTEND_DIR) && $(NPX) ng build --configuration production 2>&1 | tail -5

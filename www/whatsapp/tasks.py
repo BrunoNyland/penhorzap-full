@@ -108,34 +108,112 @@ def _buscar_cliente_por_cpf(cpf_digits: str):
             return cand
     return None
 
+def _buscar_telefone_flexivel(numero_normalizado: str):
+    """Busca um objeto Telefone de forma flexível, considerando que o número no
+    banco de dados ou no WhatsApp pode estar com ou sem o nono dígito (9).
 
-def _classificar_contato(conv: Conversa, mensagem: Mensagem):
-    """Retorna (tipo_contato, nome_salvo, cliente)."""
+    numero_normalizado exemplo: '+556792330009' ou '+5567992330009'
+    """
+    if not numero_normalizado:
+        return None
+
+    # Remove o prefixo '+' e '55' (se for do Brasil) para analisar DDD e número
+    clean = numero_normalizado.lstrip("+")
+    if clean.startswith("55"):
+        clean = clean[2:]
+
+    # Se não tiver DDD + número (mínimo 10 dígitos), faz busca exata
+    if len(clean) not in (10, 11):
+        return Telefone.objects.select_related("cliente").filter(numero=numero_normalizado).first()
+
+    ddd = clean[:2]
+    local = clean[2:]
+
+    variacoes = [numero_normalizado]
+
+    if len(clean) == 10:
+        # WhatsApp sem o 9 (ex: 6792330009). Variação com o 9: +5567992330009
+        variacoes.append(f"+55{ddd}9{local}")
+    elif len(clean) == 11:
+        # WhatsApp com o 9 (ex: 67992330009). Variação sem o 9: +556792330009
+        if local.startswith("9"):
+            variacoes.append(f"+55{ddd}{local[1:]}")
+
+    # Busca por qualquer uma das variações geradas no banco
+    return Telefone.objects.select_related("cliente").filter(numero__in=variacoes).first()
+
+
+def _classificar_contato(conv: Conversa, push_name: str = ""):
+    """Retorna (tipo_contato, nome_salvo, cliente).
+
+    Prioridade: Telefone (match por número flexível) > ContatoSalvo (agenda sincronizada)
+    > pushName do webhook. PHN_CPF_NOME no nome salvo = cliente.
+
+    Quando o ContatoSalvo existe mas tem nome vazio (bug conhecido da
+    Evolution API v2 que apaga pushName), usa o pushName do webhook como
+    nome de exibição, preservando o tipo/classificação do ContatoSalvo."""
     numero = _remote_jid_para_numero(conv.remote_jid)
-    tel = Telefone.objects.select_related("cliente").filter(numero=numero).first() if numero else None
+    tel = _buscar_telefone_flexivel(numero) if numero else None
     cliente = tel.cliente if tel else None
+    push = (push_name or "").strip()
 
+    # Se o número de telefone já está no cadastro de clientes, é SEMPRE cliente!
+    if cliente:
+        cs = ContatoSalvo.objects.filter(remote_jid=conv.remote_jid).first()
+        nome_salvo = (cs.nome_salvo if cs else "") or push
+        return Conversa.TipoContato.CLIENTE, nome_salvo, cliente
+
+    # Caso contrário, segue os fallbacks baseados na agenda sincronizada
     cs = ContatoSalvo.objects.filter(remote_jid=conv.remote_jid).first()
     if cs:
-        nome_salvo = cs.nome_salvo
+        # Usa o nome do ContatoSalvo; se vazio (bug da API), usa pushName do webhook.
+        nome_salvo = cs.nome_salvo or push
         if cs.tipo == ContatoSalvo.Tipo.PESSOAL:
-            return Conversa.TipoContato.PESSOAL, nome_salvo, cliente
-        # CLIENTE
-        if not cliente and cs.cpf:
-            cliente = _buscar_cliente_por_cpf(cs.cpf) or cliente
+            return Conversa.TipoContato.PESSOAL, nome_salvo, None
+        # CLIENTE (via prefixo PH_ na agenda)
+        if cs.cpf:
+            cliente = _buscar_cliente_por_cpf(cs.cpf)
         return Conversa.TipoContato.CLIENTE, nome_salvo, cliente
 
     # fallback: pushName do webhook (nome de perfil / salvo informado no payload)
-    push = (mensagem.push_name or "").strip()
     cpf_nome, _ = parse_nome_salvo(push)
     if push:
         if cpf_nome:
-            return Conversa.TipoContato.CLIENTE, push, (_buscar_cliente_por_cpf(cpf_nome) or cliente)
-        return Conversa.TipoContato.PESSOAL, push, cliente
+            return Conversa.TipoContato.CLIENTE, push, _buscar_cliente_por_cpf(cpf_nome)
+        return Conversa.TipoContato.PESSOAL, push, None
 
-    if cliente:
-        return Conversa.TipoContato.CLIENTE, "", cliente
     return Conversa.TipoContato.DESCONHECIDO, "", None
+
+
+def classificar_e_atualizar_conversa(conv: Conversa, push_name: str = ""):
+    """Classifica o contato e atualiza nome_salvo, tipo_contato, cliente na
+    conversa. Segura para chamar do webhook mesmo com o bot desligado — não
+    dispara fluxo de IA, apenas preenche metadados de exibição.
+
+    Também preenche ContatoSalvo.nome_salvo a partir do pushName do webhook
+    quando o campo está vazio (backfill do bug da Evolution API)."""
+    push = (push_name or "").strip()
+
+    # Backfill: se o ContatoSalvo tem nome vazio e temos um pushName do webhook,
+    # atualiza o cache para que futuras consultas já tenham o nome.
+    if push:
+        cs = ContatoSalvo.objects.filter(remote_jid=conv.remote_jid, nome_salvo="").first()
+        if cs:
+            cs.nome_salvo = push[:255]
+            cs.save(update_fields=["nome_salvo", "atualizado_em"])
+
+    tipo_contato, nome_salvo, cliente = _classificar_contato(conv, push_name)
+    update_fields = ["ultima_interacao"]
+    if conv.nome_salvo != nome_salvo:
+        conv.nome_salvo = nome_salvo
+        update_fields.append("nome_salvo")
+    if conv.tipo_contato != tipo_contato:
+        conv.tipo_contato = tipo_contato
+        update_fields.append("tipo_contato")
+    if cliente and conv.cliente_id != cliente.cpf:
+        conv.cliente = cliente
+        update_fields.append("cliente")
+    conv.save(update_fields=update_fields)
 
 
 def _contratos_ativos_values(cliente):
@@ -275,7 +353,7 @@ def process_mensagem(mensagem_id: int):
             logger.warning("Não foi possível normalizar número para enviar arquivo na conversa %s", conv.id)
 
     # 1) Classificar contato
-    tipo_contato, nome_salvo, cliente = _classificar_contato(conv, mensagem)
+    tipo_contato, nome_salvo, cliente = _classificar_contato(conv, mensagem.push_name or "")
     conv.tipo_contato = tipo_contato
     if nome_salvo:
         conv.nome_salvo = nome_salvo
@@ -476,7 +554,11 @@ def processar_nao_lidas():
 
 def sincronizar_contatos():
     """Baixa a agenda do aparelho conectado (Evolution) e popula o cache de
-    ContatoSalvo, classificando PHN_CPF_NOME (cliente) vs. demais (pessoal)."""
+    ContatoSalvo, classificando PHN_CPF_NOME (cliente) vs. demais (pessoal).
+
+    Proteção contra bug da Evolution API v2: quando a API retorna pushName
+    vazio para um contato que já tem nome salvo no cache, preserva o nome
+    existente em vez de sobrescrevê-lo com string vazia."""
     client = get_client()
     contatos = client.fetch_contacts()
     if not contatos:
@@ -490,6 +572,25 @@ def sincronizar_contatos():
             continue
         cpf, _ = parse_nome_salvo(nome)
         tipo = ContatoSalvo.Tipo.CLIENTE if cpf else ContatoSalvo.Tipo.PESSOAL
+
+        # Se a API retornou nome vazio (bug da Evolution v2), não apaga
+        # um nome que já estava salvo no cache.
+        if not nome:
+            existing = ContatoSalvo.objects.filter(remote_jid=jid).first()
+            if existing and existing.nome_salvo:
+                # Preserva o nome existente; atualiza só tipo/cpf se necessário.
+                changed = False
+                if existing.tipo != tipo:
+                    existing.tipo = tipo
+                    changed = True
+                if existing.cpf != (cpf or ""):
+                    existing.cpf = cpf or ""
+                    changed = True
+                if changed:
+                    existing.save(update_fields=["tipo", "cpf", "atualizado_em"])
+                atualizados += 1
+                continue
+
         ContatoSalvo.objects.update_or_create(
             remote_jid=jid,
             defaults={"nome_salvo": nome[:255], "tipo": tipo, "cpf": cpf or ""},

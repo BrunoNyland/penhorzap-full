@@ -651,6 +651,9 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAdminUser]
     pagination_class = None
 
+    # Códigos de contrato liquidado (espelha whatsapp.tasks.SITUACOES_LIQUIDADAS_COD)
+    _SITUACOES_LIQUIDADAS_COD = ["LQ", "LQVL", "LQDE", "SJLQ", "LQSD"]
+
     def get_serializer_class(self):
         if self.action == "retrieve":
             return ConversaDetailSerializer
@@ -670,8 +673,22 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(
                 Q(remote_jid__icontains=q) |
                 Q(cliente__cpf__icontains=q) |
-                Q(cliente__nome__icontains=q)
+                Q(cliente__nome__icontains=q) |
+                Q(nome_salvo__icontains=q)
             )
+
+        # Annotate count of active (non-liquidated) penhor contracts for the
+        # linked client, if any. 0 when no client or no active contracts.
+        qs = qs.annotate(
+            num_contratos_ativos=Count(
+                "cliente__contratos_penhor",
+                filter=(
+                    ~Q(cliente__contratos_penhor__situacao_codigo__in=self._SITUACOES_LIQUIDADAS_COD)
+                    & ~Q(cliente__contratos_penhor__situacao__icontains="Liquidado")
+                ),
+                distinct=True,
+            )
+        )
         return qs.order_by("-ultima_interacao")
 
     @action(detail=True, methods=["post"], url_path="toggle-revisao")
@@ -680,6 +697,49 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
         conversa.precisa_revisao_humana = not conversa.precisa_revisao_humana
         conversa.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
         return Response(ConversaDetailSerializer(conversa).data)
+
+    @action(detail=True, methods=["post"], url_path="enviar")
+    def enviar_mensagem(self, request, pk=None):
+        """Permite ao operador responder uma conversa diretamente pelo painel.
+        Persiste a mensagem como OUT e envia via Evolution API."""
+        conversa = self.get_object()
+        texto = (request.data.get("texto") or "").strip()
+        if not texto:
+            return Response(
+                {"detail": "Campo 'texto' é obrigatório."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from whatsapp.tasks import _remote_jid_para_numero
+        from core.utils import normalize_phone_br
+
+        numero = _remote_jid_para_numero(conversa.remote_jid)
+        if not numero:
+            return Response(
+                {"detail": "Não foi possível normalizar o número de destino."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        client = get_client()
+
+        Mensagem.objects.create(
+            conversa=conversa,
+            direcao=Mensagem.Direcao.OUT,
+            texto=texto,
+        )
+
+        enviado = client.send_text(numero, texto)
+
+        conversa.ultima_interacao = timezone.now()
+        conversa.save(update_fields=["ultima_interacao"])
+
+        return Response(
+            {
+                "enviado": enviado,
+                " mensagens": ConversaDetailSerializer(conversa).data.get("mensagens", []),
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class SimulatorView(GenericAPIView):

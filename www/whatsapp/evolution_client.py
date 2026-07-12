@@ -153,12 +153,15 @@ class EvolutionClient:
         agenda do dono, ex.: "PHN_12345678901_Jose"). Endpoint provisional
         (Evolution v2); em qualquer erro retorna [] — o fluxo do bot cai no
         fallback de classificação por Telefone/ContatoSalvo manual.
+
+        NOTA: o endpoint correto na Evolution v2.3.7 é
+        ``POST /chat/findContacts/{instance}`` (não GET); o override via env
+        ``EVOLUTION_CONTACTS_PATH`` permite trocar o caminho se mudar.
         """
-        # Endpoint variou entre versões v2; permite override via env.
         path = os.environ.get("EVOLUTION_CONTACTS_PATH", f"/chat/findContacts/{self.instance}")
         url = f"{self.base_url}{path}"
         try:
-            resp = requests.get(url, headers=self._headers(), timeout=DEFAULT_TIMEOUT)
+            resp = requests.post(url, json={}, headers=self._headers(), timeout=DEFAULT_TIMEOUT)
             resp.raise_for_status()
             data = resp.json()
         except requests.RequestException:
@@ -173,8 +176,18 @@ class EvolutionClient:
         for item in items:
             if not isinstance(item, dict):
                 continue
-            jid = item.get("id") or item.get("jid") or item.get("remoteJid") or ""
-            nome = item.get("name") or item.get("notifyName") or item.get("pushName") or ""
+            if item.get("isGroup"):
+                continue
+            jid = (
+                item.get("remoteJid")
+                or item.get("jid")
+                or item.get("id")
+                or ""
+            )
+            # Para contatos salvos na agenda, a Evolution v2 devolve como
+            # ``pushName`` o nome que o dono salvou (ex.: "PHN_CPF_NOME"
+            # para clientes ou "Badu" para contatos pessoais).
+            nome = item.get("savedName") or item.get("name") or item.get("pushName") or ""
             if jid:
                 out.append({"remote_jid": str(jid), "nome": str(nome or "")})
         return out

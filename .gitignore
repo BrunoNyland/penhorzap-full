@@ -6,7 +6,9 @@ venv/
 env/
 ENV/
 
-# Django Backend
+# Django Backend & Root Files
+db.sqlite3
+media/
 www/__pycache__/
 www/*.py[cod]
 www/*$py.class

@@ -62,18 +62,31 @@ import { IconComponent } from '../../shared/icon/icon.component';
                 (click)="selectChat(chat.id)"
               >
                 <div class="chat-item-header flex justify-between">
-                  <strong>{{ chat.nome_salvo || formatJid(chat.remote_jid) }}</strong>
+                  <strong>{{ getDisplayName(chat) }}</strong>
                   <span class="chat-time">{{ formatTime(chat.ultima_interacao) }}</span>
                 </div>
                 <div class="chat-item-body flex justify-between align-center margin-top-xs">
-                  <span class="chat-jid text-muted">{{ chat.cliente_nome || formatJid(chat.remote_jid) }}</span>
-                  <span class="badge" [ngClass]="getStateBadgeClass(chat.estado)">
-                    {{ getStateDisplay(chat.estado) }}
+                  <span class="chat-jid text-muted">{{ formatJid(chat.remote_jid) }}</span>
+                  <span class="badge badge-sm" [ngClass]="getTipoContatoBadgeClass(chat.tipo_contato)">
+                    {{ getTipoContatoDisplay(chat.tipo_contato) }}
                   </span>
                 </div>
-                @if (chat.precisa_revisao_humana) {
-                  <span class="review-indicator"><app-icon name="flag" [size]="12"></app-icon> Precisa Revisão</span>
+                @if (chat.cliente_cpf) {
+                  <div class="chat-item-cliente text-muted">
+                    <span class="text-small">CPF: <strong>{{ chat.cliente_cpf }}</strong></span>
+                    @if (chat.num_contratos_ativos > 0) {
+                      <span class="badge badge-sm badge-success margin-left-xs">{{ chat.num_contratos_ativos }} contrato(s)</span>
+                    }
+                  </div>
                 }
+                <div class="chat-item-states flex gap-2 margin-top-xs">
+                  <span class="badge badge-sm" [ngClass]="getStateBadgeClass(chat.estado)">
+                    {{ getStateDisplay(chat.estado) }}
+                  </span>
+                  @if (chat.precisa_revisao_humana) {
+                    <span class="badge badge-sm badge-danger"><app-icon name="flag" [size]="10"></app-icon> Revisão</span>
+                  }
+                </div>
               </div>
             } @empty {
               <p class="text-muted text-center" style="padding: 24px;">Nenhuma conversa localizada.</p>
@@ -93,17 +106,24 @@ import { IconComponent } from '../../shared/icon/icon.component';
           <!-- Chat Header -->
           <div class="detail-header flex align-center justify-between">
             <div>
-              <h3>{{ activeChat().nome_salvo || activeChat().remote_jid }}</h3>
-              <p class="text-muted">
-                JID: <strong>{{ activeChat().remote_jid }}</strong> • Estado: 
-                <span class="badge" [ngClass]="getStateBadgeClass(activeChat().estado)">
+              <h3>{{ getDisplayName(activeChat()) }}</h3>
+              <p class="text-muted text-small">
+                {{ formatJid(activeChat().remote_jid) }}
+                <span class="badge badge-sm margin-left-xs" [ngClass]="getTipoContatoBadgeClass(activeChat().tipo_contato)">
+                  {{ getTipoContatoDisplay(activeChat().tipo_contato) }}
+                </span>
+                <span class="badge badge-sm margin-left-xs" [ngClass]="getStateBadgeClass(activeChat().estado)">
                   {{ getStateDisplay(activeChat().estado) }}
                 </span>
               </p>
               @if (activeChat().cliente) {
                 <p class="text-muted text-small">
-                  Cliente: <strong>{{ activeChat().cliente.nome }}</strong> (CPF: {{ activeChat().cliente.cpf }})
+                  Cliente: <strong>{{ activeChat().cliente.nome }}</strong> • CPF: {{ activeChat().cliente.cpf }}
                 </p>
+              } @else if (!activeChat().nome_salvo) {
+                <p class="text-muted text-small">Contato não identificado (sem nome salvo).</p>
+              } @else {
+                <p class="text-muted text-small">{{ activeChat().nome_salvo }}</p>
               }
             </div>
             
@@ -135,6 +155,28 @@ import { IconComponent } from '../../shared/icon/icon.component';
             } @empty {
               <p class="text-muted text-center" style="padding: 48px;">Histórico de mensagens vazio.</p>
             }
+          </div>
+
+          <!-- Reply Box -->
+          <div class="reply-box">
+            <textarea
+              #respostaInput
+              placeholder="Digite uma resposta para {{ getDisplayName(activeChat()) }}..."
+              [(ngModel)]="respostaTexto"
+              (keydown.enter.prevent)="!enviando() && respostaTexto.trim() && enviarResposta()"
+              rows="2"
+            ></textarea>
+            <button
+              class="btn btn-primary btn-small"
+              [disabled]="enviando() || !respostaTexto.trim()"
+              (click)="enviarResposta()"
+            >
+              @if (enviando()) {
+                <div class="spinner spinner-small"></div>
+              } @else {
+                <app-icon name="send" [size]="14"></app-icon> Enviar
+              }
+            </button>
           </div>
 
           <!-- Solicitacoes & Boleto Upload Section -->
@@ -296,6 +338,20 @@ import { IconComponent } from '../../shared/icon/icon.component';
       overflow: hidden;
       text-overflow: ellipsis;
     }
+.chat-item-cliente {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      margin-top: 2px;
+    }
+.chat-item-states {
+      flex-wrap: wrap;
+    }
+.badge-sm {
+      font-size: 10px;
+      padding: 2px 6px;
+    }
     .review-indicator {
       display: inline-flex;
       align-items: center;
@@ -390,6 +446,41 @@ import { IconComponent } from '../../shared/icon/icon.component';
       font-size: 13px;
       font-weight: 600;
     }
+.reply-box {
+      display: flex;
+      gap: 10px;
+      padding: 12px 0 0 0;
+      align-items: flex-end;
+    }
+.reply-box textarea {
+      flex: 1;
+      padding: 10px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 14px;
+      resize: vertical;
+      min-height: 48px;
+    }
+.reply-box textarea:focus {
+      outline: none;
+      border-color: var(--color-accent);
+    }
+.reply-box button {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      min-width: 100px;
+      justify-content: center;
+    }
+.reply-box .spinner-small {
+      width: 16px;
+      height: 16px;
+      border-width: 2px;
+    }
     .boletos-list ul {
       padding-left: 20px;
       margin-top: 4px;
@@ -410,10 +501,12 @@ export class ConversationsComponent implements OnInit, OnDestroy {
   loadingChats = signal(false);
   loadingDetails = signal(false);
   uploadingBoletoId = signal<number | null>(null);
+  enviando = signal(false);
 
   searchQuery = '';
   filterEstado = '';
   filterRevisao = signal<'0' | '1'>('0');
+  respostaTexto = '';
 
   // Boleto upload form state helper maps
   boletoFiles: { [solicitacaoId: number]: File } = {};
@@ -487,6 +580,22 @@ export class ConversationsComponent implements OnInit, OnDestroy {
     });
   }
 
+  enviarResposta(): void {
+    const texto = this.respostaTexto.trim();
+    const chatId = this.selectedChatId();
+    if (!texto || !chatId || this.enviando()) return;
+
+    this.enviando.set(true);
+    this.apiService.enviarMensagemConversa(chatId, texto).subscribe({
+      next: () => {
+        this.enviando.set(false);
+        this.respostaTexto = '';
+        this.loadActiveChatDetails(chatId, true);
+      },
+      error: () => this.enviando.set(false)
+    });
+  }
+
   onBoletoFileSelected(event: any, solicitacaoId: number): void {
     const file = event.target.files[0];
     if (file) {
@@ -527,6 +636,31 @@ export class ConversationsComponent implements OnInit, OnDestroy {
   formatJid(jid: string): string {
     if (!jid) return '';
     return jid.split('@')[0];
+  }
+
+  getDisplayName(chat: any): string {
+    // Clientes PHN_ -> nome do cadastro (mais polido); contatos pessoais -> nome salvo na agenda
+    if (chat.cliente_nome) return chat.cliente_nome;
+    if (chat.cliente && chat.cliente.nome) return chat.cliente.nome;
+    return chat.nome_salvo || this.formatJid(chat.remote_jid) || 'Desconhecido';
+  }
+
+  getTipoContatoDisplay(tipo: string): string {
+    const tipos: { [key: string]: string } = {
+      cliente: 'Cliente',
+      pessoal: 'Pessoal',
+      desconhecido: 'Desconhecido'
+    };
+    return tipos[tipo] || 'Desconhecido';
+  }
+
+  getTipoContatoBadgeClass(tipo: string): string {
+    const classes: { [key: string]: string } = {
+      cliente: 'badge-success',
+      pessoal: 'badge-info',
+      desconhecido: 'badge-warning'
+    };
+    return classes[tipo] || 'badge-warning';
   }
 
   formatTime(dateStr: string): string {

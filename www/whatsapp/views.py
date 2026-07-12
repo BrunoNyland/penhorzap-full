@@ -70,11 +70,33 @@ def whatsapp_webhook(request):
         key = data.get("key") or {}
         remote_jid = key.get("remoteJid", "")
 
-        if key.get("fromMe"):
-            return JsonResponse({"status": "ignored", "reason": "fromMe"}, status=200)
-
         if remote_jid.endswith("@g.us"):
             return JsonResponse({"status": "ignored", "reason": "group"}, status=200)
+
+        push_name = str(data.get("pushName") or body.get("pushName") or "")
+
+        # Mensagens enviadas por nós (fromMe=true): persistir como OUT para manter
+        # o histórico visível no painel, mas NÃO disparar o bot (evitar loop).
+        if key.get("fromMe"):
+            wa_message_id = key.get("id") or None
+            if wa_message_id and Mensagem.objects.filter(wa_message_id=wa_message_id).exists():
+                return JsonResponse({"status": "ignored", "reason": "duplicate"}, status=200)
+            texto = _extrair_texto(data.get("message") or {})
+            conversa, _ = Conversa.objects.get_or_create(remote_jid=remote_jid or "desconhecido")
+            Mensagem.objects.create(
+                conversa=conversa,
+                direcao=Mensagem.Direcao.OUT,
+                texto=texto,
+                wa_message_id=wa_message_id,
+                payload_bruto=body,
+            )
+            # Classifica a conversa (ContatoSalvo > Telefone > sem push_name)
+            try:
+                from whatsapp.tasks import classificar_e_atualizar_conversa
+                classificar_e_atualizar_conversa(conversa, push_name)
+            except Exception:
+                logger.debug("Classificação no webhook (OUT) falhou (não-crítico)", exc_info=True)
+            return JsonResponse({"status": "ok", "direction": "out"}, status=200)
 
         wa_message_id = key.get("id") or None
 
@@ -82,7 +104,6 @@ def whatsapp_webhook(request):
             return JsonResponse({"status": "ignored", "reason": "duplicate"}, status=200)
 
         texto = _extrair_texto(data.get("message") or {})
-        push_name = str(data.get("pushName") or body.get("pushName") or "")
 
         conversa, _ = Conversa.objects.get_or_create(remote_jid=remote_jid or "desconhecido")
 
@@ -94,6 +115,14 @@ def whatsapp_webhook(request):
             push_name=push_name,
             payload_bruto=body,
         )
+
+        # Classifica a conversa (ContatoSalvo > Telefone > pushName) mesmo
+        # com o bot desligado, para que o painel mostre nome/tipo/CPF.
+        try:
+            from whatsapp.tasks import classificar_e_atualizar_conversa
+            classificar_e_atualizar_conversa(conversa, push_name)
+        except Exception:
+            logger.debug("Classificação no webhook (IN) falhou (não-crítico)", exc_info=True)
     except Exception:
         logger.exception("Falha ao processar payload do webhook whatsapp")
         # Ack anyway: we don't want Evolution API retrying a payload we can't parse.

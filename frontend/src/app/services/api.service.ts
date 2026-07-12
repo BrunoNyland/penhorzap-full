@@ -76,6 +76,10 @@ export class ApiService {
     return this.http.post(`/api/conversas/${id}/toggle-revisao/`, {});
   }
 
+  enviarMensagemConversa(id: number, texto: string): Observable<any> {
+    return this.http.post(`/api/conversas/${id}/enviar/`, { texto });
+  }
+
   // --- Clientes ---
   getClientes(filters: { q?: string; bloqueado?: string } = {}): Observable<any[]> {
     let params = new HttpParams();
