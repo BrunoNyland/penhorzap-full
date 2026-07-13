@@ -9,7 +9,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
   standalone: true,
   imports: [FormsModule, DatePipe, NgClass, IconComponent],
   template: `
-    <div class="conversa-layout">
+    <div class="conversa-layout" [class.has-selected-chat]="selectedChatId() !== null">
       <!-- Left Panel: Chat List -->
       <div class="chat-list-panel card">
         <div class="panel-header">
@@ -103,6 +103,11 @@ import { IconComponent } from '../../shared/icon/icon.component';
             <p>Carregando histórico do chat...</p>
           </div>
         } @else if (activeChat()) {
+          <!-- Back button for mobile -->
+          <button class="btn btn-secondary back-button margin-bottom-sm" (click)="clearSelection()">
+            <app-icon name="arrow-left" [size]="14"></app-icon> Voltar para Atendimentos
+          </button>
+          
           <!-- Chat Header -->
           <div class="detail-header flex align-center justify-between">
             <div>
@@ -555,6 +560,52 @@ import { IconComponent } from '../../shared/icon/icon.component';
       text-decoration: underline;
       font-size: 13px;
     }
+    
+    /* Responsive Styling for Mobile */
+    .back-button {
+      display: none;
+    }
+
+    @media (max-width: 768px) {
+      .conversa-layout {
+        flex-direction: column;
+        height: calc(100vh - 120px) !important;
+        gap: 0 !important;
+      }
+      .chat-list-panel {
+        width: 100% !important;
+        display: flex !important;
+        height: 100%;
+      }
+      .chat-details-panel {
+        display: none !important;
+      }
+      .conversa-layout.has-selected-chat .chat-list-panel {
+        display: none !important;
+      }
+      .conversa-layout.has-selected-chat .chat-details-panel {
+        width: 100% !important;
+        display: flex !important;
+        padding: 16px !important;
+        height: 100%;
+      }
+      .back-button {
+        display: inline-flex !important;
+        align-items: center;
+        gap: 6px;
+      }
+      .detail-header {
+        flex-direction: column;
+        align-items: flex-start !important;
+        gap: 12px;
+      }
+      .reply-box {
+        padding: 12px 0;
+      }
+      .chat-media-image, .chat-media-video {
+        max-height: 200px;
+      }
+    }
   `]
 })
 export class ConversationsComponent implements OnInit, OnDestroy {
@@ -620,6 +671,11 @@ export class ConversationsComponent implements OnInit, OnDestroy {
   selectChat(id: number): void {
     this.selectedChatId.set(id);
     this.loadActiveChatDetails(id);
+  }
+
+  clearSelection(): void {
+    this.selectedChatId.set(null);
+    this.activeChat.set(null);
   }
 
   loadActiveChatDetails(id: number, silent = false): void {

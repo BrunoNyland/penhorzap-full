@@ -18,7 +18,8 @@ export type IconName =
   | 'refresh-cw'
   | 'settings'
   | 'chevron-up'
-  | 'chevron-down';
+  | 'chevron-down'
+  | 'arrow-left';
 
 @Component({
   selector: 'app-icon',
@@ -111,6 +112,10 @@ export type IconName =
         }
         @case ('chevron-down') {
           <polyline points="6 9 12 15 18 9"/>
+        }
+        @case ('arrow-left') {
+          <line x1="19" y1="12" x2="5" y2="12"/>
+          <polyline points="12 19 5 12 12 5"/>
         }
       }
     </svg>
