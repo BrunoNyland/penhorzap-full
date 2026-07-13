@@ -601,6 +601,10 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
         lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
         cpf_raw = self.kwargs[lookup_url_kwarg]
         
+        cpf_digits = "".join(filter(str.isdigit, cpf_raw))
+        if cpf_digits == "00000000000":
+            raise Http404("Cliente não encontrado.")
+
         obj = Cliente.buscar_por_cpf(cpf_raw)
         if not obj:
             raise Http404("Cliente não encontrado.")
@@ -615,6 +619,9 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        
+        # Ocultar o cliente reservado/especial com CPF 000.000.000-00 ou 00000000000
+        qs = qs.exclude(cpf__in=["000.000.000-00", "00000000000"])
         
         # Filtrar apenas clientes com pelo menos um contrato ativo se solicitado
         ativos_somente = self.request.query_params.get("ativos_somente")
