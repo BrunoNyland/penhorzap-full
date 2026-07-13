@@ -592,7 +592,21 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAdminUser]
     lookup_field = "cpf"
     lookup_url_kwarg = "pk"
+    lookup_value_regex = "[^/]+"
     pagination_class = None
+
+    def get_object(self):
+        from django.http import Http404
+        queryset = self.filter_queryset(self.get_queryset())
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        cpf_raw = self.kwargs[lookup_url_kwarg]
+        
+        obj = Cliente.buscar_por_cpf(cpf_raw)
+        if not obj:
+            raise Http404("Cliente não encontrado.")
+            
+        self.check_object_permissions(self.request, obj)
+        return obj
 
     def get_serializer_class(self):
         if self.action == "retrieve":
