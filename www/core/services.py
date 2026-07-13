@@ -18,11 +18,26 @@ def importar_sqlite_arquivo(path: str) -> dict[str, int]:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
 
-    counts = {}
-    counts["agencias_penhor"] = _import_agencias(conn)
-    counts["licitacoes"] = _import_licitacoes(conn)
-    counts["clientes"], counts["telefones"] = _import_clientes(conn)
-    counts["contratos"] = _import_contratos(conn)
+    with transaction.atomic():
+        # Limpar completamente clientes e contratos existentes antes de carregar os novos
+        ContratoPenhor.objects.all().delete()
+        Cliente.objects.all().delete()
+
+        counts = {}
+        counts["agencias_penhor"] = _import_agencias(conn)
+        counts["licitacoes"] = _import_licitacoes(conn)
+        counts["clientes"], counts["telefones"] = _import_clientes(conn)
+        counts["contratos"] = _import_contratos(conn)
+
+        # Reclassificar e reassociar conversas existentes aos novos clientes importados
+        from core.models import Conversa
+        from whatsapp.tasks import _classificar_contato
+        for conversa in Conversa.objects.all():
+            tipo, nome, cliente = _classificar_contato(conversa)
+            conversa.tipo_contato = tipo
+            conversa.nome_salvo = nome
+            conversa.cliente = cliente
+            conversa.save(update_fields=["tipo_contato", "nome_salvo", "cliente"])
 
     conn.close()
 
