@@ -154,6 +154,11 @@ class ContratoPenhorMiniSerializer(serializers.ModelSerializer):
             "vlr_liquido",
             "vlr_parcela_atualizada",
             "data_vencimento",
+            "atraso",
+            "laudo",
+            "peso",
+            "vlr_avaliacao",
+            "vlr_emprestimo",
         ]
 
 

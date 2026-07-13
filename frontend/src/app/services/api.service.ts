@@ -81,10 +81,11 @@ export class ApiService {
   }
 
   // --- Clientes ---
-  getClientes(filters: { q?: string; bloqueado?: string } = {}): Observable<any[]> {
+  getClientes(filters: { q?: string; bloqueado?: string; ativos_somente?: string } = {}): Observable<any[]> {
     let params = new HttpParams();
     if (filters.q) params = params.set('q', filters.q);
     if (filters.bloqueado) params = params.set('bloqueado', filters.bloqueado);
+    if (filters.ativos_somente) params = params.set('ativos_somente', filters.ativos_somente);
     return this.http.get<any[]>('/api/clientes/', { params });
   }
 

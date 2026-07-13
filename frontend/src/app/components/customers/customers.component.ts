@@ -174,10 +174,13 @@ import { IconComponent } from '../../shared/icon/icon.component';
                     <thead>
                       <tr>
                         <th>Nº Contrato</th>
+                        <th>Garantia / Descrição</th>
+                        <th>Peso (g)</th>
+                        <th>Atraso</th>
                         <th>Vencimento</th>
-                        <th>Valor Empréstimo</th>
-                        <th>Valor Quitação</th>
-                        <th>Valor Parcela</th>
+                        <th>Empréstimo</th>
+                        <th>Avaliação</th>
+                        <th>Vlr. Parcela</th>
                         <th>Status</th>
                       </tr>
                     </thead>
@@ -185,9 +188,20 @@ import { IconComponent } from '../../shared/icon/icon.component';
                       @for (con of selectedCliente().contratos_penhor; track con.contrato) {
                         <tr>
                           <td><code>{{ con.contrato }}</code></td>
+                          <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" [title]="con.laudo || '-'">
+                            {{ con.laudo || '-' }}
+                          </td>
+                          <td>{{ con.peso ? con.peso + 'g' : '-' }}</td>
+                          <td>
+                            @if (con.atraso > 0) {
+                              <span class="text-danger" style="font-weight: bold;">{{ con.atraso }} dias</span>
+                            } @else {
+                              <span class="text-success">Em dia</span>
+                            }
+                          </td>
                           <td>{{ con.data_vencimento | date:'dd/MM/yyyy' }}</td>
-                          <td>{{ con.vlr_liquido | currency:'BRL':'symbol':'1.2-2':'pt-BR' }}</td>
-                          <td>{{ con.vlr_liquido | currency:'BRL':'symbol':'1.2-2':'pt-BR' }}</td>
+                          <td>{{ con.vlr_emprestimo | currency:'BRL':'symbol':'1.2-2':'pt-BR' }}</td>
+                          <td>{{ con.vlr_avaliacao | currency:'BRL':'symbol':'1.2-2':'pt-BR' }}</td>
                           <td>{{ con.vlr_parcela_atualizada | currency:'BRL':'symbol':'1.2-2':'pt-BR' }}</td>
                           <td>
                             <span class="badge" [ngClass]="getContratoBadgeClass(con.situacao_codigo)">
@@ -197,7 +211,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
                         </tr>
                       } @empty {
                         <tr>
-                          <td colspan="6" class="text-center text-muted" style="padding: 16px;">
+                          <td colspan="9" class="text-center text-muted" style="padding: 16px;">
                             Nenhum contrato ativo localizado para este CPF no ERP.
                           </td>
                         </tr>
@@ -305,7 +319,8 @@ export class CustomersComponent implements OnInit {
     this.loading.set(true);
     this.apiService.getClientes({
       q: this.searchQuery,
-      bloqueado: this.filterBloqueado
+      bloqueado: this.filterBloqueado,
+      ativos_somente: '1'
     }).subscribe({
       next: (data) => {
         this.Clientes.set(data);

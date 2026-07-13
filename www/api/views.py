@@ -601,6 +601,18 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        
+        # Filtrar apenas clientes com pelo menos um contrato ativo se solicitado
+        ativos_somente = self.request.query_params.get("ativos_somente")
+        if ativos_somente == "1":
+            SITUACOES_LIQUIDADAS_COD = ["LQ", "LQVL", "LQDE", "SJLQ", "LQSD"]
+            qs = qs.filter(
+                contratos_penhor__isnull=False
+            ).filter(
+                ~Q(contratos_penhor__situacao_codigo__in=SITUACOES_LIQUIDADAS_COD) &
+                ~Q(contratos_penhor__situacao__icontains="Liquidado")
+            ).distinct()
+
         if self.action == "list":
             qs = qs.annotate(
                 num_telefones=Count("telefones", distinct=True),
