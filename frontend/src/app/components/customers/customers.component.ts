@@ -46,9 +46,10 @@ import { IconComponent } from '../../shared/icon/icon.component';
               <tr>
                 <th>CPF</th>
                 <th>Nome</th>
-                <th>Cidade</th>
-                <th>Telefones</th>
-                <th>Conversas</th>
+                <th>Contratos Ativos</th>
+                <th>Total Empréstimo</th>
+                <th>Total Avaliação</th>
+                <th>Limite Especial</th>
                 <th>Status Bot</th>
                 <th style="text-align: right;">Ações</th>
               </tr>
@@ -58,9 +59,12 @@ import { IconComponent } from '../../shared/icon/icon.component';
                 <tr>
                   <td><code>{{ c.cpf }}</code></td>
                   <td><strong>{{ c.nome }}</strong></td>
-                  <td>{{ c.cidade || 'Não informada' }}</td>
-                  <td>{{ c.num_telefones }} un</td>
-                  <td>{{ c.num_conversas }} un</td>
+                  <td>
+                    <span class="badge badge-success">{{ c.num_contratos_ativos }} contrato(s)</span>
+                  </td>
+                  <td>{{ c.total_emprestimo_ativo | currency:'BRL':'symbol':'1.2-2':'pt-BR' }}</td>
+                  <td>{{ c.total_avaliacao_ativo | currency:'BRL':'symbol':'1.2-2':'pt-BR' }}</td>
+                  <td>{{ c.limite_especial | currency:'BRL':'symbol':'1.2-2':'pt-BR' }}</td>
                   <td>
                     <span class="badge" [ngClass]="c.bloqueado_ia ? 'badge-danger' : 'badge-success'">
                       {{ c.bloqueado_ia ? 'Bloqueado' : 'Ativo' }}
@@ -74,7 +78,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
                 </tr>
               } @empty {
                 <tr>
-                  <td colspan="7" class="text-center text-muted" style="padding: 32px;">
+                  <td colspan="8" class="text-center text-muted" style="padding: 32px;">
                     Nenhum cliente localizado com os filtros selecionados.
                   </td>
                 </tr>

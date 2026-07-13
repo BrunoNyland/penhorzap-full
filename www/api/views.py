@@ -3,7 +3,7 @@ import os
 import tempfile
 from datetime import timedelta
 from django.utils import timezone
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.db.models.functions import ExtractDay, ExtractWeekDay, TruncDate
 from django.contrib.auth import login, logout, authenticate
 from django.contrib.auth.models import User
@@ -614,9 +614,23 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
             ).distinct()
 
         if self.action == "list":
+            SITUACOES_LIQUIDADAS_COD = ["LQ", "LQVL", "LQDE", "SJLQ", "LQSD"]
             qs = qs.annotate(
                 num_telefones=Count("telefones", distinct=True),
                 num_conversas=Count("conversas", distinct=True),
+                num_contratos_ativos=Count(
+                    "contratos_penhor",
+                    filter=~Q(contratos_penhor__situacao_codigo__in=SITUACOES_LIQUIDADAS_COD) & ~Q(contratos_penhor__situacao__icontains="Liquidado"),
+                    distinct=True
+                ),
+                total_emprestimo_ativo=Sum(
+                    "contratos_penhor__vlr_emprestimo",
+                    filter=~Q(contratos_penhor__situacao_codigo__in=SITUACOES_LIQUIDADAS_COD) & ~Q(contratos_penhor__situacao__icontains="Liquidado")
+                ),
+                total_avaliacao_ativo=Sum(
+                    "contratos_penhor__vlr_avaliacao",
+                    filter=~Q(contratos_penhor__situacao_codigo__in=SITUACOES_LIQUIDADAS_COD) & ~Q(contratos_penhor__situacao__icontains="Liquidado")
+                ),
             )
         q = self.request.query_params.get("q", "").strip()
         if q:

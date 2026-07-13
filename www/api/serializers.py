@@ -330,6 +330,9 @@ class ConversaDetailSerializer(serializers.ModelSerializer):
 class ClienteListSerializer(serializers.ModelSerializer):
     num_telefones = serializers.IntegerField(read_only=True, default=0)
     num_conversas = serializers.IntegerField(read_only=True, default=0)
+    num_contratos_ativos = serializers.IntegerField(read_only=True, default=0)
+    total_emprestimo_ativo = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True, default=0)
+    total_avaliacao_ativo = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True, default=0)
 
     class Meta:
         model = Cliente
@@ -342,6 +345,10 @@ class ClienteListSerializer(serializers.ModelSerializer):
             "bloqueado_em",
             "num_telefones",
             "num_conversas",
+            "limite_especial",
+            "num_contratos_ativos",
+            "total_emprestimo_ativo",
+            "total_avaliacao_ativo",
         ]
 
 
