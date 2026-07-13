@@ -59,9 +59,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
                 <tr>
                   <td><code>{{ c.cpf }}</code></td>
                   <td><strong>{{ c.nome }}</strong></td>
-                  <td>
-                    <span class="badge badge-success">{{ c.num_contratos_ativos }} contrato(s)</span>
-                  </td>
+                  <td>{{ c.num_contratos_ativos }}</td>
                   <td>{{ c.total_emprestimo_ativo | currency:'BRL':'symbol':'1.2-2':'pt-BR' }}</td>
                   <td>{{ c.total_avaliacao_ativo | currency:'BRL':'symbol':'1.2-2':'pt-BR' }}</td>
                   <td>{{ c.limite_especial | currency:'BRL':'symbol':'1.2-2':'pt-BR' }}</td>
