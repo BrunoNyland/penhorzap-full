@@ -626,7 +626,7 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
         # Filtrar apenas clientes com pelo menos um contrato ativo se solicitado
         ativos_somente = self.request.query_params.get("ativos_somente")
         if ativos_somente == "1":
-            SITUACOES_LIQUIDADAS_COD = ["LQ", "LQVL", "LQDE", "SJLQ", "LQSD"]
+            SITUACOES_LIQUIDADAS_COD = ["LQ", "LQVL", "LQDE", "SJLQ", "LQSD", "AVCL"]
             qs = qs.filter(
                 contratos_penhor__isnull=False
             ).filter(
@@ -635,7 +635,7 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
             ).distinct()
 
         if self.action == "list":
-            SITUACOES_LIQUIDADAS_COD = ["LQ", "LQVL", "LQDE", "SJLQ", "LQSD"]
+            SITUACOES_LIQUIDADAS_COD = ["LQ", "LQVL", "LQDE", "SJLQ", "LQSD", "AVCL"]
             qs = qs.annotate(
                 num_telefones=Count("telefones", distinct=True),
                 num_conversas=Count("conversas", distinct=True),
@@ -699,7 +699,7 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = None
 
     # Códigos de contrato liquidado (espelha whatsapp.tasks.SITUACOES_LIQUIDADAS_COD)
-    _SITUACOES_LIQUIDADAS_COD = ["LQ", "LQVL", "LQDE", "SJLQ", "LQSD"]
+    _SITUACOES_LIQUIDADAS_COD = ["LQ", "LQVL", "LQDE", "SJLQ", "LQSD", "AVCL"]
 
     def get_serializer_class(self):
         if self.action == "retrieve":

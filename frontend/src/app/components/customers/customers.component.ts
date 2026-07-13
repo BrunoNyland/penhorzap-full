@@ -360,7 +360,7 @@ export class CustomersComponent implements OnInit {
     if (['RN', 'EMNV'].includes(codigo)) {
       return 'badge-success';
     }
-    if (['LQ', 'LQVL', 'LQDE', 'SJLQ', 'LQSD'].includes(codigo)) {
+    if (['LQ', 'LQVL', 'LQDE', 'SJLQ', 'LQSD', 'AVCL'].includes(codigo)) {
       return 'badge-danger';
     }
     return 'badge-warning';
