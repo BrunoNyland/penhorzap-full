@@ -60,11 +60,12 @@ export class ApiService {
   }
 
   // --- Conversas ---
-  getConversas(filters: { estado?: string; revisao?: string; q?: string } = {}): Observable<any[]> {
+  getConversas(filters: { estado?: string; revisao?: string; q?: string; tipo_contato?: string } = {}): Observable<any[]> {
     let params = new HttpParams();
     if (filters.estado) params = params.set('estado', filters.estado);
     if (filters.revisao) params = params.set('revisao', filters.revisao);
     if (filters.q) params = params.set('q', filters.q);
+    if (filters.tipo_contato) params = params.set('tipo_contato', filters.tipo_contato);
     return this.http.get<any[]>('/api/conversas/', { params });
   }
 

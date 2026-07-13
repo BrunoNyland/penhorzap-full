@@ -34,8 +34,8 @@ import { IconComponent } from '../../shared/icon/icon.component';
               (ngModelChange)="loadConversas()"
             />
             
-            <div class="grid-2 margin-top-sm">
-              <select [(ngModel)]="filterEstado" (change)="loadConversas()">
+            <div class="margin-top-sm" style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <select [(ngModel)]="filterEstado" (change)="loadConversas()" style="flex: 1.5; min-width: 120px;">
                 <option value="">Todos os Estados</option>
                 <option value="nova">Nova</option>
                 <option value="aguardando_verificacao">Aguardando Verificação</option>
@@ -50,8 +50,18 @@ import { IconComponent } from '../../shared/icon/icon.component';
                 class="btn btn-secondary btn-small" 
                 [class.btn-active]="filterRevisao() === '1'"
                 (click)="toggleRevisaoFilter()"
+                style="flex: 1; min-width: 90px; display: inline-flex; align-items: center; justify-content: center; gap: 4px;"
               >
-                <app-icon name="flag" [size]="14"></app-icon> Só Revisão
+                <app-icon name="flag" [size]="14"></app-icon> Revisar
+              </button>
+
+              <button 
+                class="btn btn-secondary btn-small" 
+                [class.btn-active]="filterClientes() === '1'"
+                (click)="toggleClientesFilter()"
+                style="flex: 1; min-width: 90px; display: inline-flex; align-items: center; justify-content: center; gap: 4px;"
+              >
+                <app-icon name="users" [size]="14"></app-icon> Clientes
               </button>
             </div>
           </div>
@@ -632,6 +642,7 @@ export class ConversationsComponent implements OnInit, OnDestroy {
   searchQuery = '';
   filterEstado = '';
   filterRevisao = signal<'0' | '1'>('0');
+  filterClientes = signal<'0' | '1'>('0');
   respostaTexto = '';
 
   // Boleto upload form state helper maps
@@ -663,6 +674,7 @@ export class ConversationsComponent implements OnInit, OnDestroy {
     this.apiService.getConversas({
       estado: this.filterEstado,
       revisao: this.filterRevisao(),
+      tipo_contato: this.filterClientes() === '1' ? 'cliente' : undefined,
       q: this.searchQuery
     }).subscribe({
       next: (data) => {
@@ -675,6 +687,11 @@ export class ConversationsComponent implements OnInit, OnDestroy {
 
   toggleRevisaoFilter(): void {
     this.filterRevisao.update(v => v === '0' ? '1' : '0');
+    this.loadConversas();
+  }
+
+  toggleClientesFilter(): void {
+    this.filterClientes.update(v => v === '0' ? '1' : '0');
     this.loadConversas();
   }
 

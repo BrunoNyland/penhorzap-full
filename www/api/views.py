@@ -710,12 +710,15 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
         qs = super().get_queryset()
         estado = self.request.query_params.get("estado")
         revisao = self.request.query_params.get("revisao")
+        tipo_contato = self.request.query_params.get("tipo_contato")
         q = self.request.query_params.get("q", "").strip()
 
         if estado:
             qs = qs.filter(estado=estado)
         if revisao == "1":
             qs = qs.filter(precisa_revisao_humana=True)
+        if tipo_contato:
+            qs = qs.filter(tipo_contato=tipo_contato)
         if q:
             qs = qs.filter(
                 Q(remote_jid__icontains=q) |
