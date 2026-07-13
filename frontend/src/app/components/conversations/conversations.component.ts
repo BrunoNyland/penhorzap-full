@@ -13,7 +13,17 @@ import { IconComponent } from '../../shared/icon/icon.component';
       <!-- Left Panel: Chat List -->
       <div class="chat-list-panel card">
         <div class="panel-header">
-          <h2>Atendimentos</h2>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2>Atendimentos</h2>
+            <button 
+              class="btn btn-icon" 
+              (click)="limparConversas()" 
+              title="Apagar permanentemente todas as conversas"
+              style="padding: 4px; display: flex; align-items: center; justify-content: center; background: transparent; border: none; cursor: pointer; color: #dc3545;"
+            >
+              <app-icon name="trash" [size]="18"></app-icon>
+            </button>
+          </div>
           <p class="text-muted">Filtragem e controle de revisão humana</p>
           
           <div class="filter-controls margin-top-sm">
@@ -699,6 +709,22 @@ export class ConversationsComponent implements OnInit, OnDestroy {
         this.loadConversas(true);
       }
     });
+  }
+
+  limparConversas(): void {
+    const confirmacao = confirm('⚠️ Atenção: Esta ação irá apagar permanentemente TODAS as conversas e históricos de mensagens. Deseja continuar?');
+    if (confirmacao) {
+      this.apiService.limparTodasConversas().subscribe({
+        next: () => {
+          this.clearSelection();
+          this.loadConversas();
+          alert('Histórico de conversas limpo com sucesso!');
+        },
+        error: (err) => {
+          alert('Erro ao limpar histórico de conversas: ' + (err.error?.detail || err.message));
+        }
+      });
+    }
   }
 
   enviarResposta(): void {

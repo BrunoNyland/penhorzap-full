@@ -76,6 +76,10 @@ export class ApiService {
     return this.http.post(`/api/conversas/${id}/toggle-revisao/`, {});
   }
 
+  limparTodasConversas(): Observable<any> {
+    return this.http.post('/api/conversas/limpar-todas/', {});
+  }
+
   enviarMensagemConversa(id: number, texto: string): Observable<any> {
     return this.http.post(`/api/conversas/${id}/enviar/`, { texto });
   }

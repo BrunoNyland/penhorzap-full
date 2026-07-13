@@ -745,6 +745,11 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
         conversa.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
         return Response(ConversaDetailSerializer(conversa).data)
 
+    @action(detail=False, methods=["post"], url_path="limpar-todas")
+    def limpar_todas(self, request):
+        Conversa.objects.all().delete()
+        return Response({"message": "Todas as conversas foram limpas com sucesso!"})
+
     @action(detail=True, methods=["post"], url_path="enviar")
     def enviar_mensagem(self, request, pk=None):
         """Permite ao operador responder uma conversa diretamente pelo painel.
