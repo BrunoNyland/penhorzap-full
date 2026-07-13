@@ -53,7 +53,7 @@ JANELA_NAO_LIDAS = timedelta(hours=24)
 PRAZOS_RENOVACAO = (30, 60, 90, 120, 150, 180)
 
 # Situações (código) que representam contrato liquidado -> não ativo.
-SITUACOES_LIQUIDADAS_COD = {"LQ", "LQVL", "LQDE", "SJLQ", "LQSD", "AVCL"}
+SITUACOES_LIQUIDADAS_COD = {"AVAL", "AVCL", "LQ", "LQDE", "LQSD", "LQVL", "OBJA", "SJLQ", "ER", ""}
 
 TIPO_PAGAMENTO_TO_SOLICITACAO = {
     TipoPagamento.RENOVAR: Solicitacao.Tipo.RENOVAR,
