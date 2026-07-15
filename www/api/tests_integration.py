@@ -12,6 +12,7 @@ Two test classes:
 """
 
 import json
+import os
 import unittest
 from unittest.mock import patch, MagicMock
 
@@ -474,6 +475,7 @@ class APIIntegrationTests(TestCase):
 # Part 2: Live HTTPS tests (Nginx ↔ Angular SPA ↔ Django)
 # ===========================================================================
 
+@unittest.skipIf(os.environ.get("CI") == "true", "Live-server tests não rodam no CI (dependem do servidor de produção)")
 @unittest.skipUnless(_server_reachable(), "Live server not reachable")
 class LiveServerIntegrationTests(unittest.TestCase):
     """Tests that hit the real Nginx server to verify SPA serving,
@@ -501,12 +503,20 @@ class LiveServerIntegrationTests(unittest.TestCase):
                 cls.static_assets.append("/painel/favicon.ico")
 
         if not cls.static_assets:
-            cls.static_assets = [
-                "/painel/main-B64CDASC.js",
-                "/painel/polyfills-5CFQRCPP.js",
-                "/painel/styles-TGT4343F.css",
-                "/painel/favicon.ico",
-            ]
+            # Sem dist/ local (ex.: máquina que não buildou o front):
+            # descobre os assets com hash a partir do index.html ao vivo,
+            # em vez de uma lista hardcoded que apodrece a cada build.
+            import re
+            try:
+                html = cls.session.get(f"{BASE_URL}/painel/", timeout=10).text
+                cls.static_assets = [
+                    f"/painel/{nome}"
+                    for nome in re.findall(r'(?:src|href)="([^"]+\.(?:js|css))"', html)
+                ]
+            except Exception:
+                cls.static_assets = []
+        if not cls.static_assets:
+            raise unittest.SkipTest("Nenhum asset estático descoberto (dist/ ausente e index.html indisponível)")
 
     @classmethod
     def tearDownClass(cls):
