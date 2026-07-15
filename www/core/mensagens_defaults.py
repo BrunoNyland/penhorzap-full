@@ -79,6 +79,42 @@ DEFAULT_MSG_NEUTRA_PADRAO = (
     "com calma e te respondo, tá bom?"
 )
 
+# --- Templates v2 (identificação por telefone / respostas de contrato) ------
+
+DEFAULT_TPL_SAUDACAO_CLIENTE = (
+    "{saudacao}, {nome}! 😊 Aqui é o atendimento da PenhorZap. Como posso "
+    "te ajudar?"
+)
+DEFAULT_TPL_CONTRATO_VENCIMENTO = "📄 Contrato {contrato}: vencimento em {vencimento}."
+DEFAULT_TPL_CONTRATO_RENOVACAO = (
+    "🔄 Contrato {contrato}: renovação por {prazo_dias} dias = "
+    "{valor_renovacao} (vencimento atual: {vencimento})."
+)
+DEFAULT_TPL_CONTRATO_QUITACAO = (
+    "✅ Contrato {contrato}: valor para quitação = {valor_quitacao} "
+    "(vencimento: {vencimento})."
+)
+DEFAULT_TPL_CONTRATO_PARCELA = "💳 Contrato {contrato}: valor da parcela = {valor_parcela}."
+DEFAULT_TPL_CONTRATO_RESUMO = (
+    "📄 Contrato {contrato} — vencimento {vencimento} — valor do empréstimo "
+    "{valor_emprestimo}."
+)
+DEFAULT_TPL_LISTA_HEADER = "{nome}, você tem {qtd} contrato(s) ativo(s):"
+DEFAULT_TPL_LISTA_FOOTER = "Se precisar de mais alguma informação, é só falar!"
+
+DEFAULT_MSG_FALLBACK_SEM_RESPOSTA = (
+    "Boa pergunta! Deixa eu verificar com calma e já te retorno por aqui "
+    "mesmo, combinado?"
+)
+DEFAULT_MSG_INFO_NEGADA_DESCONHECIDO = (
+    "Por segurança, as informações do seu contrato constam no próprio "
+    "boleto. Quer que eu gere o boleto pra você?"
+)
+DEFAULT_MSG_MIDIA_NAO_SUPORTADA = (
+    "Recebi seu áudio/vídeo, mas por aqui eu só consigo ler mensagens de "
+    "texto 🙏 Pode escrever sua dúvida que um atendente vai te responder?"
+)
+
 DEFAULT_SYSTEM_PROMPT = """\
 PERSONA (OBRIGATÓRIO, vale para TODA resposta_sugerida):
 Você fala sempre em primeira pessoa do singular, como o próprio dono da

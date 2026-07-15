@@ -7,7 +7,10 @@ from .mensagens_defaults import (
     DEFAULT_MSG_CPF_INVALIDO,
     DEFAULT_MSG_CPF_NAO_BATE,
     DEFAULT_MSG_DB_DESATUALIZADA,
+    DEFAULT_MSG_FALLBACK_SEM_RESPOSTA,
+    DEFAULT_MSG_INFO_NEGADA_DESCONHECIDO,
     DEFAULT_MSG_INSISTIU_HUMANO,
+    DEFAULT_MSG_MIDIA_NAO_SUPORTADA,
     DEFAULT_MSG_NEUTRA_PADRAO,
     DEFAULT_MSG_PEDIR_CPF,
     DEFAULT_MSG_QUITACAO_GARANTIA,
@@ -20,6 +23,14 @@ from .mensagens_defaults import (
     DEFAULT_MSG_VERIFICACAO_FALHOU,
     DEFAULT_MSG_VERIFICACAO_OK,
     DEFAULT_SYSTEM_PROMPT,
+    DEFAULT_TPL_CONTRATO_PARCELA,
+    DEFAULT_TPL_CONTRATO_QUITACAO,
+    DEFAULT_TPL_CONTRATO_RENOVACAO,
+    DEFAULT_TPL_CONTRATO_RESUMO,
+    DEFAULT_TPL_CONTRATO_VENCIMENTO,
+    DEFAULT_TPL_LISTA_FOOTER,
+    DEFAULT_TPL_LISTA_HEADER,
+    DEFAULT_TPL_SAUDACAO_CLIENTE,
 )
 
 
@@ -262,6 +273,11 @@ class Conversa(models.Model):
         PESSOAL = "pessoal", "Contato pessoal"
         DESCONHECIDO = "desconhecido", "Não salvo"
 
+    class MetodoIdentificacao(models.TextChoices):
+        NENHUM = "nenhum", "Não identificado"
+        TELEFONE = "telefone", "Telefone cadastrado"
+        CPF = "cpf", "CPF digitado"
+
     cliente = models.ForeignKey(
         Cliente, related_name="conversas", on_delete=models.SET_NULL, null=True, blank=True
     )
@@ -269,10 +285,20 @@ class Conversa(models.Model):
     estado = models.CharField(max_length=30, choices=Estado.choices, default=Estado.NOVA)
     tipo_contato = models.CharField(max_length=15, choices=TipoContato.choices, default=TipoContato.DESCONHECIDO)
     nome_salvo = models.CharField(max_length=255, blank=True, help_text="Nome salvo na agenda do dono (PHN_CPF_NOME) quando disponível")
+    identificacao = models.CharField(
+        max_length=10,
+        choices=MetodoIdentificacao.choices,
+        default=MetodoIdentificacao.NENHUM,
+        help_text="Como o contato foi identificado nesta conversa: telefone cadastrado (não expira) ou CPF digitado (expira em 24h).",
+    )
     cpf_verificado = models.CharField(max_length=14, blank=True, default="", help_text="CPF confirmado pelo cliente nesta conversa")
     slots = models.JSONField(default=dict, blank=True, help_text="Estado de slot-filling entre turnos (ex.: cpfs pendentes, contratos a confirmar)")
     precisa_revisao_humana = models.BooleanField(default=False)
     verified_at = models.DateTimeField(null=True, blank=True)
+    processando_desde = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Mutex leve: carimbado quando process_mensagem começa a processar esta conversa, limpo ao final.",
+    )
     ultima_interacao = models.DateTimeField(auto_now=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -289,11 +315,29 @@ class Mensagem(models.Model):
         IN = "in", "Recebida"
         OUT = "out", "Enviada"
 
+    class TipoMidia(models.TextChoices):
+        IMAGE = "image", "Imagem"
+        AUDIO = "audio", "Áudio"
+        VIDEO = "video", "Vídeo"
+        DOCUMENT = "document", "Documento"
+
     conversa = models.ForeignKey(Conversa, related_name="mensagens", on_delete=models.CASCADE)
     direcao = models.CharField(max_length=3, choices=Direcao.choices)
     texto = models.TextField(blank=True)
     wa_message_id = models.CharField(max_length=120, unique=True, null=True, blank=True)
     push_name = models.CharField(max_length=255, blank=True, help_text="Nome de perfil/salvo informado pelo webhook")
+    tipo_midia = models.CharField(
+        max_length=10, choices=TipoMidia.choices, blank=True, default="",
+        help_text="Vazio = sem mídia. Preenchido a partir do payload da Evolution (IN) ou pelo operador (OUT).",
+    )
+    arquivo = models.FileField(
+        upload_to="conversa_arquivos/%Y/%m/", blank=True, null=True,
+        help_text="Anexo enviado pelo operador (mensagens OUT).",
+    )
+    enviado_ok = models.BooleanField(
+        null=True, blank=True,
+        help_text="OUT: resultado do envio via Evolution. None = mensagem IN ou registro legado.",
+    )
     payload_bruto = models.JSONField(default=dict, blank=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -406,6 +450,17 @@ class MensagensConfig(models.Model):
     msg_segunda_via_confirma = models.TextField(default=DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA)
     msg_insistiu_humano = models.TextField(default=DEFAULT_MSG_INSISTIU_HUMANO)
     msg_neutra_padrao = models.TextField(default=DEFAULT_MSG_NEUTRA_PADRAO)
+    tpl_saudacao_cliente = models.TextField(default=DEFAULT_TPL_SAUDACAO_CLIENTE)
+    tpl_contrato_vencimento = models.TextField(default=DEFAULT_TPL_CONTRATO_VENCIMENTO)
+    tpl_contrato_renovacao = models.TextField(default=DEFAULT_TPL_CONTRATO_RENOVACAO)
+    tpl_contrato_quitacao = models.TextField(default=DEFAULT_TPL_CONTRATO_QUITACAO)
+    tpl_contrato_parcela = models.TextField(default=DEFAULT_TPL_CONTRATO_PARCELA)
+    tpl_contrato_resumo = models.TextField(default=DEFAULT_TPL_CONTRATO_RESUMO)
+    tpl_lista_header = models.TextField(default=DEFAULT_TPL_LISTA_HEADER)
+    tpl_lista_footer = models.TextField(default=DEFAULT_TPL_LISTA_FOOTER)
+    msg_fallback_sem_resposta = models.TextField(default=DEFAULT_MSG_FALLBACK_SEM_RESPOSTA)
+    msg_info_negada_desconhecido = models.TextField(default=DEFAULT_MSG_INFO_NEGADA_DESCONHECIDO)
+    msg_midia_nao_suportada = models.TextField(default=DEFAULT_MSG_MIDIA_NAO_SUPORTADA)
     atualizado_em = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -448,6 +503,57 @@ class FAQResposta(models.Model):
         if self.arquivo:
             return f"[{self.ordem}] Arquivo: {self.arquivo.name} - {self.texto[:30]}"
         return f"[{self.ordem}] {self.texto[:50]}"
+
+
+class FAQSugerida(models.Model):
+    """Pergunta que a IA não conseguiu responder pela FAQ existente (fallback
+    determinístico do bot). Fica pendente de revisão humana; se aprovada,
+    vira uma FAQ real. Perguntas repetidas (mesmo texto, ainda pendente) só
+    incrementam `ocorrencias` em vez de duplicar a linha."""
+
+    class Status(models.TextChoices):
+        PENDENTE = "pendente", "Pendente"
+        APROVADA = "aprovada", "Aprovada"
+        REJEITADA = "rejeitada", "Rejeitada"
+
+    pergunta = models.CharField(max_length=255, help_text="Pergunta resumida sugerida pela IA")
+    pergunta_original = models.TextField(blank=True, help_text="Mensagem literal do cliente")
+    conversa = models.ForeignKey(
+        Conversa, related_name="faqs_sugeridas", on_delete=models.SET_NULL, null=True, blank=True
+    )
+    ocorrencias = models.PositiveIntegerField(default=1)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDENTE)
+    faq_criada = models.ForeignKey(FAQ, on_delete=models.SET_NULL, null=True, blank=True)
+    revisado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
+    )
+    revisado_em = models.DateTimeField(null=True, blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-ocorrencias", "-criado_em"]
+        verbose_name = "FAQ sugerida"
+        verbose_name_plural = "FAQs sugeridas"
+
+    def __str__(self):
+        return f"{self.pergunta} ({self.get_status_display()}, x{self.ocorrencias})"
+
+    @classmethod
+    def registrar(cls, pergunta, conversa=None, pergunta_original=""):
+        """Cria uma FAQSugerida ou, se já existir uma PENDENTE com a mesma
+        pergunta (case-insensitive), incrementa `ocorrencias` e retorna essa."""
+        pergunta = (pergunta or "").strip()
+        existente = cls.objects.filter(status=cls.Status.PENDENTE, pergunta__iexact=pergunta).first()
+        if existente:
+            existente.ocorrencias = models.F("ocorrencias") + 1
+            existente.save(update_fields=["ocorrencias"])
+            existente.refresh_from_db(fields=["ocorrencias"])
+            return existente
+        return cls.objects.create(
+            pergunta=pergunta,
+            pergunta_original=pergunta_original,
+            conversa=conversa,
+        )
 
 
 class Solicitacao(models.Model):
