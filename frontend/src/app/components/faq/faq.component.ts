@@ -61,9 +61,9 @@ interface FormResposta {
               <tbody>
                 @for (faq of faqs(); track faq.id) {
                   <tr>
-                    <td><strong>{{ faq.pergunta }}</strong></td>
-                    <td>{{ faq.respostas?.length || 0 }} mensagens</td>
-                    <td>
+                    <td data-label="Pergunta"><strong>{{ faq.pergunta }}</strong></td>
+                    <td data-label="Respostas">{{ faq.respostas?.length || 0 }} mensagens</td>
+                    <td data-label="Status">
                       <button
                         class="badge-toggle"
                         [class.active]="faq.ativo"
@@ -72,7 +72,7 @@ interface FormResposta {
                         {{ faq.ativo ? 'Ativo' : 'Inativo' }}
                       </button>
                     </td>
-                    <td style="text-align: right;">
+                    <td data-label="Ações" style="text-align: right;">
                       <div class="flex gap-2 justify-end">
                         <button class="btn btn-secondary btn-xs" (click)="openEditModal(faq)">Editar</button>
                         <button class="btn btn-danger btn-xs" (click)="confirmDeleteFAQ(faq)">Excluir</button>
@@ -113,7 +113,7 @@ interface FormResposta {
               <tbody>
                 @for (s of sugeridas(); track s.id) {
                   <tr>
-                    <td [title]="s.pergunta_original || ''">
+                    <td data-label="Pergunta sugerida" [title]="s.pergunta_original || ''">
                       @if (editingSugeridaId() === s.id) {
                         <input type="text" [(ngModel)]="editPerguntaTexto" class="inline-edit-input" />
                         <div class="flex gap-2 margin-top-xs">
@@ -127,9 +127,9 @@ interface FormResposta {
                         }
                       }
                     </td>
-                    <td><span class="badge badge-info">{{ s.ocorrencias }}x</span></td>
-                    <td class="text-muted text-small">{{ s.criado_em | date:'dd/MM/yyyy' }}</td>
-                    <td style="text-align: right;">
+                    <td data-label="Ocorrências"><span class="badge badge-info">{{ s.ocorrencias }}x</span></td>
+                    <td data-label="Data" class="text-muted text-small">{{ s.criado_em | date:'dd/MM/yyyy' }}</td>
+                    <td data-label="Ações" style="text-align: right;">
                       <div class="flex gap-2 justify-end">
                         <button class="btn btn-secondary btn-xs" (click)="startEditPergunta(s)">Editar</button>
                         <button class="btn btn-primary btn-xs" (click)="openAprovarModal(s)">Aprovar</button>
@@ -515,6 +515,67 @@ interface FormResposta {
       background-color: var(--bg-primary);
       color: var(--text-primary);
       font-size: 13px;
+    }
+    .text-center { text-align: center; }
+
+    /* Mobile (< 640px): abas com wrap, tabelas viram cards empilhados,
+       modais e editor de FAQ com largura fluida. */
+    @media (max-width: 639px) {
+      .faq-header {
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .tabs {
+        flex-wrap: wrap;
+      }
+      .table-container table,
+      .table-container thead,
+      .table-container tbody,
+      .table-container tr,
+      .table-container td {
+        display: block;
+        width: 100%;
+      }
+      .table-container thead {
+        display: none;
+      }
+      .table-container tr {
+        border-bottom: 1px solid var(--border-color);
+        padding: 10px 4px;
+      }
+      .table-container tr:last-child {
+        border-bottom: none;
+      }
+      .table-container td {
+        padding: 6px 4px;
+        text-align: left !important;
+      }
+      .table-container td::before {
+        content: attr(data-label);
+        display: block;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+        color: var(--text-secondary);
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .table-container td .flex.gap-2 {
+        flex-wrap: wrap;
+      }
+      .modal-large {
+        max-height: 92vh;
+      }
+      .respostas-list {
+        max-height: 42vh;
+      }
+      .file-uploader-group {
+        flex-wrap: wrap;
+      }
+      .file-badge {
+        max-width: 100%;
+        word-break: break-word;
+      }
     }
   `]
 })

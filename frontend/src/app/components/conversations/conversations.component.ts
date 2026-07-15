@@ -34,7 +34,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
               (ngModelChange)="loadConversas()"
             />
             
-            <div class="margin-top-sm" style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <div class="filter-row margin-top-sm" style="display: flex; gap: 8px; flex-wrap: wrap;">
               <select [(ngModel)]="filterEstado" (change)="loadConversas()" style="flex: 1.5; min-width: 120px;">
                 <option value="">Todos os Estados</option>
                 <option value="nova">Nova</option>
@@ -152,10 +152,10 @@ import { IconComponent } from '../../shared/icon/icon.component';
               }
             </div>
             
-            <div class="flex gap-2">
-              <button 
-                class="btn" 
-                [class.btn-danger]="!activeChat().precisa_revisao_humana" 
+            <div class="flex gap-2 detail-actions">
+              <button
+                class="btn"
+                [class.btn-danger]="!activeChat().precisa_revisao_humana"
                 [class.btn-secondary]="activeChat().precisa_revisao_humana"
                 (click)="toggleRevisao(activeChat().id)"
               >
@@ -645,8 +645,11 @@ import { IconComponent } from '../../shared/icon/icon.component';
       display: inline-flex;
       color: var(--color-danger);
     }
-    .anexo-btn {
-      padding: 8px 10px;
+    .reply-box .anexo-btn {
+      width: 44px;
+      height: 44px;
+      min-width: 44px;
+      padding: 0;
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -699,16 +702,17 @@ import { IconComponent } from '../../shared/icon/icon.component';
       display: none;
     }
 
-    @media (max-width: 768px) {
+    @media (max-width: 639px) {
       .conversa-layout {
         flex-direction: column;
-        height: calc(100vh - 120px) !important;
+        height: calc(100dvh - 88px);
         gap: 0 !important;
       }
       .chat-list-panel {
         width: 100% !important;
         display: flex !important;
         height: 100%;
+        padding: 12px;
       }
       .chat-details-panel {
         display: none !important;
@@ -719,7 +723,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
       .conversa-layout.has-selected-chat .chat-details-panel {
         width: 100% !important;
         display: flex !important;
-        padding: 16px !important;
+        padding: 12px !important;
         height: 100%;
       }
       .back-button {
@@ -732,11 +736,35 @@ import { IconComponent } from '../../shared/icon/icon.component';
         align-items: flex-start !important;
         gap: 12px;
       }
-      .reply-box {
-        padding: 12px 0;
+      .detail-actions, .detail-actions .btn {
+        width: 100%;
+      }
+      .messages-viewport {
+        max-height: 42dvh;
+        margin: 12px 0;
+        padding: 12px;
       }
       .chat-media-image, .chat-media-video {
         max-height: 200px;
+      }
+      .anexo-preview {
+        margin: 0 0 8px;
+      }
+      .reply-box {
+        position: sticky;
+        bottom: 0;
+        z-index: 5;
+        background-color: var(--bg-secondary);
+        margin: 0 -12px;
+        padding: 10px 12px 0;
+        border-top: 1px solid var(--border-color);
+      }
+      .solicitacoes-section {
+        padding-bottom: 88px;
+      }
+      .filter-row select,
+      .filter-row .btn-small {
+        min-width: 84px;
       }
     }
   `]
