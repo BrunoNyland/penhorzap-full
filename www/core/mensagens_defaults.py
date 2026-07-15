@@ -101,6 +101,14 @@ DEFAULT_TPL_CONTRATO_RESUMO = (
 )
 DEFAULT_TPL_LISTA_HEADER = "{nome}, você tem {qtd} contrato(s) ativo(s):"
 DEFAULT_TPL_LISTA_FOOTER = "Se precisar de mais alguma informação, é só falar!"
+DEFAULT_TPL_TOTALIZADOR = (
+    "📊 Resumo: {qtd} contrato(s), total de {total}. Se precisar de mais "
+    "alguma informação, é só falar!"
+)
+DEFAULT_TPL_TOTALIZADOR_SEM_VALOR = (
+    "São {qtd} contrato(s) ao todo. Se precisar de mais alguma informação, "
+    "é só falar!"
+)
 
 DEFAULT_MSG_FALLBACK_SEM_RESPOSTA = (
     "Boa pergunta! Deixa eu verificar com calma e já te retorno por aqui "

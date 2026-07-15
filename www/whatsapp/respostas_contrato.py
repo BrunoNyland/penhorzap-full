@@ -7,9 +7,11 @@ produz texto pronto para enviar via WhatsApp — os valores usados SEMPRE vêm
 do banco (via `whatsapp.tasks._contratos_ativos_values`), nunca da IA.
 """
 import logging
+import re
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
+from core.utils import parse_br_decimal
 from ia.schemas import InfoContrato
 
 logger = logging.getLogger(__name__)
@@ -55,6 +57,19 @@ def formatar_moeda_erp(texto) -> str:
     return texto
 
 
+def _parse_valor_erp(texto):
+    """Converte o texto de valor de quitação do ERP (ex.: 'R$ 1.813,70' ou
+    'R$4.448,60') num `Decimal` para uso em somas do totalizador.
+    `core.utils.parse_br_decimal` é um parser puro que espera só dígitos +
+    separadores BR e QUEBRA com o prefixo "R$" -- por isso removemos antes
+    qualquer caractere que não seja dígito/vírgula/ponto/sinal. Retorna
+    `None` para texto vazio ou que não parseia (nunca levanta)."""
+    if not texto:
+        return None
+    limpo = re.sub(r"[^\d,.\-]", "", str(texto))
+    return parse_br_decimal(limpo)
+
+
 def formatar_data(valor) -> str:
     """Formata uma data como 'dd/mm/aaaa'."""
     if valor is None:
@@ -96,40 +111,98 @@ def _prazo_mais_proximo(prazo_dias: int) -> int:
     return min(PRAZOS_RENOVACAO, key=lambda p: abs(p - prazo_dias))
 
 
-def _agrupar_bloco(linhas, msgs, nome: str) -> str:
-    """Uma linha -> devolve como está. Mais de uma -> envolve com
-    tpl_lista_header/tpl_lista_footer (multi-contrato)."""
-    if not linhas:
-        return ""
-    if len(linhas) == 1:
-        return linhas[0]
-    header = render_template(msgs.tpl_lista_header, nome=nome, qtd=len(linhas))
-    footer = render_template(msgs.tpl_lista_footer)
-    return "\n".join([header, *linhas, footer])
+def _somar_decimais(valores) -> Decimal:
+    total = Decimal("0")
+    for valor in valores:
+        if valor is None:
+            continue
+        try:
+            total += Decimal(str(valor))
+        except (InvalidOperation, ValueError, TypeError):
+            logger.warning("_somar_decimais: valor não numérico ignorado na soma: %r", valor)
+    return total
 
 
-def renderizar_infos_contrato(cliente, pedidos, msgs) -> str:
-    """Renderiza a resposta para `tipo_intencao=info_contrato`.
+def _montar_totalizador(info, contratos: list, ativos_map: dict, msgs, prazo=None) -> str:
+    """Monta a mensagem de totalizador (soma + quantidade) para o bloco de
+    `contratos` já reportado ao cliente (as linhas efetivamente enviadas).
 
-    `pedidos` é a lista `resultado.infos_contrato` (uma `InfoContratoPedido`
-    por informação distinta pedida). Todos os valores citados vêm do banco
-    (nunca da IA): contratos ativos são relidos aqui via
-    `_contratos_ativos_values`. Contratos citados que não estão entre os
-    ativos do cliente são ignorados silenciosamente (a IA já é instruída a
-    nunca inventar números fora da lista fornecida)."""
+    - valor_renovacao: soma `vlr_renovacao_{prazo}`.
+    - valor_quitacao: soma `_parse_valor_erp(liquidacao)`, pulando
+      indisponíveis (com aviso no sufixo); todos indisponíveis -> usa
+      `tpl_totalizador_sem_valor`.
+    - valor_parcela: soma `vlr_parcela` (a lista `contratos` já vem só com
+      os parcelados -- ver `renderizar_infos_contrato`).
+    - vencimento/lista_contratos/detalhe_contrato: sem valor numérico
+      significativo -> `tpl_totalizador_sem_valor`.
+    """
+    qtd = len(contratos)
+
+    if info == InfoContrato.VALOR_RENOVACAO:
+        total = _somar_decimais(ativos_map[num].get(f"vlr_renovacao_{prazo}") for num in contratos)
+        return render_template(msgs.tpl_totalizador, qtd=qtd, total=formatar_moeda(total))
+
+    if info == InfoContrato.VALOR_QUITACAO:
+        valores = []
+        indisponiveis = 0
+        for num in contratos:
+            parsed = _parse_valor_erp(ativos_map[num].get("liquidacao"))
+            if parsed is None:
+                indisponiveis += 1
+            else:
+                valores.append(parsed)
+
+        sufixo = ""
+        if indisponiveis:
+            sufixo = (
+                f"\n(não somei {indisponiveis} contrato(s) com valor de quitação "
+                "indisponível — vou verificar e te retorno)"
+            )
+
+        if not valores:
+            return f"{render_template(msgs.tpl_totalizador_sem_valor, qtd=qtd)}{sufixo}"
+
+        total = _somar_decimais(valores)
+        return f"{render_template(msgs.tpl_totalizador, qtd=qtd, total=formatar_moeda(total))}{sufixo}"
+
+    if info == InfoContrato.VALOR_PARCELA:
+        total = _somar_decimais(ativos_map[num].get("vlr_parcela") for num in contratos)
+        return render_template(msgs.tpl_totalizador, qtd=qtd, total=formatar_moeda(total))
+
+    # vencimento / lista_contratos / detalhe_contrato: sem soma financeira.
+    return render_template(msgs.tpl_totalizador_sem_valor, qtd=qtd)
+
+
+def renderizar_infos_contrato(cliente, pedidos, msgs) -> list[str]:
+    """Renderiza a resposta para `tipo_intencao=info_contrato` como uma
+    LISTA de mensagens (fan-out): o chamador (`whatsapp.tasks._enviar_fila`)
+    envia cada item como uma mensagem WhatsApp separada, com pausa entre
+    elas.
+
+    Por `InfoContratoPedido` (uma por informação distinta pedida): 1
+    contrato reportado -> lista com só a linha; 2+ -> intro
+    (`tpl_lista_header`) + 1 linha por contrato + totalizador
+    (`tpl_totalizador`/`tpl_totalizador_sem_valor`, soma + quantidade).
+    `tpl_lista_footer` não é mais usado neste fluxo (fechamento incorporado
+    ao totalizador).
+
+    Todos os valores citados vêm do banco (nunca da IA): contratos ativos
+    são relidos aqui via `_contratos_ativos_values`. Contratos citados que
+    não estão entre os ativos do cliente são ignorados silenciosamente (a
+    IA já é instruída a nunca inventar números fora da lista fornecida)."""
     from .tasks import _contratos_ativos_values  # import local: evita import circular no carregamento do módulo
 
     if not cliente:
-        return msgs.msg_sem_contratos_ativos
+        return [msgs.msg_sem_contratos_ativos]
 
     ativos = _contratos_ativos_values(cliente)
     if not ativos:
-        return msgs.msg_sem_contratos_ativos
+        return [msgs.msg_sem_contratos_ativos]
 
     ativos_map = {c["contrato"]: c for c in ativos}
     primeiro_nome = (cliente.nome or "").split()[0] if getattr(cliente, "nome", "") else ""
 
-    blocos = []
+    mensagens = []
     for pedido in pedidos:
         if pedido.contratos:
             alvo = [n for n in pedido.contratos if n in ativos_map]
@@ -139,6 +212,9 @@ def renderizar_infos_contrato(cliente, pedidos, msgs) -> str:
             continue
 
         linhas = []
+        contratos_incluidos = []
+        prazo = None
+
         if pedido.info == InfoContrato.VENCIMENTO:
             for num in alvo:
                 c = ativos_map[num]
@@ -147,6 +223,7 @@ def renderizar_infos_contrato(cliente, pedidos, msgs) -> str:
                     contrato=c["contrato"],
                     vencimento=formatar_data(c["data_vencimento"]),
                 ))
+                contratos_incluidos.append(num)
 
         elif pedido.info == InfoContrato.VALOR_RENOVACAO:
             prazo_informado = pedido.prazo_dias is not None
@@ -163,6 +240,7 @@ def renderizar_infos_contrato(cliente, pedidos, msgs) -> str:
                 if not prazo_informado:
                     linha = f"{linha} (prazo padrão de 30 dias)"
                 linhas.append(linha)
+                contratos_incluidos.append(num)
 
         elif pedido.info == InfoContrato.VALOR_QUITACAO:
             for num in alvo:
@@ -173,6 +251,7 @@ def renderizar_infos_contrato(cliente, pedidos, msgs) -> str:
                     valor_quitacao=formatar_moeda_erp(c.get("liquidacao")),
                     vencimento=formatar_data(c["data_vencimento"]),
                 ))
+                contratos_incluidos.append(num)
 
         elif pedido.info == InfoContrato.VALOR_PARCELA:
             for num in alvo:
@@ -184,6 +263,7 @@ def renderizar_infos_contrato(cliente, pedidos, msgs) -> str:
                     contrato=c["contrato"],
                     valor_parcela=formatar_moeda(c.get("vlr_parcela")),
                 ))
+                contratos_incluidos.append(num)
 
         elif pedido.info in (InfoContrato.LISTA_CONTRATOS, InfoContrato.DETALHE_CONTRATO):
             for num in alvo:
@@ -194,12 +274,22 @@ def renderizar_infos_contrato(cliente, pedidos, msgs) -> str:
                     vencimento=formatar_data(c["data_vencimento"]),
                     valor_emprestimo=formatar_moeda(c.get("vlr_emprestimo")),
                 ))
+                contratos_incluidos.append(num)
 
         if not linhas:
             continue
-        blocos.append(_agrupar_bloco(linhas, msgs, primeiro_nome))
 
-    if not blocos:
-        return msgs.msg_sem_contratos_ativos
+        if len(linhas) == 1:
+            mensagens.append(linhas[0])
+            continue
 
-    return "\n\n".join(blocos)
+        intro = render_template(msgs.tpl_lista_header, nome=primeiro_nome, qtd=len(linhas))
+        totalizador = _montar_totalizador(pedido.info, contratos_incluidos, ativos_map, msgs, prazo=prazo)
+        mensagens.append(intro)
+        mensagens.extend(linhas)
+        mensagens.append(totalizador)
+
+    if not mensagens:
+        return [msgs.msg_sem_contratos_ativos]
+
+    return mensagens

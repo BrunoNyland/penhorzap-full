@@ -415,7 +415,7 @@ export class ConfigComponent implements OnInit {
     { key: 'msg_verificacao_falhou', label: 'Verificação Falhou', help: 'Fallback enviado se a verificação expirar ou falhar seguidamente.' },
     { key: 'msg_sem_info_faq', label: 'Sem Informação na FAQ', help: 'Enviado quando o cliente faz uma pergunta geral que o bot não encontra na base.' },
     { key: 'msg_db_desatualizada', label: 'Base de dados Desatualizada', help: 'Erro emitido ao pedir informações financeiras se a base do ERP estiver fora do freshness.' },
-    { key: 'msg_sem_contratos_actifs', label: 'Sem Contratos Ativos', help: 'Retorno quando o cliente verificado não possui contratos ativos em aberto.' },
+    { key: 'msg_sem_contratos_ativos', label: 'Sem Contratos Ativos', help: 'Retorno quando o cliente verificado não possui contratos ativos em aberto.' },
     { key: 'msg_solicitacao_criada', label: 'Solicitação Criada', help: 'Confirmando a abertura da solicitação para envio dos boletos.' },
     { key: 'msg_boleto_intro', label: 'Introdução do Boleto', help: 'Introdução enviada imediatamente antes de anexar o PDF do boleto.' },
     { key: 'msg_renovacao_proximo_vencimento', label: 'Renovação: Próximo Vencimento', help: 'Usa a tag {proximo_vencimento}.' },
@@ -465,14 +465,20 @@ export class ConfigComponent implements OnInit {
     {
       key: 'tpl_lista_header',
       label: 'Lista de Contratos: Cabeçalho',
-      help: 'Introdução usada antes de listar múltiplos contratos ativos do cliente.',
+      help: 'mensagem de introdução antes do lote de contratos',
       placeholders: ['{nome}', '{qtd}']
     },
     {
-      key: 'tpl_lista_footer',
-      label: 'Lista de Contratos: Rodapé',
-      help: 'Mensagem enviada após a lista de contratos ativos.',
-      placeholders: []
+      key: 'tpl_totalizador',
+      label: 'Lista de Contratos: Totalizador',
+      help: 'Mensagem enviada ao final do lote de contratos, com a soma dos valores e a quantidade (vencimento/renovação/quitação/parcela).',
+      placeholders: ['{qtd}', '{total}']
+    },
+    {
+      key: 'tpl_totalizador_sem_valor',
+      label: 'Lista de Contratos: Totalizador (sem valor)',
+      help: 'Mensagem enviada ao final do lote quando não há soma financeira aplicável (vencimento, lista/detalhe de contratos).',
+      placeholders: ['{qtd}']
     },
     {
       key: 'msg_fallback_sem_resposta',

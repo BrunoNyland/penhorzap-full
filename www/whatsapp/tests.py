@@ -40,7 +40,12 @@ from whatsapp.respostas_contrato import (
     render_template,
     renderizar_infos_contrato,
 )
-from whatsapp.tasks import process_mensagem
+from whatsapp.tasks import (
+    MAX_MENSAGENS_TURNO,
+    PAUSA_FANOUT,
+    _enviar_fila,
+    process_mensagem,
+)
 from whatsapp.views import _extrair_conteudo
 
 
@@ -78,6 +83,13 @@ class WhatsappTasksTestCase(TestCase):
         patcher = patch("whatsapp.tasks.get_client", return_value=self.mock_client)
         self.mock_get_client = patcher.start()
         self.addCleanup(patcher.stop)
+
+        # `_enviar_fila` pausa PAUSA_FANOUT segundos entre mensagens do
+        # fan-out -- mockado aqui pra não deixar a suíte lenta (o pacing em
+        # si tem cobertura própria em EnviarFilaTests).
+        sleep_patcher = patch("whatsapp.tasks.time.sleep")
+        self.mock_sleep = sleep_patcher.start()
+        self.addCleanup(sleep_patcher.stop)
 
     def _in(self, conv, texto, push_name=""):
         return Mensagem.objects.create(
@@ -261,6 +273,49 @@ class InfoContratoRendererIntegrationTests(WhatsappTasksTestCase):
         texto = self._last_out_texto(conv)
         self.assertEqual(texto, esperado)
         self.assertIn(formatar_data(contrato.data_vencimento), texto)
+
+    def test_info_contrato_multi_contrato_faz_fan_out_de_n_mensagens(self):
+        # 2+ contratos -> intro + 1 linha por contrato + totalizador, cada
+        # um persistido como uma Mensagem OUT separada (fan-out real).
+        cliente = Cliente.objects.create(cpf="11144477735", nome="Fernanda Reis")
+        Telefone.objects.create(cliente=cliente, numero="+5567988880000")
+        ContratoPenhor.objects.create(
+            contrato="C10", cliente=cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            data_vencimento=timezone.localdate() + timedelta(days=10),
+        )
+        ContratoPenhor.objects.create(
+            contrato="C11", cliente=cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            data_vencimento=timezone.localdate() + timedelta(days=20),
+        )
+        conv = Conversa.objects.create(
+            remote_jid="5567988880000@s.whatsapp.net",
+            identificacao=Conversa.MetodoIdentificacao.TELEFONE,
+            tipo_contato=Conversa.TipoContato.CLIENTE,
+            cliente=cliente,
+        )
+        Mensagem.objects.create(conversa=conv, direcao=Mensagem.Direcao.OUT, texto="oi")
+
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mock_ia.return_value = _classificacao(
+                TipoIntencaoV2.INFO_CONTRATO,
+                infos_contrato=[InfoContratoPedido(info=InfoContrato.VENCIMENTO)],
+            )
+            mensagem = self._in(conv, "quando vencem meus contratos?")
+            process_mensagem(mensagem.id)
+
+        outs = list(
+            conv.mensagens.filter(direcao=Mensagem.Direcao.OUT).order_by("criado_em").values_list("texto", flat=True)
+        )
+        # "oi" (setup) + intro + 2 linhas + totalizador = 5
+        self.assertEqual(len(outs), 5)
+        self.assertEqual(outs[0], "oi")
+        self.assertIn("C10", outs[2])
+        self.assertIn("C11", outs[3])
+        self.assertTrue(outs[4].startswith(
+            render_template(self.msgs.tpl_totalizador_sem_valor, qtd=2)
+        ))
+        # 4 mensagens no fan-out (intro + 2 linhas + totalizador) -> 3 pausas
+        self.assertEqual(self.mock_sleep.call_count, 3)
 
 
 class FaqEFallbackTests(WhatsappTasksTestCase):
@@ -532,6 +587,11 @@ class RespostasContratoUnitTests(TestCase):
 
 
 class RenderizarInfosContratoTests(TestCase):
+    """`renderizar_infos_contrato` retorna `list[str]` (fan-out): 1 contrato
+    reportado -> lista de 1 item (sem intro/totalizador); 2+ -> intro
+    (`tpl_lista_header`) + 1 linha por contrato + totalizador
+    (`tpl_totalizador`/`tpl_totalizador_sem_valor`)."""
+
     def setUp(self):
         self.msgs = MensagensConfig.get_solo()
         self.cliente = Cliente.objects.create(cpf="52998224725", nome="Beatriz Costa")
@@ -548,87 +608,223 @@ class RenderizarInfosContratoTests(TestCase):
 
     def test_sem_cliente_retorna_mensagem_sem_contratos(self):
         resultado = renderizar_infos_contrato(None, [InfoContratoPedido(info=InfoContrato.VENCIMENTO)], self.msgs)
-        self.assertEqual(resultado, self.msgs.msg_sem_contratos_ativos)
+        self.assertEqual(resultado, [self.msgs.msg_sem_contratos_ativos])
 
     def test_sem_contratos_ativos_retorna_mensagem_padrao(self):
         # cliente sem nenhum ContratoPenhor
         resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VENCIMENTO)], self.msgs)
-        self.assertEqual(resultado, self.msgs.msg_sem_contratos_ativos)
+        self.assertEqual(resultado, [self.msgs.msg_sem_contratos_ativos])
 
     def test_vencimento(self):
         c = self._contrato(contrato="C1")
         resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VENCIMENTO)], self.msgs)
-        self.assertIn("C1", resultado)
-        self.assertIn(formatar_data(c.data_vencimento), resultado)
+        self.assertEqual(len(resultado), 1)
+        self.assertIn("C1", resultado[0])
+        self.assertIn(formatar_data(c.data_vencimento), resultado[0])
 
     def test_renovacao_com_prazo_informado(self):
         self._contrato(contrato="C1", vlr_renovacao_60=1500)
         pedido = InfoContratoPedido(info=InfoContrato.VALOR_RENOVACAO, prazo_dias=60)
         resultado = renderizar_infos_contrato(self.cliente, [pedido], self.msgs)
-        self.assertIn("R$ 1.500,00", resultado)
-        self.assertIn("60", resultado)
-        self.assertNotIn("prazo padrão", resultado)
+        texto = "\n".join(resultado)
+        self.assertIn("R$ 1.500,00", texto)
+        self.assertIn("60", texto)
+        self.assertNotIn("prazo padrão", texto)
 
     def test_renovacao_sem_prazo_usa_30_com_nota(self):
         self._contrato(contrato="C1", vlr_renovacao_30=1000)
         pedido = InfoContratoPedido(info=InfoContrato.VALOR_RENOVACAO)
         resultado = renderizar_infos_contrato(self.cliente, [pedido], self.msgs)
-        self.assertIn("R$ 1.000,00", resultado)
-        self.assertIn("prazo padrão de 30 dias", resultado)
+        texto = "\n".join(resultado)
+        self.assertIn("R$ 1.000,00", texto)
+        self.assertIn("prazo padrão de 30 dias", texto)
 
     def test_renovacao_prazo_45_mapeia_para_mais_proximo(self):
         # |45-30|=15 == |45-60|=15 -> empate resolvido pelo primeiro (30).
         self._contrato(contrato="C1", vlr_renovacao_30=999, vlr_renovacao_60=1999)
         pedido = InfoContratoPedido(info=InfoContrato.VALOR_RENOVACAO, prazo_dias=45)
         resultado = renderizar_infos_contrato(self.cliente, [pedido], self.msgs)
-        self.assertIn("R$ 999,00", resultado)
-        self.assertNotIn("R$ 1.999,00", resultado)
+        texto = "\n".join(resultado)
+        self.assertIn("R$ 999,00", texto)
+        self.assertNotIn("R$ 1.999,00", texto)
 
     def test_renovacao_prazo_100_mapeia_para_90(self):
         self._contrato(contrato="C1", vlr_renovacao_90=2500, vlr_renovacao_120=3000)
         pedido = InfoContratoPedido(info=InfoContrato.VALOR_RENOVACAO, prazo_dias=100)
         resultado = renderizar_infos_contrato(self.cliente, [pedido], self.msgs)
-        self.assertIn("R$ 2.500,00", resultado)
-        self.assertIn("90", resultado)
+        texto = "\n".join(resultado)
+        self.assertIn("R$ 2.500,00", texto)
+        self.assertIn("90", texto)
 
     def test_quitacao_usa_campo_liquidacao_do_erp(self):
         # Quitação vem do campo texto `liquidacao` do ERP (já formatado),
         # NUNCA de vlr_liquido (valor recebido na contratação).
         self._contrato(contrato="C1", liquidacao="R$850,00", vlr_liquido=999)
         resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO)], self.msgs)
-        self.assertIn("R$ 850,00", resultado)
-        self.assertNotIn("999", resultado)
+        self.assertEqual(len(resultado), 1)
+        self.assertIn("R$ 850,00", resultado[0])
+        self.assertNotIn("999", resultado[0])
 
     def test_quitacao_sem_liquidacao_avisa_indisponivel(self):
         self._contrato(contrato="C1", liquidacao="")
         resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO)], self.msgs)
-        self.assertIn("indisponível", resultado)
+        self.assertIn("indisponível", resultado[0])
 
     def test_parcela_pula_contrato_nao_parcelado(self):
         self._contrato(contrato="C1", parcelado=False, vlr_parcela=100)
         self._contrato(contrato="C2", parcelado=True, vlr_parcela=200)
         resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_PARCELA)], self.msgs)
-        self.assertIn("C2", resultado)
-        self.assertIn("R$ 200,00", resultado)
-        self.assertNotIn("C1", resultado)
-        self.assertNotIn("R$ 100,00", resultado)
+        # só 1 contrato parcelado -> sem intro/totalizador, lista de 1 item.
+        self.assertEqual(len(resultado), 1)
+        self.assertIn("C2", resultado[0])
+        self.assertIn("R$ 200,00", resultado[0])
+        self.assertNotIn("C1", resultado[0])
+        self.assertNotIn("R$ 100,00", resultado[0])
 
-    def test_multi_contrato_usa_header_e_footer(self):
+    def test_multi_contrato_usa_intro_e_totalizador(self):
         self._contrato(contrato="C1")
         self._contrato(contrato="C2")
         resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VENCIMENTO)], self.msgs)
-        self.assertIn("C1", resultado)
-        self.assertIn("C2", resultado)
-        self.assertIn(render_template(self.msgs.tpl_lista_footer), resultado)
+        # sequência: intro -> 1 linha por contrato -> totalizador
+        self.assertEqual(len(resultado), 4)
+        self.assertEqual(
+            resultado[0], render_template(self.msgs.tpl_lista_header, nome="Beatriz", qtd=2)
+        )
+        self.assertIn("C1", resultado[1])
+        self.assertIn("C2", resultado[2])
+        self.assertEqual(resultado[3], render_template(self.msgs.tpl_totalizador_sem_valor, qtd=2))
 
-    def test_um_unico_contrato_nao_usa_header_footer(self):
+    def test_um_unico_contrato_retorna_lista_de_um_item_sem_intro_totalizador(self):
         self._contrato(contrato="C1")
         resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VENCIMENTO)], self.msgs)
-        self.assertNotIn(render_template(self.msgs.tpl_lista_footer), resultado)
+        self.assertEqual(len(resultado), 1)
+        self.assertNotEqual(resultado[0], render_template(self.msgs.tpl_lista_header, nome="Beatriz", qtd=1))
 
     def test_lista_e_detalhe_usam_template_resumo(self):
         self._contrato(contrato="C1", vlr_emprestimo=500)
         for info in (InfoContrato.LISTA_CONTRATOS, InfoContrato.DETALHE_CONTRATO):
             resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=info)], self.msgs)
-            self.assertIn("C1", resultado)
-            self.assertIn("R$ 500,00", resultado)
+            self.assertEqual(len(resultado), 1)
+            self.assertIn("C1", resultado[0])
+            self.assertIn("R$ 500,00", resultado[0])
+
+    # --- Totalizador: soma dos valores + quantidade -------------------------
+
+    def test_totalizador_renovacao_soma_valores(self):
+        self._contrato(contrato="C1", vlr_renovacao_30=1000)
+        self._contrato(contrato="C2", vlr_renovacao_30=2000)
+        pedido = InfoContratoPedido(info=InfoContrato.VALOR_RENOVACAO, prazo_dias=30)
+        resultado = renderizar_infos_contrato(self.cliente, [pedido], self.msgs)
+        totalizador = resultado[-1]
+        self.assertIn("R$ 3.000,00", totalizador)
+        self.assertEqual(totalizador, render_template(self.msgs.tpl_totalizador, qtd=2, total="R$ 3.000,00"))
+
+    def test_totalizador_parcela_soma_so_parcelados(self):
+        self._contrato(contrato="C1", parcelado=True, vlr_parcela=100)
+        self._contrato(contrato="C2", parcelado=True, vlr_parcela=250)
+        self._contrato(contrato="C3", parcelado=False, vlr_parcela=999)
+        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_PARCELA)], self.msgs)
+        totalizador = resultado[-1]
+        self.assertIn("R$ 350,00", totalizador)
+        self.assertNotIn("999", "\n".join(resultado))
+        # C3 não é parcelado -> 2 linhas + intro + totalizador = 4
+        self.assertEqual(len(resultado), 4)
+
+    def test_totalizador_quitacao_soma_valores_texto_do_erp(self):
+        # "R$ 1.813,70" (com espaço) e "R$4.448,60" (sem espaço) -- ambos os
+        # formatos que o ERP legado produz.
+        self._contrato(contrato="C1", liquidacao="R$ 1.813,70")
+        self._contrato(contrato="C2", liquidacao="R$4.448,60")
+        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO)], self.msgs)
+        totalizador = resultado[-1]
+        self.assertIn("R$ 6.262,30", totalizador)
+        self.assertNotIn("indisponível", totalizador)
+        self.assertNotIn("não somei", totalizador)
+
+    def test_totalizador_quitacao_parcial_indisponivel_soma_resto_com_aviso(self):
+        self._contrato(contrato="C1", liquidacao="R$ 1.813,70")
+        self._contrato(contrato="C2", liquidacao="")
+        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO)], self.msgs)
+        totalizador = resultado[-1]
+        self.assertIn("R$ 1.813,70", totalizador)
+        self.assertIn("não somei 1 contrato(s) com valor de quitação indisponível", totalizador)
+
+    def test_totalizador_quitacao_todos_indisponiveis_usa_tpl_sem_valor(self):
+        self._contrato(contrato="C1", liquidacao="")
+        self._contrato(contrato="C2", liquidacao="")
+        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO)], self.msgs)
+        totalizador = resultado[-1]
+        base_esperada = render_template(self.msgs.tpl_totalizador_sem_valor, qtd=2)
+        self.assertTrue(totalizador.startswith(base_esperada))
+        self.assertIn("não somei 2 contrato(s) com valor de quitação indisponível", totalizador)
+
+
+class EnviarFilaTests(TestCase):
+    """`_enviar_fila`: pausa PAUSA_FANOUT entre mensagens (n-1 pausas),
+    "toca" o mutex a cada envio, e colapsa o excedente acima do teto
+    MAX_MENSAGENS_TURNO preservando o primeiro e o último item da fila."""
+
+    def setUp(self):
+        self.conv = Conversa.objects.create(remote_jid="5567900000010@s.whatsapp.net")
+
+    @patch("whatsapp.tasks.time.sleep")
+    def test_pausa_n_menos_um_vezes_entre_mensagens(self, mock_sleep):
+        enviados = []
+        _enviar_fila(["a", "b", "c"], enviados.append, lambda *a, **k: None, self.conv)
+
+        self.assertEqual(enviados, ["a", "b", "c"])
+        self.assertEqual(mock_sleep.call_count, 2)
+        mock_sleep.assert_called_with(PAUSA_FANOUT)
+
+    @patch("whatsapp.tasks.time.sleep")
+    def test_um_unico_item_nao_pausa(self, mock_sleep):
+        enviados = []
+        _enviar_fila(["único"], enviados.append, lambda *a, **k: None, self.conv)
+        mock_sleep.assert_not_called()
+
+    @patch("whatsapp.tasks.time.sleep")
+    def test_toca_processando_desde_a_cada_envio(self, mock_sleep):
+        antes = timezone.now() - timedelta(minutes=5)
+        self.conv.processando_desde = antes
+        self.conv.save(update_fields=["processando_desde"])
+
+        _enviar_fila(["a", "b"], lambda t: None, lambda *a, **k: None, self.conv)
+
+        self.conv.refresh_from_db()
+        self.assertIsNotNone(self.conv.processando_desde)
+        self.assertGreater(self.conv.processando_desde, antes)
+
+    @patch("whatsapp.tasks.time.sleep")
+    def test_teto_12_colapsa_excedente_preservando_intro_e_totalizador(self, mock_sleep):
+        fila = ["intro"] + [f"linha {i}" for i in range(15)] + ["totalizador"]
+        enviados = []
+        _enviar_fila(fila, enviados.append, lambda *a, **k: None, self.conv)
+
+        self.assertLessEqual(len(enviados), MAX_MENSAGENS_TURNO)
+        self.assertEqual(enviados[0], "intro")
+        self.assertEqual(enviados[-1], "totalizador")
+        # a mensagem colapsada (penúltima) deve conter as linhas excedentes
+        self.assertIn("linha 14", enviados[-2])
+        self.assertIn("linha 0", "\n".join(enviados))  # nenhuma linha foi perdida
+
+    @patch("whatsapp.tasks.time.sleep")
+    def test_fila_dentro_do_teto_nao_colapsa(self, mock_sleep):
+        fila = [f"item {i}" for i in range(MAX_MENSAGENS_TURNO)]
+        enviados = []
+        _enviar_fila(fila, enviados.append, lambda *a, **k: None, self.conv)
+        self.assertEqual(enviados, fila)
+
+    @patch("whatsapp.tasks.time.sleep")
+    def test_arquivos_na_fila_nunca_sao_colapsados(self, mock_sleep):
+        fila = [f"linha {i}" for i in range(14)] + [("caminho.pdf", "boleto.pdf", "legenda")]
+        enviados = []
+        arquivos = []
+        _enviar_fila(
+            fila,
+            enviados.append,
+            lambda caminho, nome, legenda="": arquivos.append((caminho, nome, legenda)),
+            self.conv,
+        )
+        # não colapsa (fila tem item não-string) -> todos os 15 itens são enviados.
+        self.assertEqual(len(enviados) + len(arquivos), 15)
+        self.assertEqual(arquivos, [("caminho.pdf", "boleto.pdf", "legenda")])

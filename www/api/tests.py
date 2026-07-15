@@ -22,7 +22,7 @@ from core.models import (
     MensagensConfig,
     Solicitacao,
 )
-from ia.schemas import ClassificacaoMensagem, TipoIntencaoV2
+from ia.schemas import ClassificacaoMensagem, InfoContrato, InfoContratoPedido, TipoIntencaoV2
 from painel.views import MENSAGENS_DEFAULTS, SIMULADOR_SESSION_KEY
 
 
@@ -681,6 +681,51 @@ class APIEndpointsTestCase(APITestCase):
         response = self.client.post(url, {"acao": "remover_cliente"}, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIsNone(response.data["cliente"])
+
+    @patch("api.views.extrair_intencao")
+    def test_simulator_view_flow_appenda_um_turno_out_por_mensagem(self, mock_extrair_intencao):
+        # info_contrato com 2+ contratos ativos faz fan-out: intro + 1 linha
+        # por contrato + totalizador -- cada um deve virar 1 turno "out"
+        # separado (paridade com o WhatsApp real via `_enviar_fila`); o
+        # `debug` só aparece no último turno.
+        ContratoPenhor.objects.create(
+            contrato="67890",
+            cliente=self.cliente,
+            nome="Segundo Contrato",
+            situacao="Contrato em Aberto",
+            situacao_codigo="EMNV",
+            vlr_emprestimo=1000.00,
+            data_vencimento=timezone.localdate() + timedelta(days=45),
+        )
+
+        self.client.login(username="admin", password="password")
+        url = reverse("api:simulador")
+
+        response = self.client.post(url, {"acao": "selecionar_cliente", "cpf": self.cliente.cpf}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        mock_extrair_intencao.return_value = ClassificacaoMensagem(
+            tipo_intencao=TipoIntencaoV2.INFO_CONTRATO,
+            precisa_humano=False,
+            solicitacoes=[],
+            infos_contrato=[InfoContratoPedido(info=InfoContrato.VENCIMENTO)],
+            pronto_para_criar_solicitacao=False,
+            faq_id=None,
+            pergunta_sugerida_faq=None,
+        )
+
+        response = self.client.post(url, {"acao": "enviar", "mensagem": "quando vencem meus contratos?"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        turnos = response.data["turnos"]
+
+        # 1 turno "in" + (intro + 2 linhas + totalizador) turnos "out" = 5
+        self.assertEqual(len(turnos), 5)
+        self.assertEqual(turnos[0]["direcao"], "in")
+        turnos_out = turnos[1:]
+        for turno in turnos_out[:-1]:
+            self.assertNotIn("debug", turno)
+        self.assertIn("debug", turnos_out[-1])
+        self.assertEqual(turnos_out[-1]["debug"]["tipo_intencao"], "info_contrato")
 
 
 # --- WS-D2: mídia no detail de conversa, envio de arquivo, FAQs sugeridas ----

@@ -31,6 +31,8 @@ from .mensagens_defaults import (
     DEFAULT_TPL_LISTA_FOOTER,
     DEFAULT_TPL_LISTA_HEADER,
     DEFAULT_TPL_SAUDACAO_CLIENTE,
+    DEFAULT_TPL_TOTALIZADOR,
+    DEFAULT_TPL_TOTALIZADOR_SEM_VALOR,
 )
 
 
@@ -468,7 +470,12 @@ class MensagensConfig(models.Model):
     tpl_contrato_parcela = models.TextField(default=DEFAULT_TPL_CONTRATO_PARCELA)
     tpl_contrato_resumo = models.TextField(default=DEFAULT_TPL_CONTRATO_RESUMO)
     tpl_lista_header = models.TextField(default=DEFAULT_TPL_LISTA_HEADER)
-    tpl_lista_footer = models.TextField(default=DEFAULT_TPL_LISTA_FOOTER)
+    tpl_lista_footer = models.TextField(
+        default=DEFAULT_TPL_LISTA_FOOTER,
+        help_text="(não usado — fechamento incorporado ao totalizador)",
+    )
+    tpl_totalizador = models.TextField(default=DEFAULT_TPL_TOTALIZADOR)
+    tpl_totalizador_sem_valor = models.TextField(default=DEFAULT_TPL_TOTALIZADOR_SEM_VALOR)
     msg_fallback_sem_resposta = models.TextField(default=DEFAULT_MSG_FALLBACK_SEM_RESPOSTA)
     msg_info_negada_desconhecido = models.TextField(default=DEFAULT_MSG_INFO_NEGADA_DESCONHECIDO)
     msg_midia_nao_suportada = models.TextField(default=DEFAULT_MSG_MIDIA_NAO_SUPORTADA)

@@ -445,6 +445,8 @@ class MensagensConfigAPIView(GenericAPIView):
             DEFAULT_MSG_VERIFICACAO_FALHOU,
             DEFAULT_MSG_VERIFICACAO_OK,
             DEFAULT_SYSTEM_PROMPT,
+            DEFAULT_TPL_TOTALIZADOR,
+            DEFAULT_TPL_TOTALIZADOR_SEM_VALOR,
         )
 
         defaults = {
@@ -466,6 +468,8 @@ class MensagensConfigAPIView(GenericAPIView):
             "msg_segunda_via_confirma": DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
             "msg_insistiu_humano": DEFAULT_MSG_INSISTIU_HUMANO,
             "msg_neutra_padrao": DEFAULT_MSG_NEUTRA_PADRAO,
+            "tpl_totalizador": DEFAULT_TPL_TOTALIZADOR,
+            "tpl_totalizador_sem_valor": DEFAULT_TPL_TOTALIZADOR_SEM_VALOR,
         }
 
         if campo in defaults:
@@ -511,6 +515,8 @@ class MensagensConfigRestoreAPIView(GenericAPIView):
             DEFAULT_MSG_VERIFICACAO_FALHOU,
             DEFAULT_MSG_VERIFICACAO_OK,
             DEFAULT_SYSTEM_PROMPT,
+            DEFAULT_TPL_TOTALIZADOR,
+            DEFAULT_TPL_TOTALIZADOR_SEM_VALOR,
         )
 
         defaults = {
@@ -532,6 +538,8 @@ class MensagensConfigRestoreAPIView(GenericAPIView):
             "msg_segunda_via_confirma": DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
             "msg_insistiu_humano": DEFAULT_MSG_INSISTIU_HUMANO,
             "msg_neutra_padrao": DEFAULT_MSG_NEUTRA_PADRAO,
+            "tpl_totalizador": DEFAULT_TPL_TOTALIZADOR,
+            "tpl_totalizador_sem_valor": DEFAULT_TPL_TOTALIZADOR_SEM_VALOR,
         }
 
         if campo in defaults:
@@ -1037,23 +1045,29 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
         return response
 
 
-def _montar_resposta_simulador(resultado, cliente, msgs):
+def _montar_resposta_simulador(resultado, cliente, msgs) -> list:
     """Espelha (sem efeitos colaterais em BD) o dispatch determinístico de
     `whatsapp.tasks.process_mensagem` para o simulador: a partir do WS-A a
     IA é só classificadora -- o texto de exibição vem de templates/renderer
     em Python, nunca de um campo de texto da IA. Não cria Solicitacao real
-    nem envia nada via WhatsApp; é só uma prévia do que o bot responderia."""
+    nem envia nada via WhatsApp; é só uma prévia do que o bot responderia.
+
+    Retorna uma LISTA de mensagens (paridade com o fan-out real de
+    `whatsapp.tasks._enviar_fila`): cada item vira uma bolha/turno separado
+    no simulador. Uma FAQResposta com arquivo vira uma entrada
+    "📎 {nome}" + o texto da legenda, já que o simulador não envia arquivo
+    de verdade."""
     from ia.schemas import TipoIntencaoV2
     from whatsapp.respostas_contrato import render_template, renderizar_infos_contrato
     from whatsapp.tasks import _montar_pergunta_pagamento_incompleto, _saudacao
 
     if resultado.tipo_intencao == TipoIntencaoV2.PAGAMENTO:
         if resultado.pronto_para_criar_solicitacao and resultado.solicitacoes and cliente:
-            return f"{msgs.msg_solicitacao_criada}\n\n(simulação: nenhuma solicitação real foi criada)"
-        return _montar_pergunta_pagamento_incompleto(cliente, msgs)
+            return [f"{msgs.msg_solicitacao_criada}\n\n(simulação: nenhuma solicitação real foi criada)"]
+        return [_montar_pergunta_pagamento_incompleto(cliente, msgs)]
 
     if resultado.tipo_intencao == TipoIntencaoV2.SEGUNDA_VIA:
-        return f"{msgs.msg_segunda_via_confirma.format(contratos='(simulação)', tipo='(simulação)')}"
+        return [msgs.msg_segunda_via_confirma.format(contratos='(simulação)', tipo='(simulação)')]
 
     if resultado.tipo_intencao == TipoIntencaoV2.INFO_CONTRATO and resultado.infos_contrato:
         return renderizar_infos_contrato(cliente, resultado.infos_contrato, msgs)
@@ -1061,19 +1075,28 @@ def _montar_resposta_simulador(resultado, cliente, msgs):
     if resultado.faq_id:
         try:
             faq = FAQ.objects.get(id=resultado.faq_id, ativo=True)
-            textos = [r.texto for r in faq.respostas.all().order_by("ordem") if r.texto]
-            if textos:
-                return "\n".join(textos)
+            itens = []
+            for resp in faq.respostas.all().order_by("ordem"):
+                if resp.arquivo:
+                    nome_arquivo = os.path.basename(resp.arquivo.name)
+                    entrada = f"📎 {nome_arquivo}"
+                    if resp.texto:
+                        entrada = f"{entrada}\n{resp.texto}"
+                    itens.append(entrada)
+                elif resp.texto:
+                    itens.append(resp.texto)
+            if itens:
+                return itens
         except FAQ.DoesNotExist:
             pass
 
     if resultado.tipo_intencao == TipoIntencaoV2.SAUDACAO:
         if cliente:
             primeiro_nome = (cliente.nome or "").split()[0] if cliente.nome else ""
-            return render_template(msgs.tpl_saudacao_cliente, saudacao=_saudacao(), nome=primeiro_nome)
-        return msgs.msg_saudacao.format(saudacao=_saudacao())
+            return [render_template(msgs.tpl_saudacao_cliente, saudacao=_saudacao(), nome=primeiro_nome)]
+        return [msgs.msg_saudacao.format(saudacao=_saudacao())]
 
-    return msgs.msg_fallback_sem_resposta
+    return [msgs.msg_fallback_sem_resposta]
 
 
 def _debug_resultado_simulador(resultado):
@@ -1202,14 +1225,16 @@ class SimulatorView(GenericAPIView):
                     contato_tipo="cliente",
                 )
                 msgs = MensagensConfig.get_solo()
-                texto_resposta = _montar_resposta_simulador(resultado, cliente, msgs)
+                respostas = _montar_resposta_simulador(resultado, cliente, msgs)
+                debug = _debug_resultado_simulador(resultado)
 
                 estado["turnos"].append({"direcao": "in", "texto": texto})
-                estado["turnos"].append({
-                    "direcao": "out",
-                    "texto": texto_resposta,
-                    "debug": _debug_resultado_simulador(resultado),
-                })
+                ultimo_idx = len(respostas) - 1
+                for idx, resposta_texto in enumerate(respostas):
+                    turno = {"direcao": "out", "texto": resposta_texto}
+                    if idx == ultimo_idx:
+                        turno["debug"] = debug
+                    estado["turnos"].append(turno)
                 request.session[SIMULADOR_SESSION_KEY] = estado
                 request.session.modified = True
 
@@ -1282,13 +1307,18 @@ class SimulatorChatAPIView(GenericAPIView):
             contato_tipo="cliente",
         )
         msgs = MensagensConfig.get_solo()
-        texto_resposta = _montar_resposta_simulador(resultado, cliente, msgs)
+        respostas = _montar_resposta_simulador(resultado, cliente, msgs)
+        debug = _debug_resultado_simulador(resultado)
+        # Endpoint legado: mantém `resposta_sugerida` como texto único (join
+        # "\n\n") para não quebrar consumidores existentes, mas também expõe
+        # `respostas` (lista) com paridade ao fan-out real de `_enviar_fila`.
+        texto_resposta = "\n\n".join(respostas)
 
         new_turn_in = {"direcao": "in", "texto": mensagem}
         new_turn_out = {
             "direcao": "out",
             "texto": texto_resposta,
-            "debug": _debug_resultado_simulador(resultado),
+            "debug": debug,
         }
         historico_turnos.append(new_turn_in)
         historico_turnos.append(new_turn_out)
@@ -1300,7 +1330,8 @@ class SimulatorChatAPIView(GenericAPIView):
 
         return Response({
             "resposta_sugerida": texto_resposta,
-            "debug": new_turn_out["debug"],
+            "respostas": respostas,
+            "debug": debug,
             "historico": historico_turnos
         })
 

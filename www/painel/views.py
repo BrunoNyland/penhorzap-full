@@ -29,6 +29,8 @@ from core.mensagens_defaults import (
     DEFAULT_MSG_VERIFICACAO_FALHOU,
     DEFAULT_MSG_VERIFICACAO_OK,
     DEFAULT_SYSTEM_PROMPT,
+    DEFAULT_TPL_TOTALIZADOR,
+    DEFAULT_TPL_TOTALIZADOR_SEM_VALOR,
 )
 from core.models import Boleto, BotConfig, Cliente, Conversa, ContratoPenhor, FAQ, Mensagem, MensagensConfig, Solicitacao
 from ia.services import extrair_intencao
@@ -61,6 +63,8 @@ MENSAGENS_DEFAULTS = {
     "msg_segunda_via_confirma": DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
     "msg_insistiu_humano": DEFAULT_MSG_INSISTIU_HUMANO,
     "msg_neutra_padrao": DEFAULT_MSG_NEUTRA_PADRAO,
+    "tpl_totalizador": DEFAULT_TPL_TOTALIZADOR,
+    "tpl_totalizador_sem_valor": DEFAULT_TPL_TOTALIZADOR_SEM_VALOR,
 }
 
 # Campos do novo fluxo exibidos genericamente na tela de Mensagens & Prompt.
@@ -509,12 +513,16 @@ def simulador_chat(request):
                 from api.views import _debug_resultado_simulador, _montar_resposta_simulador
 
                 msgs = MensagensConfig.get_solo()
+                respostas = _montar_resposta_simulador(resultado, cliente, msgs)
+                debug = _debug_resultado_simulador(resultado)
+
                 estado["turnos"].append({"direcao": "in", "texto": texto})
-                estado["turnos"].append({
-                    "direcao": "out",
-                    "texto": _montar_resposta_simulador(resultado, cliente, msgs),
-                    "debug": _debug_resultado_simulador(resultado),
-                })
+                ultimo_idx = len(respostas) - 1
+                for idx, resposta_texto in enumerate(respostas):
+                    turno = {"direcao": "out", "texto": resposta_texto}
+                    if idx == ultimo_idx:
+                        turno["debug"] = debug
+                    estado["turnos"].append(turno)
                 request.session.modified = True
 
         elif acao == "reiniciar":

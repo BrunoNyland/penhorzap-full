@@ -33,6 +33,7 @@ Fluxo por mensagem (process_mensagem):
 import logging
 import os
 import re
+import time
 from datetime import timedelta
 
 from django.db import transaction
@@ -67,6 +68,12 @@ JANELA_NAO_LIDAS = timedelta(hours=24)
 LOCK_TIMEOUT = timedelta(seconds=60)
 REAGENDAR_ATRASO = timedelta(seconds=5)
 PRAZOS_RENOVACAO = (30, 60, 90, 120, 150, 180)
+
+# Fan-out de mensagens (WS-A v3): pausa entre mensagens de uma mesma
+# resposta (imita cadência humana) e teto de mensagens por turno (protege
+# contra o timeout do worker do qcluster e contra inundar o cliente).
+PAUSA_FANOUT = 1.2
+MAX_MENSAGENS_TURNO = 12
 
 # Situações (código) que representam contrato liquidado -> não ativo.
 SITUACOES_LIQUIDADAS_COD = {"AVAL", "AVCL", "LQ", "LQDE", "LQSD", "LQVL", "OBJA", "SJLQ", "ER", ""}
@@ -318,9 +325,14 @@ def _criar_solicitacoes(conv, cliente, drafts):
     return criadas
 
 
-def _handle_segunda_via(conv, cliente, msgs, responder):
+def _handle_segunda_via(conv, cliente, msgs) -> list:
     """Boleto de dia anterior: clona a última solicitação com boleto e pede
-    confirmação dos dados antes de disponibilizar para o operador."""
+    confirmação dos dados antes de disponibilizar para o operador.
+
+    Retorna a lista de mensagens a enviar (o chamador despacha via
+    `_enviar_fila`); os efeitos de estado (criação de `Solicitacao`,
+    mudança de `conv.estado`/`precisa_revisao_humana`) continuam
+    acontecendo aqui, síncronos com a decisão tomada."""
     sol = (
         Solicitacao.objects.filter(cliente=cliente, boletos__isnull=False)
         .order_by("-criado_em").first()
@@ -328,25 +340,22 @@ def _handle_segunda_via(conv, cliente, msgs, responder):
     if not sol:
         conv.precisa_revisao_humana = True
         conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
-        responder(msgs.msg_neutra_padrao)
-        return
+        return [msgs.msg_neutra_padrao]
 
     ultimo_boleto = sol.boletos.order_by("-enviado_em").first()
     if not ultimo_boleto or not ultimo_boleto.enviado_em:
         conv.precisa_revisao_humana = True
         conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
-        responder(msgs.msg_neutra_padrao)
-        return
+        return [msgs.msg_neutra_padrao]
 
     if ultimo_boleto.enviado_em.date() >= timezone.localdate():
         # De hoje: não recria; apenas sinaliza.
-        responder(
-            "Acho que te mandei o boleto hoje, será que não chegou? Deixa comigo "
-            "que vou verificar e te reenvio assim que possível."
-        )
         conv.precisa_revisao_humana = True
         conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
-        return
+        return [
+            "Acho que te mandei o boleto hoje, será que não chegou? Deixa comigo "
+            "que vou verificar e te reenvio assim que possível."
+        ]
 
     # Dia anterior: clona a solicitação (pendente) e pede confirmação.
     nova = Solicitacao.objects.create(
@@ -358,11 +367,63 @@ def _handle_segunda_via(conv, cliente, msgs, responder):
     )
     nova.contratos.set(list(sol.contratos.all()))
     contratos_txt = ", ".join(sol.contratos.values_list("contrato", flat=True)) or "todos"
-    responder(
-        render_template(msgs.msg_segunda_via_confirma, contratos=contratos_txt, tipo=sol.get_tipo_display())
-    )
     conv.estado = Conversa.Estado.AGUARDANDO_BOLETO
     conv.save(update_fields=["estado", "ultima_interacao"])
+    return [
+        render_template(msgs.msg_segunda_via_confirma, contratos=contratos_txt, tipo=sol.get_tipo_display())
+    ]
+
+
+def _colapsar_fila(fila: list) -> list:
+    """Se `fila` exceder `MAX_MENSAGENS_TURNO`, colapsa o excedente do MEIO
+    numa única mensagem unida por `"\\n"`, preservando sempre o primeiro
+    item (a intro, nos blocos de `renderizar_infos_contrato`) e o último
+    (o totalizador) intactos -- é aí que mora o resumo que o cliente precisa
+    ver de qualquer forma.
+
+    Implementado aqui (em vez de em `respostas_contrato.py`) porque o teto
+    é por TURNO de envio (`_enviar_fila`), não por bloco de
+    `InfoContratoPedido`: nesta fase o dispatch ainda é uma cadeia de ifs
+    com um único tipo de ação por turno, então a fila de um dado envio é
+    sempre homogênea (só linhas de contrato, ou só respostas de FAQ) --
+    colapsar de forma genérica aqui cobre os dois casos sem duplicar lógica.
+    Itens de arquivo (tuplas `(caminho, nome, legenda)`) nunca são
+    colapsáveis; se algum aparecer na fila, ela é enviada inteira sem
+    colapso (mensagens de arquivo não têm como ser unidas por texto)."""
+    if len(fila) <= MAX_MENSAGENS_TURNO:
+        return fila
+    if len(fila) < 3 or any(not isinstance(item, str) for item in fila):
+        return fila
+
+    primeiro, *meio, ultimo = fila
+    # saída final = primeiro + mantidos + 1 mensagem colapsada + último
+    # -> "vagas" (itens do meio mantidos separados) = teto - 3.
+    vagas = max(MAX_MENSAGENS_TURNO - 3, 0)
+    mantidos = meio[:vagas]
+    colapsado = "\n".join(meio[vagas:])
+    return [primeiro, *mantidos, colapsado, ultimo]
+
+
+def _enviar_fila(fila: list, responder, responder_arquivo, conv: Conversa) -> None:
+    """Envia uma fila de itens (texto -> `responder`; tupla
+    `(caminho, nome, legenda)` -> `responder_arquivo`) como mensagens
+    WhatsApp separadas, com `PAUSA_FANOUT` segundos entre cada uma (n-1
+    pausas para n itens) -- imita a cadência de alguém digitando várias
+    mensagens em vez de um bloco de texto único.
+
+    A cada envio, "toca" `Conversa.processando_desde` para agora: um
+    fan-out longo (várias mensagens + pausas) não pode parecer, para outra
+    task concorrente, um lock expirado (`LOCK_TIMEOUT`)."""
+    fila = _colapsar_fila(list(fila))
+    total = len(fila)
+    for i, item in enumerate(fila):
+        if isinstance(item, tuple):
+            responder_arquivo(*item)
+        else:
+            responder(item)
+        Conversa.objects.filter(pk=conv.pk).update(processando_desde=timezone.now())
+        if i < total - 1:
+            time.sleep(PAUSA_FANOUT)
 
 
 def _reagendar(mensagem_id: int, atraso: timedelta = REAGENDAR_ATRASO):
@@ -636,13 +697,16 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
 
     # 10) Segunda via
     if resultado.tipo_intencao == TipoIntencaoV2.SEGUNDA_VIA and cliente:
-        _handle_segunda_via(conv, cliente, msgs, responder)
+        fila = _handle_segunda_via(conv, cliente, msgs)
+        _enviar_fila(fila, responder, responder_arquivo, conv)
         _log_auditoria(conv, resultado, "acao:segunda_via -> clonou solicitação/pediu confirmação")
         return
 
-    # 11) Info de contrato -> renderer determinístico (nunca texto da IA)
+    # 11) Info de contrato -> renderer determinístico (nunca texto da IA);
+    # fan-out: intro + 1 mensagem por contrato + totalizador (2+ contratos).
     if resultado.tipo_intencao == TipoIntencaoV2.INFO_CONTRATO and resultado.infos_contrato:
-        responder(renderizar_infos_contrato(cliente, resultado.infos_contrato, msgs))
+        fila = renderizar_infos_contrato(cliente, resultado.infos_contrato, msgs)
+        _enviar_fila(fila, responder, responder_arquivo, conv)
         _log_auditoria(conv, resultado, "acao:info_contrato -> renderizou template de contrato")
         return
 
@@ -651,13 +715,15 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
         try:
             faq = FAQ.objects.get(id=resultado.faq_id, ativo=True)
             respostas = faq.respostas.all().order_by("ordem")
+            fila = []
             for resp in respostas:
                 if resp.arquivo:
                     caminho_completo = resp.arquivo.path
                     nome_arquivo = os.path.basename(resp.arquivo.name)
-                    responder_arquivo(caminho_completo, nome_arquivo, resp.texto)
+                    fila.append((caminho_completo, nome_arquivo, resp.texto))
                 elif resp.texto:
-                    responder(resp.texto)
+                    fila.append(resp.texto)
+            _enviar_fila(fila, responder, responder_arquivo, conv)
             _log_auditoria(conv, resultado, f"acao:faq -> respondeu FAQ {faq.id}")
             return
         except FAQ.DoesNotExist:
