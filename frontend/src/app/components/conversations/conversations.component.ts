@@ -176,18 +176,18 @@ import { IconComponent } from '../../shared/icon/icon.component';
                   @if (msg.possui_midia) {
                     <div class="message-media">
                       @if (msg.tipo_midia === 'image') {
-                        <a [href]="'/api/conversas/' + activeChat().id + '/mensagens/' + msg.id + '/media/'" target="_blank">
-                          <img [src]="'/api/conversas/' + activeChat().id + '/mensagens/' + msg.id + '/media/'" alt="Imagem" class="chat-media-image" />
+                        <a [href]="getMediaUrl(activeChat().id, msg)" target="_blank">
+                          <img [src]="getMediaUrl(activeChat().id, msg)" alt="Imagem" class="chat-media-image" />
                         </a>
                         @if (msg.legenda) {
                           <div class="message-text margin-top-xs">{{ msg.legenda }}</div>
                         }
                       } @else if (msg.tipo_midia === 'audio') {
-                        <audio controls [src]="'/api/conversas/' + activeChat().id + '/mensagens/' + msg.id + '/media/'" class="chat-media-audio"></audio>
+                        <audio controls [src]="getMediaUrl(activeChat().id, msg)" class="chat-media-audio"></audio>
                       } @else if (msg.tipo_midia === 'video') {
-                        <video controls [src]="'/api/conversas/' + activeChat().id + '/mensagens/' + msg.id + '/media/'" class="chat-media-video"></video>
+                        <video controls [src]="getMediaUrl(activeChat().id, msg)" class="chat-media-video"></video>
                       } @else if (msg.tipo_midia === 'document') {
-                        <a [href]="'/api/conversas/' + activeChat().id + '/mensagens/' + msg.id + '/media/'" target="_blank" download class="chat-media-document">
+                        <a [href]="getMediaUrl(activeChat().id, msg)" target="_blank" download class="chat-media-document">
                           <app-icon name="file-text" [size]="18"></app-icon>
                           <span>{{ msg.legenda || 'Baixar Documento' }}</span>
                         </a>
@@ -196,7 +196,14 @@ import { IconComponent } from '../../shared/icon/icon.component';
                   } @else {
                     <div class="message-text">{{ msg.texto }}</div>
                   }
-                  <div class="message-time text-muted">{{ msg.criado_em | date:'HH:mm' }}</div>
+                  <div class="message-time text-muted flex align-center gap-1">
+                    @if (msg.direcao === 'out' && msg.enviado_ok === false) {
+                      <span class="nao-entregue" title="Não entregue: falha ao enviar via WhatsApp">
+                        <app-icon name="alert-triangle" [size]="11"></app-icon>
+                      </span>
+                    }
+                    {{ msg.criado_em | date:'HH:mm' }}
+                  </div>
                 </div>
               </div>
             } @empty {
@@ -204,8 +211,62 @@ import { IconComponent } from '../../shared/icon/icon.component';
             }
           </div>
 
+          <!-- Attachment Preview -->
+          @if (anexoArquivo()) {
+            <div class="anexo-preview card">
+              <div class="anexo-preview-content flex align-center gap-2">
+                @if (anexoPreviewUrl()) {
+                  <img [src]="anexoPreviewUrl()" class="anexo-thumb" alt="Prévia" />
+                } @else {
+                  <app-icon name="file-text" [size]="22"></app-icon>
+                }
+                <div class="anexo-info flex-1">
+                  <strong class="text-small">{{ anexoArquivo()!.name }}</strong>
+                  <div class="text-muted text-small">{{ formatFileSize(anexoArquivo()!.size) }}</div>
+                </div>
+                <button type="button" class="clear-file" (click)="cancelarAnexo()" title="Remover anexo">×</button>
+              </div>
+              <input
+                type="text"
+                placeholder="Legenda (opcional)..."
+                [(ngModel)]="anexoLegenda"
+                class="margin-top-xs"
+              />
+              @if (anexoErro()) {
+                <p class="text-danger text-small margin-top-xs">{{ anexoErro() }}</p>
+              }
+              <button
+                type="button"
+                class="btn btn-primary btn-small margin-top-xs"
+                [disabled]="enviandoAnexo()"
+                (click)="enviarAnexo()"
+              >
+                @if (enviandoAnexo()) {
+                  <div class="spinner spinner-small"></div>
+                } @else {
+                  <app-icon name="paperclip" [size]="14"></app-icon> Enviar Arquivo
+                }
+              </button>
+            </div>
+          }
+
           <!-- Reply Box -->
           <div class="reply-box">
+            <button
+              type="button"
+              class="btn btn-secondary anexo-btn"
+              (click)="anexoInput.click()"
+              title="Anexar arquivo"
+            >
+              <app-icon name="paperclip" [size]="16"></app-icon>
+            </button>
+            <input
+              #anexoInput
+              type="file"
+              hidden
+              accept=".jpg,.jpeg,.png,.webp,.gif,.mp3,.ogg,.opus,.m4a,.mp4,.pdf,.doc,.docx,.xls,.xlsx"
+              (change)="onAnexoSelected($event)"
+            />
             <textarea
               #respostaInput
               placeholder="Digite uma resposta para {{ getDisplayName(activeChat()) }}..."
@@ -580,7 +641,59 @@ import { IconComponent } from '../../shared/icon/icon.component';
       text-decoration: underline;
       font-size: 13px;
     }
-    
+    .nao-entregue {
+      display: inline-flex;
+      color: var(--color-danger);
+    }
+    .anexo-btn {
+      padding: 8px 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .anexo-preview {
+      padding: 12px;
+      margin-top: 10px;
+      background-color: var(--bg-primary);
+    }
+    .anexo-thumb {
+      width: 44px;
+      height: 44px;
+      object-fit: cover;
+      border-radius: var(--radius-sm);
+      flex-shrink: 0;
+    }
+    .anexo-info {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .flex-1 { flex: 1; min-width: 0; }
+    .anexo-preview input[type="text"] {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      background-color: var(--bg-surface);
+      color: var(--text-primary);
+      font-size: 13px;
+    }
+    .clear-file {
+      background: transparent;
+      border: none;
+      color: var(--color-danger);
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .text-danger { color: var(--color-danger); }
+    .gap-1 { gap: 4px; }
+
     /* Responsive Styling for Mobile */
     .back-button {
       display: none;
@@ -649,6 +762,20 @@ export class ConversationsComponent implements OnInit, OnDestroy {
   boletoFiles: { [solicitacaoId: number]: File } = {};
   boletoLinhas: { [solicitacaoId: number]: string } = {};
 
+  // Anexo (envio de arquivo pelo operador) form state
+  anexoArquivo = signal<File | null>(null);
+  anexoPreviewUrl = signal<string | null>(null);
+  anexoLegenda = '';
+  enviandoAnexo = signal(false);
+  anexoErro = signal<string | null>(null);
+  private readonly ANEXO_EXTENSOES_PERMITIDAS = [
+    'jpg', 'jpeg', 'png', 'webp', 'gif',
+    'mp3', 'ogg', 'opus', 'm4a',
+    'mp4',
+    'pdf', 'doc', 'docx', 'xls', 'xlsx'
+  ];
+  private readonly ANEXO_TAMANHO_MAXIMO_BYTES = 16 * 1024 * 1024;
+
   selectedChatId = signal<number | null>(null);
   private pollingInterval: any;
 
@@ -697,12 +824,14 @@ export class ConversationsComponent implements OnInit, OnDestroy {
 
   selectChat(id: number): void {
     this.selectedChatId.set(id);
+    this.cancelarAnexo();
     this.loadActiveChatDetails(id);
   }
 
   clearSelection(): void {
     this.selectedChatId.set(null);
     this.activeChat.set(null);
+    this.cancelarAnexo();
   }
 
   loadActiveChatDetails(id: number, silent = false): void {
@@ -794,6 +923,85 @@ export class ConversationsComponent implements OnInit, OnDestroy {
         this.uploadingBoletoId.set(null);
       }
     });
+  }
+
+  // --- Anexo (envio de arquivo pelo operador) ---
+  getMediaUrl(chatId: number, msg: any): string {
+    // Mensagens OUT enviadas pelo operador têm `arquivo` (arquivo local
+    // servido via /media/...); mensagens IN (recebidas) usam o endpoint que
+    // busca/descriptografa via Evolution API.
+    if (msg.arquivo) return msg.arquivo;
+    return `/api/conversas/${chatId}/mensagens/${msg.id}/media/`;
+  }
+
+  onAnexoSelected(event: any): void {
+    const file: File | undefined = event.target.files[0];
+    event.target.value = '';
+    if (!file) return;
+
+    this.anexoErro.set(null);
+
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (!this.ANEXO_EXTENSOES_PERMITIDAS.includes(ext)) {
+      this.anexoErro.set(`Extensão ".${ext}" não permitida.`);
+      return;
+    }
+    if (file.size > this.ANEXO_TAMANHO_MAXIMO_BYTES) {
+      this.anexoErro.set('Arquivo excede o tamanho máximo permitido (16MB).');
+      return;
+    }
+
+    this.anexoArquivo.set(file);
+    this.anexoLegenda = '';
+
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = () => this.anexoPreviewUrl.set(reader.result as string);
+      reader.readAsDataURL(file);
+    } else {
+      this.anexoPreviewUrl.set(null);
+    }
+  }
+
+  cancelarAnexo(): void {
+    this.anexoArquivo.set(null);
+    this.anexoPreviewUrl.set(null);
+    this.anexoLegenda = '';
+    this.anexoErro.set(null);
+    this.enviandoAnexo.set(false);
+  }
+
+  enviarAnexo(): void {
+    const file = this.anexoArquivo();
+    const chatId = this.selectedChatId();
+    if (!file || !chatId || this.enviandoAnexo()) return;
+
+    this.enviandoAnexo.set(true);
+    this.anexoErro.set(null);
+
+    const formData = new FormData();
+    formData.append('arquivo', file);
+    if (this.anexoLegenda.trim()) {
+      formData.append('legenda', this.anexoLegenda.trim());
+    }
+
+    this.apiService.enviarArquivoConversa(chatId, formData).subscribe({
+      next: () => {
+        this.enviandoAnexo.set(false);
+        this.cancelarAnexo();
+        this.loadActiveChatDetails(chatId, true);
+      },
+      error: (err) => {
+        this.enviandoAnexo.set(false);
+        this.anexoErro.set(err.error?.detail || 'Falha ao enviar arquivo.');
+      }
+    });
+  }
+
+  formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   // --- Display Formatters ---

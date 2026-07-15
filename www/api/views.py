@@ -3,6 +3,7 @@ import os
 import tempfile
 from datetime import timedelta
 from django.utils import timezone
+from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import ExtractDay, ExtractWeekDay, TruncDate
 from django.contrib.auth import login, logout, authenticate
@@ -33,6 +34,7 @@ from core.models import (
     MensagensConfig,
     FAQ,
     FAQResposta,
+    FAQSugerida,
     Conversa,
 )
 
@@ -46,10 +48,13 @@ from .serializers import (
     MensagensConfigSerializer,
     FAQSerializer,
     FAQRespostaSerializer,
+    FAQSugeridaSerializer,
+    FAQSugeridaAprovarSerializer,
     ClienteListSerializer,
     ClienteDetailSerializer,
     ConversaListSerializer,
     ConversaDetailSerializer,
+    MensagemPainelSerializer,
 )
 
 from core.services import importar_sqlite_arquivo
@@ -219,6 +224,7 @@ class DashboardStatsAPIView(GenericAPIView):
                     "maior_valor_semana": serializers.IntegerField(),
                     "buckets_dia_mes": serializers.JSONField(),
                     "maior_valor_bucket": serializers.IntegerField(),
+                    "faqs_sugeridas_pendentes": serializers.IntegerField(),
                 }
             )
         }
@@ -303,6 +309,9 @@ class DashboardStatsAPIView(GenericAPIView):
         total_boletos = Boleto.objects.count()
         boletos_enviados = Boleto.objects.filter(enviado_em__isnull=False).count()
 
+        # FAQs sugeridas pendentes de curadoria (fallback do bot novo, WS-A/WS-B)
+        faqs_sugeridas_pendentes = FAQSugerida.objects.filter(status=FAQSugerida.Status.PENDENTE).count()
+
         # Padrões sazonais (janela de 180 dias)
         janela_qs = Mensagem.objects.filter(criado_em__date__gte=inicio_180)
         por_dia_semana_raw = list(
@@ -352,6 +361,7 @@ class DashboardStatsAPIView(GenericAPIView):
             "maior_valor_semana": maior_valor_semana,
             "buckets_dia_mes": buckets,
             "maior_valor_bucket": maior_valor_bucket,
+            "faqs_sugeridas_pendentes": faqs_sugeridas_pendentes,
         }
         return Response(data)
 
@@ -587,6 +597,67 @@ class FAQViewSet(viewsets.ModelViewSet):
         return Response(FAQSerializer(faq).data)
 
 
+class FAQSugeridaViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Curadoria de perguntas que o bot não conseguiu responder pela FAQ
+    existente (fallback determinístico do motor novo, `FAQSugerida.registrar`
+    em `core/models.py`). O operador edita a pergunta, aprova (vira FAQ real
+    com respostas) ou rejeita."""
+
+    queryset = FAQSugerida.objects.select_related("conversa", "faq_criada", "revisado_por")
+    serializer_class = FAQSugeridaSerializer
+    permission_classes = [permissions.IsAdminUser]
+    http_method_names = ["get", "patch", "delete", "post", "head", "options"]
+    pagination_class = None
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        status_param = self.request.query_params.get("status")
+        if status_param:
+            qs = qs.filter(status=status_param)
+        return qs
+
+    @action(detail=True, methods=["post"])
+    def aprovar(self, request, pk=None):
+        """Cria a FAQ (+ respostas) a partir da sugestão e marca como aprovada."""
+        sugestao = self.get_object()
+        payload_serializer = FAQSugeridaAprovarSerializer(data=request.data)
+        payload_serializer.is_valid(raise_exception=True)
+        dados = payload_serializer.validated_data
+        pergunta_final = (dados.get("pergunta_final") or "").strip() or sugestao.pergunta
+        respostas = dados.get("respostas") or []
+
+        with transaction.atomic():
+            faq = FAQ.objects.create(pergunta=pergunta_final, ativo=True)
+            for resp in respostas:
+                FAQResposta.objects.create(
+                    faq=faq,
+                    ordem=resp.get("ordem", 0),
+                    texto=resp.get("texto", ""),
+                )
+            sugestao.status = FAQSugerida.Status.APROVADA
+            sugestao.faq_criada = faq
+            sugestao.revisado_por = request.user
+            sugestao.revisado_em = timezone.now()
+            sugestao.save(update_fields=["status", "faq_criada", "revisado_por", "revisado_em"])
+
+        return Response(FAQSugeridaSerializer(sugestao).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"])
+    def rejeitar(self, request, pk=None):
+        sugestao = self.get_object()
+        sugestao.status = FAQSugerida.Status.REJEITADA
+        sugestao.revisado_por = request.user
+        sugestao.revisado_em = timezone.now()
+        sugestao.save(update_fields=["status", "revisado_por", "revisado_em"])
+        return Response(FAQSugeridaSerializer(sugestao).data)
+
+
 class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Cliente.objects.prefetch_related("telefones", "contratos_penhor").all()
     permission_classes = [permissions.IsAdminUser]
@@ -701,6 +772,15 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
     # Códigos de contrato liquidado (espelha whatsapp.tasks.SITUACOES_LIQUIDADAS_COD)
     _SITUACOES_LIQUIDADAS_COD = ["AVAL", "AVCL", "LQ", "LQDE", "LQSD", "LQVL", "OBJA", "SJLQ", "ER", ""]
 
+    # Extensões aceitas no envio manual de arquivo pelo operador (WS-B item 3).
+    _EXTENSOES_ANEXO_PERMITIDAS = {
+        "jpg", "jpeg", "png", "webp", "gif",
+        "mp3", "ogg", "opus", "m4a",
+        "mp4",
+        "pdf", "doc", "docx", "xls", "xlsx",
+    }
+    _TAMANHO_MAXIMO_ANEXO_BYTES = 16 * 1024 * 1024  # 16MB, teto prático do WhatsApp.
+
     def get_serializer_class(self):
         if self.action == "retrieve":
             return ConversaDetailSerializer
@@ -793,6 +873,81 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
                 "enviado": enviado,
                 "mensagens": ConversaDetailSerializer(conversa).data.get("mensagens", []),
             },
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="enviar-arquivo",
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def enviar_arquivo(self, request, pk=None):
+        """Permite ao operador anexar um arquivo (imagem/áudio/vídeo/documento)
+        pelo painel. Persiste como Mensagem OUT com `arquivo` preenchido e
+        envia via Evolution API (EvolutionClient.send_file, que já cobre os
+        4 mediatypes a partir do mimetype)."""
+        conversa = self.get_object()
+        arquivo = request.FILES.get("arquivo")
+        if not arquivo:
+            return Response(
+                {"detail": "Campo 'arquivo' é obrigatório."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if arquivo.size > self._TAMANHO_MAXIMO_ANEXO_BYTES:
+            return Response(
+                {"detail": "Arquivo excede o tamanho máximo permitido (16MB)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        extensao = (os.path.splitext(arquivo.name)[1] or "").lstrip(".").lower()
+        if extensao not in self._EXTENSOES_ANEXO_PERMITIDAS:
+            return Response(
+                {"detail": f"Extensão '.{extensao}' não permitida."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        legenda = (request.data.get("legenda") or "").strip()
+
+        import mimetypes
+        mimetype = mimetypes.guess_type(arquivo.name)[0] or ""
+        if mimetype.startswith("image/"):
+            tipo_midia = Mensagem.TipoMidia.IMAGE
+        elif mimetype.startswith("video/"):
+            tipo_midia = Mensagem.TipoMidia.VIDEO
+        elif mimetype.startswith("audio/"):
+            tipo_midia = Mensagem.TipoMidia.AUDIO
+        else:
+            tipo_midia = Mensagem.TipoMidia.DOCUMENT
+
+        from whatsapp.tasks import _remote_jid_para_numero
+
+        numero = _remote_jid_para_numero(conversa.remote_jid)
+        if not numero:
+            return Response(
+                {"detail": "Não foi possível normalizar o número de destino."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        mensagem = Mensagem.objects.create(
+            conversa=conversa,
+            direcao=Mensagem.Direcao.OUT,
+            texto=legenda,
+            arquivo=arquivo,
+            tipo_midia=tipo_midia,
+        )
+
+        client = get_client()
+        enviado = client.send_file(numero, mensagem.arquivo.path, arquivo.name, caption=legenda)
+        mensagem.enviado_ok = enviado
+        mensagem.save(update_fields=["enviado_ok"])
+
+        conversa.ultima_interacao = timezone.now()
+        conversa.save(update_fields=["ultima_interacao"])
+
+        return Response(
+            MensagemPainelSerializer(mensagem, context=self.get_serializer_context()).data,
             status=status.HTTP_201_CREATED,
         )
 

@@ -12,6 +12,7 @@ from core.models import (
     MensagensConfig,
     FAQ,
     FAQResposta,
+    FAQSugerida,
     Telefone,
     Conversa,
 )
@@ -71,6 +72,17 @@ class MensagensConfigSerializer(serializers.ModelSerializer):
             "msg_segunda_via_confirma",
             "msg_insistiu_humano",
             "msg_neutra_padrao",
+            "tpl_saudacao_cliente",
+            "tpl_contrato_vencimento",
+            "tpl_contrato_renovacao",
+            "tpl_contrato_quitacao",
+            "tpl_contrato_parcela",
+            "tpl_contrato_resumo",
+            "tpl_lista_header",
+            "tpl_lista_footer",
+            "msg_fallback_sem_resposta",
+            "msg_info_negada_desconhecido",
+            "msg_midia_nao_suportada",
             "atualizado_em",
         ]
         read_only_fields = ["atualizado_em"]
@@ -130,6 +142,46 @@ class FAQSerializer(serializers.ModelSerializer):
                 r_data.pop("id", None)
                 FAQResposta.objects.create(faq=instance, **r_data)
         return instance
+
+
+class FAQSugeridaSerializer(serializers.ModelSerializer):
+    revisado_por_nome = serializers.CharField(source="revisado_por.username", read_only=True, default="")
+
+    class Meta:
+        model = FAQSugerida
+        fields = [
+            "id",
+            "pergunta",
+            "pergunta_original",
+            "conversa",
+            "ocorrencias",
+            "status",
+            "faq_criada",
+            "revisado_por",
+            "revisado_por_nome",
+            "revisado_em",
+            "criado_em",
+        ]
+        read_only_fields = [
+            "pergunta_original",
+            "conversa",
+            "ocorrencias",
+            "status",
+            "faq_criada",
+            "revisado_por",
+            "revisado_em",
+            "criado_em",
+        ]
+
+
+class FAQSugeridaAprovarRespostaSerializer(serializers.Serializer):
+    ordem = serializers.IntegerField(required=False, default=0)
+    texto = serializers.CharField(allow_blank=True, required=False, default="")
+
+
+class FAQSugeridaAprovarSerializer(serializers.Serializer):
+    pergunta_final = serializers.CharField(required=False, allow_blank=True)
+    respostas = FAQSugeridaAprovarRespostaSerializer(many=True, required=False)
 
 
 class ClienteMiniSerializer(serializers.ModelSerializer):
@@ -228,6 +280,76 @@ class MensagemSerializer(serializers.ModelSerializer):
         return ""
 
 
+class MensagemPainelSerializer(serializers.ModelSerializer):
+    """Serializer usado pelo painel (ConversaDetailSerializer.get_mensagens).
+    Sem `payload_bruto` na saída (evita vazar o payload bruto da Evolution
+    pro frontend). `tipo_midia`/`possui_midia`/`legenda` preferem o campo
+    persistido `Mensagem.tipo_midia` (Fase 0); mensagens legadas sem esse
+    campo caem no parse do payload_bruto, igual ao MensagemSerializer."""
+
+    possui_midia = serializers.SerializerMethodField()
+    tipo_midia = serializers.SerializerMethodField()
+    legenda = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Mensagem
+        fields = [
+            "id",
+            "direcao",
+            "texto",
+            "wa_message_id",
+            "push_name",
+            "criado_em",
+            "possui_midia",
+            "tipo_midia",
+            "legenda",
+            "arquivo",
+            "enviado_ok",
+        ]
+
+    def _get_media_message_node(self, obj):
+        payload = obj.payload_bruto or {}
+        data = payload.get("data", {})
+        message = data.get("message", {})
+        if not message:
+            return None, None
+        for key in ["imageMessage", "audioMessage", "documentMessage", "videoMessage"]:
+            if key in message:
+                return key, message[key]
+        return None, None
+
+    def get_tipo_midia(self, obj) -> str:
+        if obj.tipo_midia:
+            return obj.tipo_midia
+        # Fallback para mensagens legadas (anteriores à Fase 0) sem o campo persistido.
+        media_type, _ = self._get_media_message_node(obj)
+        mapa = {
+            "imageMessage": "image",
+            "audioMessage": "audio",
+            "documentMessage": "document",
+            "videoMessage": "video",
+        }
+        return mapa.get(media_type, "")
+
+    def get_possui_midia(self, obj) -> bool:
+        if obj.arquivo:
+            return True
+        return bool(self.get_tipo_midia(obj))
+
+    def get_legenda(self, obj) -> str:
+        # `texto` já guarda a legenda/caption (webhook extrai para `texto` em
+        # _extrair_conteudo; operador digita a legenda em `texto` no envio de
+        # arquivo). Fallback ao parse do payload só para mídia legada sem
+        # `texto` preenchido (ex.: videoMessage com caption, extraído só
+        # depois da Fase 0).
+        if obj.texto:
+            return obj.texto
+        _, media_node = self._get_media_message_node(obj)
+        if media_node:
+            return media_node.get("caption") or ""
+        return ""
+
+
 class BoletoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Boleto
@@ -320,7 +442,7 @@ class ConversaDetailSerializer(serializers.ModelSerializer):
     @extend_schema_field(serializers.ListField(child=serializers.JSONField()))
     def get_mensagens(self, obj):
         msgs = obj.mensagens.all().order_by("criado_em")
-        return MensagemMiniSerializer(msgs, many=True).data
+        return MensagemPainelSerializer(msgs, many=True, context=self.context).data
 
     @extend_schema_field(serializers.ListField(child=serializers.JSONField()))
     def get_solicitacoes(self, obj):

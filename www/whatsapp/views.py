@@ -41,16 +41,26 @@ def toggle_bot(request):
     return redirect(reverse("whatsapp:qrcode"))
 
 
-def _extrair_texto(message: dict) -> str:
+def _extrair_conteudo(message: dict) -> tuple[str, str]:
+    """Extrai (texto, tipo_midia) do nó `message` do payload da Evolution.
+    texto = corpo/legenda a persistir em `Mensagem.texto`; tipo_midia = um
+    dos valores de `Mensagem.TipoMidia` ou "" quando é mensagem de texto puro."""
     if not message:
-        return ""
-    return (
-        message.get("conversation")
-        or (message.get("extendedTextMessage") or {}).get("text")
-        or (message.get("imageMessage") or {}).get("caption")
-        or (message.get("documentMessage") or {}).get("caption")
-        or ""
-    )
+        return "", ""
+    if "conversation" in message:
+        return message.get("conversation") or "", ""
+    if "extendedTextMessage" in message:
+        return (message.get("extendedTextMessage") or {}).get("text") or "", ""
+    if "imageMessage" in message:
+        return (message.get("imageMessage") or {}).get("caption") or "", "image"
+    if "videoMessage" in message:
+        return (message.get("videoMessage") or {}).get("caption") or "", "video"
+    if "documentMessage" in message:
+        doc = message.get("documentMessage") or {}
+        return doc.get("caption") or doc.get("fileName") or "", "document"
+    if "audioMessage" in message:
+        return "", "audio"
+    return "", ""
 
 
 @csrf_exempt
@@ -81,12 +91,13 @@ def whatsapp_webhook(request):
             wa_message_id = key.get("id") or None
             if wa_message_id and Mensagem.objects.filter(wa_message_id=wa_message_id).exists():
                 return JsonResponse({"status": "ignored", "reason": "duplicate"}, status=200)
-            texto = _extrair_texto(data.get("message") or {})
+            texto, tipo_midia = _extrair_conteudo(data.get("message") or {})
             conversa, _ = Conversa.objects.get_or_create(remote_jid=remote_jid or "desconhecido")
             Mensagem.objects.create(
                 conversa=conversa,
                 direcao=Mensagem.Direcao.OUT,
                 texto=texto,
+                tipo_midia=tipo_midia,
                 wa_message_id=wa_message_id,
                 payload_bruto=body,
             )
@@ -103,7 +114,7 @@ def whatsapp_webhook(request):
         if wa_message_id and Mensagem.objects.filter(wa_message_id=wa_message_id).exists():
             return JsonResponse({"status": "ignored", "reason": "duplicate"}, status=200)
 
-        texto = _extrair_texto(data.get("message") or {})
+        texto, tipo_midia = _extrair_conteudo(data.get("message") or {})
 
         conversa, _ = Conversa.objects.get_or_create(remote_jid=remote_jid or "desconhecido")
 
@@ -111,6 +122,7 @@ def whatsapp_webhook(request):
             conversa=conversa,
             direcao=Mensagem.Direcao.IN,
             texto=texto,
+            tipo_midia=tipo_midia,
             wa_message_id=wa_message_id,
             push_name=push_name,
             payload_bruto=body,

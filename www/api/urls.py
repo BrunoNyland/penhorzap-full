@@ -5,6 +5,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     SolicitacaoViewSet,
     FAQViewSet,
+    FAQSugeridaViewSet,
     ClienteViewSet,
     ConversaViewSet,
     DashboardStatsAPIView,
@@ -30,6 +31,7 @@ from .views import (
 router = DefaultRouter()
 router.register("solicitacoes", SolicitacaoViewSet, basename="solicitacao")
 router.register("faqs", FAQViewSet, basename="faq")
+router.register("faqs-sugeridas", FAQSugeridaViewSet, basename="faq-sugerida")
 router.register("clientes", ClienteViewSet, basename="cliente")
 router.register("conversas", ConversaViewSet, basename="conversa")
 

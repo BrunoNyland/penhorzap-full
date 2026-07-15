@@ -85,6 +85,33 @@ export class ApiService {
     return this.http.post(`/api/conversas/${id}/enviar/`, { texto });
   }
 
+  enviarArquivoConversa(id: number, formData: FormData): Observable<any> {
+    return this.http.post(`/api/conversas/${id}/enviar-arquivo/`, formData);
+  }
+
+  // --- FAQs Sugeridas ---
+  getFaqsSugeridas(statusParam?: string): Observable<any[]> {
+    let params = new HttpParams();
+    if (statusParam) params = params.set('status', statusParam);
+    return this.http.get<any[]>('/api/faqs-sugeridas/', { params });
+  }
+
+  updateFaqSugerida(id: number, payload: any): Observable<any> {
+    return this.http.patch(`/api/faqs-sugeridas/${id}/`, payload);
+  }
+
+  deleteFaqSugerida(id: number): Observable<any> {
+    return this.http.delete(`/api/faqs-sugeridas/${id}/`);
+  }
+
+  aprovarFaqSugerida(id: number, payload: { pergunta_final?: string; respostas: { ordem: number; texto: string }[] }): Observable<any> {
+    return this.http.post(`/api/faqs-sugeridas/${id}/aprovar/`, payload);
+  }
+
+  rejeitarFaqSugerida(id: number): Observable<any> {
+    return this.http.post(`/api/faqs-sugeridas/${id}/rejeitar/`, {});
+  }
+
   // --- Clientes ---
   getClientes(filters: { q?: string; bloqueado?: string; ativos_somente?: string } = {}): Observable<any[]> {
     let params = new HttpParams();

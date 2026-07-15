@@ -1,5 +1,6 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { DatePipe } from '@angular/common';
 import { ApiService } from '../../services/api.service';
 import { IconComponent } from '../../shared/icon/icon.component';
 
@@ -14,7 +15,7 @@ interface FormResposta {
 @Component({
   selector: 'app-faq',
   standalone: true,
-  imports: [FormsModule, IconComponent],
+  imports: [FormsModule, DatePipe, IconComponent],
   template: `
     <div class="faq-wrapper">
       <div class="faq-header flex align-center justify-between">
@@ -22,59 +23,131 @@ interface FormResposta {
           <h1>FAQs & Respostas da IA</h1>
           <p class="text-muted">Cadastre perguntas frequentes e as mensagens sequenciais de resposta.</p>
         </div>
-        <button class="btn btn-primary" (click)="openCreateModal()">
-          + Nova FAQ
+        @if (activeTab() === 'faqs') {
+          <button class="btn btn-primary" (click)="openCreateModal()">
+            + Nova FAQ
+          </button>
+        }
+      </div>
+
+      <!-- Tab Navigation -->
+      <div class="tabs flex gap-2">
+        <button class="tab-btn" [class.active]="activeTab() === 'faqs'" (click)="activeTab.set('faqs')">
+          FAQs
+        </button>
+        <button class="tab-btn" [class.active]="activeTab() === 'sugestoes'" (click)="activeTab.set('sugestoes')">
+          Sugestões ({{ sugeridas().length }})
         </button>
       </div>
 
       <!-- FAQ Table -->
-      @if (loading() && faqs().length === 0) {
-        <div class="loading-container">
-          <div class="spinner"></div>
-          <p>Carregando FAQs...</p>
-        </div>
-      } @else {
-        <div class="table-container margin-top">
-          <table>
-            <thead>
-              <tr>
-                <th>Pergunta</th>
-                <th>Qtd. Respostas</th>
-                <th>Status</th>
-                <th style="width: 160px; text-align: right;">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (faq of faqs(); track faq.id) {
+      @if (activeTab() === 'faqs') {
+        @if (loading() && faqs().length === 0) {
+          <div class="loading-container">
+            <div class="spinner"></div>
+            <p>Carregando FAQs...</p>
+          </div>
+        } @else {
+          <div class="table-container margin-top">
+            <table>
+              <thead>
                 <tr>
-                  <td><strong>{{ faq.pergunta }}</strong></td>
-                  <td>{{ faq.respostas?.length || 0 }} mensagens</td>
-                  <td>
-                    <button 
-                      class="badge-toggle"
-                      [class.active]="faq.ativo"
-                      (click)="toggleFAQ(faq.id)"
-                    >
-                      {{ faq.ativo ? 'Ativo' : 'Inativo' }}
-                    </button>
-                  </td>
-                  <td style="text-align: right;">
-                    <div class="flex gap-2 justify-end">
-                      <button class="btn btn-secondary btn-xs" (click)="openEditModal(faq)">Editar</button>
-                      <button class="btn btn-danger btn-xs" (click)="confirmDeleteFAQ(faq)">Excluir</button>
-                    </div>
-                  </td>
+                  <th>Pergunta</th>
+                  <th>Qtd. Respostas</th>
+                  <th>Status</th>
+                  <th style="width: 160px; text-align: right;">Ações</th>
                 </tr>
-              } @empty {
+              </thead>
+              <tbody>
+                @for (faq of faqs(); track faq.id) {
+                  <tr>
+                    <td><strong>{{ faq.pergunta }}</strong></td>
+                    <td>{{ faq.respostas?.length || 0 }} mensagens</td>
+                    <td>
+                      <button
+                        class="badge-toggle"
+                        [class.active]="faq.ativo"
+                        (click)="toggleFAQ(faq.id)"
+                      >
+                        {{ faq.ativo ? 'Ativo' : 'Inativo' }}
+                      </button>
+                    </td>
+                    <td style="text-align: right;">
+                      <div class="flex gap-2 justify-end">
+                        <button class="btn btn-secondary btn-xs" (click)="openEditModal(faq)">Editar</button>
+                        <button class="btn btn-danger btn-xs" (click)="confirmDeleteFAQ(faq)">Excluir</button>
+                      </div>
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="4" class="text-muted text-center" style="padding: 32px;">
+                      Nenhuma FAQ cadastrada. Clique em "+ Nova FAQ" para começar.
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      }
+
+      <!-- Sugestões Pendentes (fallback do bot, curadoria humana) -->
+      @if (activeTab() === 'sugestoes') {
+        @if (loadingSugeridas() && sugeridas().length === 0) {
+          <div class="loading-container">
+            <div class="spinner"></div>
+            <p>Carregando sugestões...</p>
+          </div>
+        } @else {
+          <div class="table-container margin-top">
+            <table>
+              <thead>
                 <tr>
-                  <td colspan="4" class="text-muted text-center" style="padding: 32px;">
-                    Nenhuma FAQ cadastrada. Clique em "+ Nova FAQ" para começar.
-                  </td>
+                  <th>Pergunta sugerida</th>
+                  <th style="width: 110px;">Ocorrências</th>
+                  <th style="width: 140px;">Data</th>
+                  <th style="width: 260px; text-align: right;">Ações</th>
                 </tr>
-              }
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                @for (s of sugeridas(); track s.id) {
+                  <tr>
+                    <td [title]="s.pergunta_original || ''">
+                      @if (editingSugeridaId() === s.id) {
+                        <input type="text" [(ngModel)]="editPerguntaTexto" class="inline-edit-input" />
+                        <div class="flex gap-2 margin-top-xs">
+                          <button class="btn btn-primary btn-xs" (click)="saveEditPergunta(s)">Salvar</button>
+                          <button class="btn btn-secondary btn-xs" (click)="cancelEditPergunta()">Cancelar</button>
+                        </div>
+                      } @else {
+                        <strong>{{ s.pergunta }}</strong>
+                        @if (s.pergunta_original && s.pergunta_original !== s.pergunta) {
+                          <div class="text-muted text-small margin-top-xs">"{{ s.pergunta_original }}"</div>
+                        }
+                      }
+                    </td>
+                    <td><span class="badge badge-info">{{ s.ocorrencias }}x</span></td>
+                    <td class="text-muted text-small">{{ s.criado_em | date:'dd/MM/yyyy' }}</td>
+                    <td style="text-align: right;">
+                      <div class="flex gap-2 justify-end">
+                        <button class="btn btn-secondary btn-xs" (click)="startEditPergunta(s)">Editar</button>
+                        <button class="btn btn-primary btn-xs" (click)="openAprovarModal(s)">Aprovar</button>
+                        <button class="btn btn-danger btn-xs" (click)="confirmRejeitar(s)">Rejeitar</button>
+                      </div>
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="4" class="text-muted text-center" style="padding: 32px;">
+                      Nenhuma sugestão pendente de revisão no momento.
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
       }
 
       <!-- Create / Edit Modal -->
@@ -219,6 +292,78 @@ interface FormResposta {
           </div>
         </div>
       }
+
+      <!-- Aprovar Sugestão Modal -->
+      @if (showAprovarModal()) {
+        <div class="modal-overlay">
+          <div class="modal-content modal-large fade-in">
+            <h2>Aprovar Sugestão de FAQ</h2>
+            <p class="text-muted margin-bottom-sm">Revise a pergunta e cadastre as mensagens de resposta antes de publicar como FAQ ativa.</p>
+
+            <div class="form-group margin-bottom-sm">
+              <label for="aprovarPergunta">Pergunta Final</label>
+              <input
+                type="text"
+                id="aprovarPergunta"
+                name="aprovarPergunta"
+                [(ngModel)]="aprovarPergunta"
+                required
+              />
+            </div>
+
+            <div class="nested-respostas-section">
+              <div class="flex justify-between align-center margin-bottom-sm">
+                <h3>Mensagens de Resposta (Sequência)</h3>
+                <button type="button" class="btn btn-secondary btn-small" (click)="addAprovarRespostaRow()">
+                  + Adicionar Mensagem
+                </button>
+              </div>
+
+              <div class="respostas-list">
+                @for (r of aprovarRespostas(); track idx; let idx = $index) {
+                  <div class="resposta-row card">
+                    <div class="resposta-row-header flex justify-between align-center">
+                      <span class="badge badge-info">Mensagem {{ idx + 1 }}</span>
+                      <button
+                        type="button"
+                        class="icon-btn text-danger"
+                        (click)="removeAprovarRespostaRow(idx)"
+                        title="Remover"
+                      >
+                        <app-icon name="trash" [size]="14"></app-icon>
+                      </button>
+                    </div>
+                    <div class="form-group margin-top-sm">
+                      <textarea
+                        [name]="'aprovar_resp_' + idx"
+                        [(ngModel)]="r.texto"
+                        placeholder="Digite a mensagem de texto..."
+                        rows="2"
+                      ></textarea>
+                    </div>
+                  </div>
+                } @empty {
+                  <p class="text-muted text-center" style="padding: 16px;">
+                    Nenhuma mensagem cadastrada. Adicione ao menos uma resposta.
+                  </p>
+                }
+              </div>
+            </div>
+
+            <div class="form-actions flex justify-end gap-2 margin-top">
+              <button type="button" class="btn btn-secondary" (click)="showAprovarModal.set(false)">Cancelar</button>
+              <button
+                type="button"
+                class="btn btn-primary"
+                [disabled]="aprovando() || !aprovarPergunta.trim()"
+                (click)="confirmarAprovacao()"
+              >
+                {{ aprovando() ? 'Aprovando...' : 'Aprovar & Publicar FAQ' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      }
     </div>
   `,
   styles: [`
@@ -339,6 +484,38 @@ interface FormResposta {
       from { opacity: 0; transform: translateY(4px); }
       to { opacity: 1; transform: translateY(0); }
     }
+    .tabs {
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 1px;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-secondary);
+      font-weight: 600;
+      padding: 10px 16px;
+      border-radius: 0;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+    .tab-btn:hover {
+      color: var(--text-primary);
+      border-bottom-color: var(--border-color);
+    }
+    .tab-btn.active {
+      color: var(--color-accent);
+      border-bottom-color: var(--color-accent);
+    }
+    .inline-edit-input {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      font-size: 13px;
+    }
   `]
 })
 export class FAQComponent implements OnInit {
@@ -347,6 +524,8 @@ export class FAQComponent implements OnInit {
   faqs = signal<any[]>([]);
   loading = signal(false);
   saving = signal(false);
+
+  activeTab = signal<'faqs' | 'sugestoes'>('faqs');
 
   // Modal Controls
   showFormModal = signal(false);
@@ -362,8 +541,22 @@ export class FAQComponent implements OnInit {
   // Delete State
   faqToDelete = signal<any | null>(null);
 
+  // Sugestões pendentes (curadoria do fallback do bot)
+  sugeridas = signal<any[]>([]);
+  loadingSugeridas = signal(false);
+
+  editingSugeridaId = signal<number | null>(null);
+  editPerguntaTexto = '';
+
+  showAprovarModal = signal(false);
+  aprovando = signal(false);
+  aprovarSugestaoId: number | null = null;
+  aprovarPergunta = '';
+  aprovarRespostas = signal<{ texto: string }[]>([]);
+
   ngOnInit(): void {
     this.loadFAQs();
+    this.loadSugeridas();
   }
 
   loadFAQs(): void {
@@ -530,5 +723,87 @@ export class FAQComponent implements OnInit {
   getFileName(url: string): string {
     if (!url) return '';
     return url.split('/').pop() || 'Arquivo';
+  }
+
+  // --- Sugestões de FAQ (curadoria do fallback do bot) ---
+  loadSugeridas(): void {
+    this.loadingSugeridas.set(true);
+    this.apiService.getFaqsSugeridas('pendente').subscribe({
+      next: (data) => {
+        this.sugeridas.set(data);
+        this.loadingSugeridas.set(false);
+      },
+      error: () => this.loadingSugeridas.set(false)
+    });
+  }
+
+  startEditPergunta(s: any): void {
+    this.editingSugeridaId.set(s.id);
+    this.editPerguntaTexto = s.pergunta;
+  }
+
+  cancelEditPergunta(): void {
+    this.editingSugeridaId.set(null);
+    this.editPerguntaTexto = '';
+  }
+
+  saveEditPergunta(s: any): void {
+    const texto = this.editPerguntaTexto.trim();
+    if (!texto) return;
+    this.apiService.updateFaqSugerida(s.id, { pergunta: texto }).subscribe({
+      next: (updated) => {
+        this.sugeridas.update(list => list.map(item => item.id === s.id ? updated : item));
+        this.cancelEditPergunta();
+      }
+    });
+  }
+
+  confirmRejeitar(s: any): void {
+    if (!confirm(`Rejeitar a sugestão "${s.pergunta}"? Esta ação não pode ser desfeita.`)) return;
+    this.apiService.rejeitarFaqSugerida(s.id).subscribe({
+      next: () => {
+        this.sugeridas.update(list => list.filter(item => item.id !== s.id));
+      }
+    });
+  }
+
+  openAprovarModal(s: any): void {
+    this.aprovarSugestaoId = s.id;
+    this.aprovarPergunta = s.pergunta;
+    this.aprovarRespostas.set([{ texto: '' }]);
+    this.showAprovarModal.set(true);
+  }
+
+  addAprovarRespostaRow(): void {
+    this.aprovarRespostas.update(list => [...list, { texto: '' }]);
+  }
+
+  removeAprovarRespostaRow(index: number): void {
+    this.aprovarRespostas.update(list => list.filter((_, idx) => idx !== index));
+  }
+
+  confirmarAprovacao(): void {
+    const sugestaoId = this.aprovarSugestaoId;
+    if (!sugestaoId || !this.aprovarPergunta.trim()) return;
+
+    this.aprovando.set(true);
+    const respostas = this.aprovarRespostas()
+      .map((r, i) => ({ ordem: i, texto: r.texto }))
+      .filter(r => r.texto.trim());
+
+    this.apiService.aprovarFaqSugerida(sugestaoId, {
+      pergunta_final: this.aprovarPergunta.trim(),
+      respostas
+    }).subscribe({
+      next: () => {
+        this.aprovando.set(false);
+        this.showAprovarModal.set(false);
+        this.sugeridas.update(list => list.filter(item => item.id !== sugestaoId));
+        this.loadFAQs();
+      },
+      error: () => {
+        this.aprovando.set(false);
+      }
+    });
   }
 }

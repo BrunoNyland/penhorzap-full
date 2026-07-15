@@ -31,12 +31,19 @@ import { ApiService } from '../../services/api.service';
         >
           Prompt do Gemini
         </button>
-        <button 
-          class="tab-btn" 
-          [class.active]="activeTab() === 'mensagens'" 
+        <button
+          class="tab-btn"
+          [class.active]="activeTab() === 'mensagens'"
           (click)="activeTab.set('mensagens')"
         >
           Textos & Respostas Fixas
+        </button>
+        <button
+          class="tab-btn"
+          [class.active]="activeTab() === 'contrato'"
+          (click)="activeTab.set('contrato')"
+        >
+          Respostas de Contrato
         </button>
       </div>
 
@@ -189,6 +196,55 @@ import { ApiService } from '../../services/api.service';
           </form>
         </div>
       }
+
+      <!-- Tab: Respostas de Contrato (WS-A: motor novo renderiza a partir do banco, nunca da IA) -->
+      @if (activeTab() === 'contrato') {
+        <div class="card fade-in">
+          <h2>Templates de Resposta sobre Contratos</h2>
+          <p class="text-muted margin-bottom">
+            Textos usados pelo motor do bot para responder sobre vencimento, renovação, quitação,
+            parcela e listagem de contratos. Os valores entre chaves são substituídos automaticamente
+            pelo bot — não remova nem altere a grafia das tags, só o texto ao redor.
+          </p>
+
+          <form (ngSubmit)="saveMensagensConfig()">
+            <div class="msg-editor-list">
+              @for (field of camposContrato; track field.key) {
+                <div class="msg-editor-row card">
+                  <div class="flex justify-between align-center margin-bottom-sm">
+                    <div>
+                      <strong class="field-title">{{ field.label }}</strong>
+                      <span class="field-key">({{ field.key }})</span>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-small" (click)="restoreField(field.key)">
+                      Restaurar Padrão
+                    </button>
+                  </div>
+                  <textarea
+                    [name]="field.key"
+                    [(ngModel)]="mensagensConfig[field.key]"
+                    rows="3"
+                  ></textarea>
+                  <span class="help-text">{{ field.help }}</span>
+                  @if (field.placeholders.length > 0) {
+                    <div class="placeholder-hints margin-top-xs">
+                      @for (ph of field.placeholders; track ph) {
+                        <code class="placeholder-tag">{{ ph }}</code>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+
+            <div class="form-actions margin-top">
+              <button type="submit" class="btn btn-primary" [disabled]="saving()">
+                {{ saving() ? 'Salvando...' : 'Salvar Templates' }}
+              </button>
+            </div>
+          </form>
+        </div>
+      }
     </div>
   `,
   styles: [`
@@ -299,6 +355,19 @@ import { ApiService } from '../../services/api.service';
     .label-only {
       padding-top: 24px;
     }
+    .placeholder-hints {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .placeholder-tag {
+      font-size: 11px;
+      background-color: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 2px 6px;
+      color: var(--color-accent);
+    }
 
     @media (max-width: 639px) {
       .config-header h1 {
@@ -326,7 +395,7 @@ import { ApiService } from '../../services/api.service';
 export class ConfigComponent implements OnInit {
   private apiService = inject(ApiService);
 
-  activeTab = signal<'bot' | 'prompt' | 'mensagens'>('bot');
+  activeTab = signal<'bot' | 'prompt' | 'mensagens' | 'contrato'>('bot');
   loading = signal(false);
   saving = signal(false);
 
@@ -354,6 +423,75 @@ export class ConfigComponent implements OnInit {
     { key: 'msg_segunda_via_confirma', label: 'Confirmação de 2ª via', help: 'Usa as tags {contratos} e {tipo}.' },
     { key: 'msg_insistiu_humano', label: 'Insistiu por Humano', help: 'Feedback enviado se o usuário repetir comandos de fallback sucessivamente.' },
     { key: 'msg_neutra_padrao', label: 'Mensagem Neutra Padrão', help: 'Conversa genérica sem intenção identificável.' }
+  ];
+
+  camposContrato = [
+    {
+      key: 'tpl_saudacao_cliente',
+      label: 'Saudação (Telefone Identificado)',
+      help: 'Primeira mensagem para quem já é cliente reconhecido pelo telefone (sem pedir CPF).',
+      placeholders: ['{saudacao}', '{nome}']
+    },
+    {
+      key: 'tpl_contrato_vencimento',
+      label: 'Contrato: Vencimento',
+      help: 'Resposta quando o cliente pergunta a data de vencimento de um contrato.',
+      placeholders: ['{contrato}', '{vencimento}']
+    },
+    {
+      key: 'tpl_contrato_renovacao',
+      label: 'Contrato: Renovação',
+      help: 'Resposta com o valor de renovação para um prazo em dias.',
+      placeholders: ['{contrato}', '{prazo_dias}', '{valor_renovacao}', '{vencimento}']
+    },
+    {
+      key: 'tpl_contrato_quitacao',
+      label: 'Contrato: Quitação',
+      help: 'Resposta com o valor necessário para quitar o contrato.',
+      placeholders: ['{contrato}', '{valor_quitacao}', '{vencimento}']
+    },
+    {
+      key: 'tpl_contrato_parcela',
+      label: 'Contrato: Valor da Parcela',
+      help: 'Resposta com o valor da parcela de um contrato parcelado.',
+      placeholders: ['{contrato}', '{valor_parcela}']
+    },
+    {
+      key: 'tpl_contrato_resumo',
+      label: 'Contrato: Resumo Geral',
+      help: 'Resposta padrão quando o cliente pede um resumo do contrato sem especificar o tipo de informação.',
+      placeholders: ['{contrato}', '{vencimento}', '{valor_emprestimo}']
+    },
+    {
+      key: 'tpl_lista_header',
+      label: 'Lista de Contratos: Cabeçalho',
+      help: 'Introdução usada antes de listar múltiplos contratos ativos do cliente.',
+      placeholders: ['{nome}', '{qtd}']
+    },
+    {
+      key: 'tpl_lista_footer',
+      label: 'Lista de Contratos: Rodapé',
+      help: 'Mensagem enviada após a lista de contratos ativos.',
+      placeholders: []
+    },
+    {
+      key: 'msg_fallback_sem_resposta',
+      label: 'Fallback: Sem Resposta Determinística',
+      help: 'Enviada quando nenhuma FAQ nem template de contrato responde à pergunta; a dúvida vira uma FAQ sugerida pendente de revisão.',
+      placeholders: []
+    },
+    {
+      key: 'msg_info_negada_desconhecido',
+      label: 'Informação Negada (Desconhecido)',
+      help: 'Enviada a contatos não identificados que pedem dados de contrato (só recebem o boleto).',
+      placeholders: []
+    },
+    {
+      key: 'msg_midia_nao_suportada',
+      label: 'Mídia Não Suportada',
+      help: 'Enviada quando o cliente manda áudio/vídeo sem texto — o bot não consegue interpretar e encaminha para revisão humana.',
+      placeholders: []
+    }
   ];
 
   ngOnInit(): void {
