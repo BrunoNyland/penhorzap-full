@@ -882,6 +882,57 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
         return response
 
 
+def _montar_resposta_simulador(resultado, cliente, msgs):
+    """Espelha (sem efeitos colaterais em BD) o dispatch determinístico de
+    `whatsapp.tasks.process_mensagem` para o simulador: a partir do WS-A a
+    IA é só classificadora -- o texto de exibição vem de templates/renderer
+    em Python, nunca de um campo de texto da IA. Não cria Solicitacao real
+    nem envia nada via WhatsApp; é só uma prévia do que o bot responderia."""
+    from ia.schemas import TipoIntencaoV2
+    from whatsapp.respostas_contrato import render_template, renderizar_infos_contrato
+    from whatsapp.tasks import _montar_pergunta_pagamento_incompleto, _saudacao
+
+    if resultado.tipo_intencao == TipoIntencaoV2.PAGAMENTO:
+        if resultado.pronto_para_criar_solicitacao and resultado.solicitacoes and cliente:
+            return f"{msgs.msg_solicitacao_criada}\n\n(simulação: nenhuma solicitação real foi criada)"
+        return _montar_pergunta_pagamento_incompleto(cliente, msgs)
+
+    if resultado.tipo_intencao == TipoIntencaoV2.SEGUNDA_VIA:
+        return f"{msgs.msg_segunda_via_confirma.format(contratos='(simulação)', tipo='(simulação)')}"
+
+    if resultado.tipo_intencao == TipoIntencaoV2.INFO_CONTRATO and resultado.infos_contrato:
+        return renderizar_infos_contrato(cliente, resultado.infos_contrato, msgs)
+
+    if resultado.faq_id:
+        try:
+            faq = FAQ.objects.get(id=resultado.faq_id, ativo=True)
+            textos = [r.texto for r in faq.respostas.all().order_by("ordem") if r.texto]
+            if textos:
+                return "\n".join(textos)
+        except FAQ.DoesNotExist:
+            pass
+
+    if resultado.tipo_intencao == TipoIntencaoV2.SAUDACAO:
+        if cliente:
+            primeiro_nome = (cliente.nome or "").split()[0] if cliente.nome else ""
+            return render_template(msgs.tpl_saudacao_cliente, saudacao=_saudacao(), nome=primeiro_nome)
+        return msgs.msg_saudacao.format(saudacao=_saudacao())
+
+    return msgs.msg_fallback_sem_resposta
+
+
+def _debug_resultado_simulador(resultado):
+    return {
+        "tipo_intencao": resultado.tipo_intencao.value if resultado.tipo_intencao else None,
+        "precisa_humano": resultado.precisa_humano,
+        "faq_id": resultado.faq_id,
+        "infos_contrato": [i.model_dump() for i in resultado.infos_contrato],
+        "solicitacoes": [s.model_dump() for s in resultado.solicitacoes],
+        "pronto_para_criar_solicitacao": resultado.pronto_para_criar_solicitacao,
+        "pergunta_sugerida_faq": resultado.pergunta_sugerida_faq,
+    }
+
+
 class SimulatorView(GenericAPIView):
     permission_classes = [permissions.IsAdminUser]
     serializer_class = serializers.Serializer
@@ -983,7 +1034,7 @@ class SimulatorView(GenericAPIView):
                 contratos_cliente = []
                 if cliente is not None:
                     contratos_cliente = _contratos_ativos_values(cliente)
-                
+
                 faqs = list(FAQ.objects.filter(ativo=True).values("id", "pergunta"))
 
                 resultado = extrair_intencao(
@@ -991,25 +1042,18 @@ class SimulatorView(GenericAPIView):
                     historico,
                     contratos_cliente,
                     faqs,
-                    cpf_verificado=True,
+                    identificado=True,
                     db_atualizada=True,
                     contato_tipo="cliente",
-                    cliente_cpf=cliente.cpf if cliente else "",
-                    cliente_nome=cliente.nome if cliente else "",
                 )
+                msgs = MensagensConfig.get_solo()
+                texto_resposta = _montar_resposta_simulador(resultado, cliente, msgs)
 
                 estado["turnos"].append({"direcao": "in", "texto": texto})
                 estado["turnos"].append({
                     "direcao": "out",
-                    "texto": resultado.resposta_sugerida,
-                    "debug": {
-                        "tipo_intencao": resultado.tipo_intencao.value if resultado.tipo_intencao else None,
-                        "precisa_humano": resultado.precisa_humano,
-                        "solicitacoes": [s.model_dump() for s in resultado.solicitacoes],
-                        "pronto_para_criar_solicitacao": resultado.pronto_para_criar_solicitacao,
-                        "cpf_extraido": resultado.cpf_extraido,
-                        "duvida_cliente": resultado.duvida_cliente,
-                    },
+                    "texto": texto_resposta,
+                    "debug": _debug_resultado_simulador(resultado),
                 })
                 request.session[SIMULADOR_SESSION_KEY] = estado
                 request.session.modified = True
@@ -1078,25 +1122,18 @@ class SimulatorChatAPIView(GenericAPIView):
             historico_ia,
             contratos_cliente,
             faqs,
-            cpf_verificado=True,
+            identificado=True,
             db_atualizada=True,
             contato_tipo="cliente",
-            cliente_cpf=cliente.cpf if cliente else "",
-            cliente_nome=cliente.nome if cliente else "",
         )
+        msgs = MensagensConfig.get_solo()
+        texto_resposta = _montar_resposta_simulador(resultado, cliente, msgs)
 
         new_turn_in = {"direcao": "in", "texto": mensagem}
         new_turn_out = {
             "direcao": "out",
-            "texto": resultado.resposta_sugerida,
-            "debug": {
-                "tipo_intencao": resultado.tipo_intencao.value if resultado.tipo_intencao else None,
-                "precisa_humano": resultado.precisa_humano,
-                "solicitacoes": [s.model_dump() for s in resultado.solicitacoes],
-                "pronto_para_criar_solicitacao": resultado.pronto_para_criar_solicitacao,
-                "cpf_extraido": resultado.cpf_extraido,
-                "duvida_cliente": resultado.duvida_cliente,
-            }
+            "texto": texto_resposta,
+            "debug": _debug_resultado_simulador(resultado),
         }
         historico_turnos.append(new_turn_in)
         historico_turnos.append(new_turn_out)
@@ -1107,7 +1144,7 @@ class SimulatorChatAPIView(GenericAPIView):
             request.session.modified = True
 
         return Response({
-            "resposta_sugerida": resultado.resposta_sugerida,
+            "resposta_sugerida": texto_resposta,
             "debug": new_turn_out["debug"],
             "historico": historico_turnos
         })

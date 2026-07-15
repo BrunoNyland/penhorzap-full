@@ -501,25 +501,19 @@ def simulador_chat(request):
                     historico,
                     contratos_cliente,
                     faqs,
-                    cpf_verificado=True,
+                    identificado=True,
                     db_atualizada=True,
                     contato_tipo="cliente",
-                    cliente_cpf=cliente.cpf if cliente else "",
-                    cliente_nome=cliente.nome if cliente else "",
                 )
 
+                from api.views import _debug_resultado_simulador, _montar_resposta_simulador
+
+                msgs = MensagensConfig.get_solo()
                 estado["turnos"].append({"direcao": "in", "texto": texto})
                 estado["turnos"].append({
                     "direcao": "out",
-                    "texto": resultado.resposta_sugerida,
-                    "debug": {
-                        "tipo_intencao": resultado.tipo_intencao.value,
-                        "precisa_humano": resultado.precisa_humano,
-                        "solicitacoes": [s.model_dump() for s in resultado.solicitacoes],
-                        "pronto_para_criar_solicitacao": resultado.pronto_para_criar_solicitacao,
-                        "cpf_extraido": resultado.cpf_extraido,
-                        "duvida_cliente": resultado.duvida_cliente,
-                    },
+                    "texto": _montar_resposta_simulador(resultado, cliente, msgs),
+                    "debug": _debug_resultado_simulador(resultado),
                 })
                 request.session.modified = True
 

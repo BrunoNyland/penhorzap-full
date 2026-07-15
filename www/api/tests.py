@@ -21,7 +21,7 @@ from core.models import (
     MensagensConfig,
     Solicitacao,
 )
-from ia.schemas import IntencaoCliente, TipoIntencao
+from ia.schemas import ClassificacaoMensagem, TipoIntencaoV2
 from painel.views import MENSAGENS_DEFAULTS, SIMULADOR_SESSION_KEY
 
 
@@ -650,15 +650,17 @@ class APIEndpointsTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["cliente"]["cpf"], self.cliente.cpf)
 
-        # Send simulated message
-        mock_result = IntencaoCliente(
-            tipo_intencao=TipoIntencao.DUVIDA_GERAL,
-            resposta_sugerida="Sim, aceitamos relógios.",
+        # Send simulated message. A partir do WS-A a IA é só classificadora
+        # (nunca redige texto); o texto exibido vem do renderer determinístico
+        # -- aqui, duvida_geral sem faq_id cai no fallback padrão.
+        mock_result = ClassificacaoMensagem(
+            tipo_intencao=TipoIntencaoV2.DUVIDA_GERAL,
             precisa_humano=False,
             solicitacoes=[],
+            infos_contrato=[],
             pronto_para_criar_solicitacao=False,
-            cpf_extraido=None,
-            duvida_cliente="Aceita relógio?"
+            faq_id=None,
+            pergunta_sugerida_faq="Aceita relógio?",
         )
         mock_extrair_intencao.return_value = mock_result
 
@@ -666,7 +668,7 @@ class APIEndpointsTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data["turnos"]), 2)
         self.assertEqual(response.data["turnos"][0]["texto"], "Aceita relógio?")
-        self.assertEqual(response.data["turnos"][1]["texto"], "Sim, aceitamos relógios.")
+        self.assertEqual(response.data["turnos"][1]["texto"], MensagensConfig.get_solo().msg_fallback_sem_resposta)
         self.assertEqual(response.data["turnos"][1]["debug"]["tipo_intencao"], "duvida_geral")
 
         # Restart
