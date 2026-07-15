@@ -192,7 +192,7 @@ Renderizados por `whatsapp/respostas_contrato.py:render_template`
 | `tpl_saudacao_cliente` | `{saudacao}`, `{nome}` | Primeira interação de cliente identificado por telefone; também usado para saudação de identificado em qualquer turno. |
 | `tpl_contrato_vencimento` | `{contrato}`, `{vencimento}` | `info_contrato` com `info=vencimento`. |
 | `tpl_contrato_renovacao` | `{contrato}`, `{prazo_dias}`, `{valor_renovacao}`, `{vencimento}` | `info_contrato` com `info=valor_renovacao`. Sem `prazo_dias` informado pelo cliente, assume 30 e acrescenta nota "(prazo padrão de 30 dias)"; prazo arbitrário mapeia para o campo `vlr_renovacao_<N>` mais próximo entre 30/60/90/120/150/180. |
-| `tpl_contrato_quitacao` | `{contrato}`, `{valor_quitacao}`, `{vencimento}` | `info_contrato` com `info=valor_quitacao` (usa `ContratoPenhor.vlr_liquido`). |
+| `tpl_contrato_quitacao` | `{contrato}`, `{valor_quitacao}`, `{vencimento}` | `info_contrato` com `info=valor_quitacao` (usa `ContratoPenhor.liquidacao`, texto já formatado pelo ERP; `vlr_liquido` é o valor recebido na contratação, não o de quitação). |
 | `tpl_contrato_parcela` | `{contrato}`, `{valor_parcela}` | `info_contrato` com `info=valor_parcela`; contratos com `parcelado=False` são pulados silenciosamente. |
 | `tpl_contrato_resumo` | `{contrato}`, `{vencimento}`, `{valor_emprestimo}` | `info_contrato` com `info=lista_contratos`/`detalhe_contrato`; também usado na pergunta de slot de pagamento incompleto. |
 | `tpl_lista_header` | `{nome}`, `{qtd}` | Envolve o bloco quando mais de um contrato responde ao mesmo pedido (multi-contrato). |

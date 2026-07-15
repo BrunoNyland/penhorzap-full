@@ -47,6 +47,7 @@ class PrivacidadeDoPromptTests(TestCase):
             "parcelado": True,
             "vlr_emprestimo": "913131.13",
             "vlr_liquido": "824242.24",
+            "liquidacao": "R$606.060,60",
             "vlr_renovacao_30": "735353.35",
             "vlr_renovacao_60": "646464.46",
             "vlr_renovacao_90": "557575.57",
@@ -66,6 +67,7 @@ class PrivacidadeDoPromptTests(TestCase):
         valores_financeiros = [
             contrato["vlr_emprestimo"],
             contrato["vlr_liquido"],
+            contrato["liquidacao"],
             contrato["vlr_renovacao_30"],
             contrato["vlr_renovacao_60"],
             contrato["vlr_renovacao_90"],
@@ -92,6 +94,7 @@ class PrivacidadeDoPromptTests(TestCase):
         valores_financeiros = [
             contrato["vlr_emprestimo"],
             contrato["vlr_liquido"],
+            contrato["liquidacao"],
             contrato["vlr_renovacao_30"],
             contrato["vlr_renovacao_60"],
             contrato["vlr_renovacao_90"],

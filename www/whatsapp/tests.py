@@ -591,10 +591,18 @@ class RenderizarInfosContratoTests(TestCase):
         self.assertIn("R$ 2.500,00", resultado)
         self.assertIn("90", resultado)
 
-    def test_quitacao(self):
-        self._contrato(contrato="C1", vlr_liquido=850)
+    def test_quitacao_usa_campo_liquidacao_do_erp(self):
+        # Quitação vem do campo texto `liquidacao` do ERP (já formatado),
+        # NUNCA de vlr_liquido (valor recebido na contratação).
+        self._contrato(contrato="C1", liquidacao="R$850,00", vlr_liquido=999)
         resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO)], self.msgs)
         self.assertIn("R$ 850,00", resultado)
+        self.assertNotIn("999", resultado)
+
+    def test_quitacao_sem_liquidacao_avisa_indisponivel(self):
+        self._contrato(contrato="C1", liquidacao="")
+        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO)], self.msgs)
+        self.assertIn("indisponível", resultado)
 
     def test_parcela_pula_contrato_nao_parcelado(self):
         self._contrato(contrato="C1", parcelado=False, vlr_parcela=100)

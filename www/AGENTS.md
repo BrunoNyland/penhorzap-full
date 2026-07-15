@@ -68,7 +68,7 @@ Login (painel e API) usa a auth do Django admin (staff). Template de login admin
   - **CPF validado em Python** (`core.utils.validar_cpf`) — checksum oficial. A IA **não** decide validade.
   - **Contratos só chegam à IA se identificado (telefone OU CPF) E `database_atualizada`** (`_contratos_ativos_values`). Fora disso a IA recebe lista vazia → não pode vazar dados de terceiros, desatualizados ou liquidados.
   - **Só contratos ativos** (exclui `situacao_codigo` em `{LQ,LQVL,LQDE,SJLQ,LQSD}` e `situacao` contendo "Liquidado").
-  - **Nenhum valor financeiro chega ao prompt** (`ia.services._formatar_contratos`): a IA só vê `contrato`, `data_vencimento`, `parcelado` — o suficiente para desambiguar, nunca para redigir/calcular um valor. Os valores (`vlr_emprestimo`, `vlr_liquido` — valor de quitação, **mapeamento presumido, confirmar** —, `vlr_renovacao_30..180`, `vlr_parcela`) só existem no renderer Python (`respostas_contrato.py`), lidos do banco na hora de montar a resposta. Nunca aniversário/telefone/endereço em nenhum dos dois caminhos.
+  - **Nenhum valor financeiro chega ao prompt** (`ia.services._formatar_contratos`): a IA só vê `contrato`, `data_vencimento`, `parcelado` — o suficiente para desambiguar, nunca para redigir/calcular um valor. Os valores (`vlr_emprestimo`, `liquidacao` — valor de quitação, texto já formatado pelo ERP —, `vlr_renovacao_30..180`, `vlr_parcela`) só existem no renderer Python (`respostas_contrato.py`), lidos do banco na hora de montar a resposta. Nunca aniversário/telefone/endereço em nenhum dos dois caminhos.
   - **FAQs no prompt**: só `id`+`pergunta`, nunca o texto das respostas.
 - **Identidade — dois caminhos, não intercambiáveis** (`Conversa.identificacao`):
   - **Telefone cadastrado** (`Telefone` bate com o `remoteJid`) → `identificacao=telefone` **imediatamente, sem pedir CPF, e nunca expira**. Primeira interação responde com `tpl_saudacao_cliente` (nome do cliente) e encerra o turno sem chamar a IA.
@@ -125,6 +125,6 @@ Sem `GEMINI_API_KEY` o bot degrada com segurança (registra, responde neutro, ma
 
 ## Pontos a confirmar com o dono (implementados como presumido)
 
-- **`valor de quitação`** mapeado para `vlr_liquido` — confirmar se é o campo certo do ERP legado.
+- ~~`valor de quitação`~~ **confirmado pelo dono (2026-07-15)**: é o campo `liquidacao` (texto do ERP); `vlr_liquido` é o valor líquido RECEBIDO pelo cliente na contratação (descontados IOF/juros/tarifas). Contratos em EMNV/EMRL/RN podem vir sem `liquidacao` → renderer responde "indisponível no momento".
 - **Endpoint de contatos** (`fetch_contacts`) presume Evolution v2 (`/chat/findContacts/{instance}`, overridável via `EVOLUTION_CONTACTS_PATH`); se 404, a sync falha em silêncio e a triagem cai no fallback Telefone/pushName. Validar contra a instância v2.3.7 ao vivo.
 - **Freshness** default 24h (`BotConfig.freshness_horas`), ajustável no painel; `import_sqlite` carimba `ultima_atualizacao_dados`.

@@ -42,6 +42,19 @@ def formatar_moeda(valor) -> str:
     return f"{sinal}R$ {inteiro_fmt},{centavos}"
 
 
+def formatar_moeda_erp(texto) -> str:
+    """Valor monetário que já vem formatado como texto do ERP legado (ex.:
+    'R$1.813,70' no campo `liquidacao`). Não reformatamos o número — só
+    normalizamos o espaçamento. Vazio/None indica que o ERP ainda não
+    calculou (contratos em novação/renovação)."""
+    if not texto:
+        return "(valor de quitação indisponível no momento — vou verificar e te retorno)"
+    texto = str(texto).strip()
+    if texto.startswith("R$") and not texto.startswith("R$ "):
+        texto = "R$ " + texto[2:].lstrip()
+    return texto
+
+
 def formatar_data(valor) -> str:
     """Formata uma data como 'dd/mm/aaaa'."""
     if valor is None:
@@ -157,7 +170,7 @@ def renderizar_infos_contrato(cliente, pedidos, msgs) -> str:
                 linhas.append(render_template(
                     msgs.tpl_contrato_quitacao,
                     contrato=c["contrato"],
-                    valor_quitacao=formatar_moeda(c.get("vlr_liquido")),
+                    valor_quitacao=formatar_moeda_erp(c.get("liquidacao")),
                     vencimento=formatar_data(c["data_vencimento"]),
                 ))
 

@@ -249,7 +249,10 @@ def _contratos_ativos_values(cliente):
             "contrato",
             "data_vencimento",
             "vlr_emprestimo",
-            "vlr_liquido",
+            # valor de quitação do ERP (texto já formatado). NÃO usar
+            # vlr_liquido: aquele é o valor líquido RECEBIDO pelo cliente na
+            # contratação (descontados IOF/juros/tarifas), não o de quitação.
+            "liquidacao",
             "vlr_renovacao_30",
             "vlr_renovacao_60",
             "vlr_renovacao_90",
