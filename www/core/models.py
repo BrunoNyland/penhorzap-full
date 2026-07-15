@@ -80,15 +80,26 @@ class Cliente(models.Model):
 
     @classmethod
     def buscar_por_cpf(cls, cpf_raw):
-        """Busca um cliente pelo CPF de forma flexível, aceitando tanto
-        formatado (com pontos e traço) quanto somente dígitos (limpo).
+        """Busca um cliente pelo CPF, aceitando entrada formatada (com pontos
+        e traço) ou só dígitos — o parâmetro é sempre normalizado antes da
+        busca.
+
+        Com a migração 0014 (core), `Cliente.cpf` no banco já está
+        normalizado (11 dígitos) na imensa maioria dos casos, então a busca
+        principal é uma igualdade exata pelo valor limpo. Mantém um fallback
+        pelo formato pontuado só para os raros registros que ficaram como
+        estavam por colisão de normalização (ver `core.utils.normalizar_cpfs_clientes`).
         """
         if not cpf_raw:
             return None
         from core.utils import normalizar_cpf, formatar_cpf_pontuado
         clean = normalizar_cpf(cpf_raw)
-        formatted = formatar_cpf_pontuado(cpf_raw)
-        return cls.objects.filter(cpf__in=[clean, formatted]).first()
+        if not clean:
+            return None
+        cliente = cls.objects.filter(cpf=clean).first()
+        if cliente is not None:
+            return cliente
+        return cls.objects.filter(cpf=formatar_cpf_pontuado(cpf_raw)).first()
 
 
 class Telefone(models.Model):

@@ -9,6 +9,8 @@ ENV/
 # Django Backend & Root Files
 db.sqlite3
 media/
+backups/
+logs/
 www/__pycache__/
 www/*.py[cod]
 www/*$py.class

@@ -1,6 +1,7 @@
 """Parsing helpers for the legacy 0886.sqlite3 data (all columns are TEXT)."""
 import ast
 import datetime
+import logging
 import re
 from decimal import Decimal, InvalidOperation
 
@@ -156,3 +157,97 @@ def parse_nome_salvo(nome: str):
     if not m:
         return (None, None)
     return (m.group(1), m.group(2).strip())
+
+
+def normalizar_cpfs_clientes(connection, cliente_model, telefone_model, contrato_model, conversa_model, logger=None):
+    """Renomeia `Cliente.cpf` (chave primária) para a forma normalizada (11
+    dígitos), atualizando em cascata as FKs de `telefone_model`,
+    `contrato_model` e `conversa_model` que apontam para o cliente.
+
+    Usa SQL bruto com checagem de FK temporariamente desligada (MySQL:
+    `SET FOREIGN_KEY_CHECKS`; SQLite: `PRAGMA foreign_keys`) porque alterar o
+    valor de uma primary key via `Model.save()` do Django não faz UPDATE —
+    cria uma linha nova e deixa as FKs das linhas filhas órfãs.
+
+    Colisões — dois CPFs distintos que normalizam para o mesmo valor, ou um
+    CPF que normaliza para um valor já usado por outro cliente que
+    permanece como está — são logadas como warning e **não são alteradas**,
+    para não violar a constraint de chave primária.
+
+    Aceita tanto os modelos "reais" (`core.models`) quanto os modelos
+    históricos de uma migração (`apps.get_model(...)`), pois só usa `_meta`
+    e o manager `.objects`, presentes em ambos.
+
+    Retorna {"renomeados": int, "colisoes": int}.
+    """
+    log = logger or logging.getLogger(__name__)
+
+    existing_cpfs = list(cliente_model.objects.values_list("cpf", flat=True).iterator())
+    existing_set = set(existing_cpfs)
+
+    renames = {}
+    for cpf in existing_cpfs:
+        clean = normalizar_cpf(cpf)
+        if not clean or clean == cpf:
+            continue
+        renames[cpf] = clean
+
+    if not renames:
+        return {"renomeados": 0, "colisoes": 0}
+
+    target_counts = {}
+    for old, new in renames.items():
+        target_counts.setdefault(new, []).append(old)
+
+    to_apply = {}
+    colisoes = 0
+    for new, olds in target_counts.items():
+        # Colide com outro cpf que normaliza para o mesmo valor, ou com um
+        # cpf já limpo (que não está sendo renomeado) igual ao destino.
+        blocked_by_existing = new in existing_set and new not in renames
+        if len(olds) > 1 or blocked_by_existing:
+            colisoes += len(olds)
+            for old in olds:
+                log.warning(
+                    "normalizar_cpf: colisão ao normalizar cliente cpf=%r -> %r; "
+                    "mantendo original sem alterar.",
+                    old,
+                    new,
+                )
+            continue
+        to_apply[olds[0]] = new
+
+    if not to_apply:
+        return {"renomeados": 0, "colisoes": colisoes}
+
+    cliente_table = cliente_model._meta.db_table
+    related_specs = [
+        (telefone_model._meta.db_table, telefone_model._meta.get_field("cliente").column),
+        (contrato_model._meta.db_table, contrato_model._meta.get_field("cliente").column),
+        (conversa_model._meta.db_table, conversa_model._meta.get_field("cliente").column),
+    ]
+
+    vendor = connection.vendor
+    with connection.cursor() as cursor:
+        if vendor == "mysql":
+            cursor.execute("SET FOREIGN_KEY_CHECKS=0")
+        elif vendor == "sqlite":
+            cursor.execute("PRAGMA foreign_keys=OFF")
+        try:
+            for old, new in to_apply.items():
+                for table, column in related_specs:
+                    cursor.execute(
+                        f"UPDATE {table} SET {column} = %s WHERE {column} = %s",
+                        [new, old],
+                    )
+                cursor.execute(
+                    f"UPDATE {cliente_table} SET cpf = %s WHERE cpf = %s",
+                    [new, old],
+                )
+        finally:
+            if vendor == "mysql":
+                cursor.execute("SET FOREIGN_KEY_CHECKS=1")
+            elif vendor == "sqlite":
+                cursor.execute("PRAGMA foreign_keys=ON")
+
+    return {"renomeados": len(to_apply), "colisoes": colisoes}

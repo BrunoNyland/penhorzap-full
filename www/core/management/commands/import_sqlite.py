@@ -5,9 +5,16 @@ licitacoes) into the real penhorzap MySQL database.
 Usage:
     python manage.py import_sqlite /projects/penhorzap/0886.sqlite3
 """
-from django.core.management.base import BaseCommand
+import logging
 
+from django.core.management.base import BaseCommand
+from django.db import connection
+
+from core.models import Cliente, Conversa, ContratoPenhor, Telefone
 from core.services import importar_sqlite_arquivo
+from core.utils import normalizar_cpfs_clientes
+
+logger = logging.getLogger("core.import_sqlite")
 
 
 class Command(BaseCommand):
@@ -23,3 +30,22 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("Import concluído:"))
         for table, n in counts.items():
             self.stdout.write(f"  {table}: {n}")
+
+        # O import legado (core.services.importar_sqlite_arquivo) grava o cpf
+        # como veio do sqlite de origem, que pode ter pontuação/espaços
+        # inconsistentes. Normaliza para 11 dígitos após cada import,
+        # reaproveitando o mesmo helper usado pela migração 0014.
+        resultado = normalizar_cpfs_clientes(
+            connection, Cliente, Telefone, ContratoPenhor, Conversa, logger=logger,
+        )
+        if resultado["renomeados"]:
+            self.stdout.write(
+                self.style.SUCCESS(f"CPFs normalizados após import: {resultado['renomeados']}")
+            )
+        if resultado["colisoes"]:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"Colisões de CPF ao normalizar: {resultado['colisoes']} "
+                    "(mantidos sem alteração; ver logs)"
+                )
+            )

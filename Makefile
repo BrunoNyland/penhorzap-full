@@ -31,8 +31,8 @@ help: ## Mostra esta ajuda
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
 # ── Testes ─────────────────────────────────────────────────────────────────────
-test: ## Roda testes unitários da API (41 testes)
-	cd www && $(TEST_ENV) $(PYTHON) manage.py test api -v2
+test: ## Roda testes unitários (api, core, whatsapp, ia)
+	cd www && $(TEST_ENV) $(PYTHON) manage.py test api core whatsapp ia -v2
 
 test-int: ## Roda testes de integração (API + SPA + Nginx)
 	cd www && $(TEST_ENV) $(PYTHON) manage.py test api.tests_integration -v2

@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 import dotenv
+from django.core.exceptions import ImproperlyConfigured
 
 # BASE_DIR = .../pwa.brunonyland.com/www
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -16,13 +17,22 @@ dotenv.load_dotenv(PROJECT_ROOT / ".env")
 
 DJANGO_IS_PRODUCTION = int(os.environ.get("DJANGO_IS_PRODUCTION", 0))
 
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "insecure-dev-key-change-me")
+if DJANGO_IS_PRODUCTION:
+    SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
+    if not SECRET_KEY:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY não está definida no ambiente. Em produção "
+            "(DJANGO_IS_PRODUCTION=1) essa variável é obrigatória — defina-a "
+            "no .env antes de subir o serviço."
+        )
+else:
+    SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "insecure-dev-key-change-me")
 
 DEBUG = not DJANGO_IS_PRODUCTION
 
 ALLOWED_HOSTS = ["pwa.brunonyland.com", "www.pwa.brunonyland.com", "127.0.0.1", "localhost"]
 
-CSRF_TRUSTED_ORIGINS = ["https://pwa.brunonyland.com", "http://pwa.brunonyland.com"]
+CSRF_TRUSTED_ORIGINS = ["https://pwa.brunonyland.com"]
 
 # Application definition
 
@@ -128,17 +138,63 @@ if DJANGO_IS_PRODUCTION:
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SESSION_COOKIE_HTTPONLY = True
+    SECURE_REFERRER_POLICY = "same-origin"
+
+LOG_DIR = PROJECT_ROOT / "logs"
+LOG_DIR.mkdir(exist_ok=True)
 
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
+        },
+    },
     "handlers": {
-        "console": {"class": "logging.StreamHandler"},
+        "console": {"class": "logging.StreamHandler", "formatter": "verbose"},
+        "file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": str(LOG_DIR / "django.log"),
+            "maxBytes": 10 * 1024 * 1024,  # 10MB
+            "backupCount": 5,
+            "formatter": "verbose",
+            "delay": True,
+        },
     },
     "root": {
-        "handlers": ["console"],
+        "handlers": ["console", "file"],
         "level": os.environ.get("DJANGO_LOG_LEVEL", "INFO"),
     },
+    "loggers": {
+        # Loggers dedicados usados pelos apps whatsapp/ia (ver AGENTS.md);
+        # sem handlers próprios — propagam para os handlers do root
+        # (console + arquivo) evitando duplicar linhas de log.
+        "whatsapp": {
+            "level": "INFO",
+            "propagate": True,
+        },
+        "ia": {
+            "level": "INFO",
+            "propagate": True,
+        },
+    },
+}
+
+# --- Cache ------------------------------------------------------------------
+# LocMemCache explícito: documenta a intenção (cache em memória por processo,
+# não compartilhado entre workers do gunicorn). Trocar por Redis/Memcached se
+# for necessário cache compartilhado entre processos.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "penhorzap-locmem",
+    }
 }
 
 # --- Third-party integrations ----------------------------------------------
