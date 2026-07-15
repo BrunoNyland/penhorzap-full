@@ -54,7 +54,7 @@ from core.models import (
     Telefone,
 )
 from core.utils import normalizar_cpf, normalize_phone_br, parse_nome_salvo, validar_cpf
-from ia.schemas import TipoIntencaoV2, TipoPagamento
+from ia.schemas import TipoPagamento
 from ia.services import extrair_intencao
 
 from .evolution_client import get_client
@@ -444,10 +444,10 @@ def _reagendar(mensagem_id: int, atraso: timedelta = REAGENDAR_ATRASO):
     logger.info("process_mensagem: conversa ocupada, mensagem %s reagendada (+%ss)", mensagem_id, atraso.seconds)
 
 
-def _log_auditoria(conv, resultado, acao: str):
+def _log_auditoria(conv, resultado, acoes: str):
     logger.info(
-        "process_mensagem conversa=%s intencao_ia=%s precisa_humano=%s -> %s",
-        conv.id, resultado.tipo_intencao.value, resultado.precisa_humano, acao,
+        "process_mensagem conversa=%s precisa_humano=%s -> %s",
+        conv.id, resultado.precisa_humano, acoes,
     )
 
 
@@ -636,7 +636,7 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
     )[::-1]
 
     resultado = extrair_intencao(
-        mensagem.texto,
+        [mensagem.texto],
         historico,
         contratos_para_ia,
         faqs,
@@ -645,111 +645,153 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
         contato_tipo=tipo_contato,
     )
 
-    # 8) Gates pós-IA (hard rules em Python; a IA nunca decide acesso)
-    exige_identificacao = resultado.tipo_intencao in (
-        TipoIntencaoV2.INFO_CONTRATO, TipoIntencaoV2.PAGAMENTO, TipoIntencaoV2.SEGUNDA_VIA
-    )
-    if exige_identificacao and not identificado:
-        if tipo_contato == Conversa.TipoContato.DESCONHECIDO:
-            responder(msgs.msg_cadastro_nao_localizado)
+    # 8) Dispatch sequencial multi-ação (WS-A v3/Fase 2): a IA identifica
+    # TODAS as solicitações do lote de uma vez (schema ClassificacaoLote) --
+    # em vez de responder-e-retornar na primeira ação que casar, acumulamos
+    # tudo numa única `fila` e enviamos ao final via `_enviar_fila`, na
+    # ordem: saudação -> FAQs -> infos_contrato -> pagamento -> segunda_via
+    # -> dúvidas/fallback. Os gates de identificação/database (hard rules em
+    # Python; a IA nunca decide acesso) suprimem só as ações a que se
+    # aplicam -- saudação e FAQ sempre saem.
+    fila: list = []
+    acoes_log: list[str] = []
+
+    marcar_revisao = False
+
+    def _marcar_revisao():
+        nonlocal marcar_revisao
+        marcar_revisao = True
+
+    # 8.1) Saudação
+    if resultado.saudacao:
+        if identificado and cliente:
+            primeiro_nome = (cliente.nome or "").split()[0] if cliente.nome else ""
+            fila.append(render_template(msgs.tpl_saudacao_cliente, saudacao=_saudacao(), nome=primeiro_nome))
         else:
-            conv.estado = Conversa.Estado.AGUARDANDO_VERIFICACAO
-            conv.save(update_fields=["estado", "ultima_interacao"])
-            responder(msgs.msg_pedir_cpf)
-        _log_auditoria(conv, resultado, "gate:identificacao_ausente -> pediu identificação")
-        return
+            fila.append(render_template(msgs.msg_saudacao, saudacao=_saudacao()))
+        acoes_log.append("saudacao")
 
-    exige_db = resultado.tipo_intencao in (TipoIntencaoV2.INFO_CONTRATO, TipoIntencaoV2.PAGAMENTO)
-    if exige_db and not db_atualizada:
-        conv.precisa_revisao_humana = True
-        conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
-        responder(msgs.msg_db_desatualizada)
-        _log_auditoria(conv, resultado, "gate:db_desatualizada -> avisou database desatualizada")
-        return
+    # 8.2) FAQs -- todas as classificadas, cada FAQResposta vira 1 item da fila
+    for faq_id in resultado.faq_ids:
+        try:
+            faq = FAQ.objects.get(id=faq_id, ativo=True)
+        except FAQ.DoesNotExist:
+            logger.warning("FAQ %s classificada pela IA não existe ou está inativa.", faq_id)
+            continue
+        for resp in faq.respostas.all().order_by("ordem"):
+            if resp.arquivo:
+                caminho_completo = resp.arquivo.path
+                nome_arquivo = os.path.basename(resp.arquivo.name)
+                fila.append((caminho_completo, nome_arquivo, resp.texto))
+            elif resp.texto:
+                fila.append(resp.texto)
+        acoes_log.append(f"faq:{faq.id}")
 
-    # Desconhecidos identificados só por CPF (nunca por telefone cadastrado)
-    # só recebem boleto -- nenhum dado de contrato fora dele.
-    if (
-        resultado.tipo_intencao == TipoIntencaoV2.INFO_CONTRATO
+    # 8.3) Gates POR AÇÃO (identificação/database/desconhecido-por-CPF):
+    # calculados uma vez, suprimem só infos_contrato/pagamento/segunda_via.
+    tem_infos = bool(resultado.infos_contrato)
+    tem_pagamento = bool(resultado.solicitacoes)
+    tem_segunda_via = resultado.segunda_via
+
+    info_suprimido = False
+    pagamento_suprimido = False
+    segunda_via_suprimida = False
+    gate_motivo = None  # "identificacao" | "db"
+
+    if (tem_infos or tem_pagamento or tem_segunda_via) and not identificado:
+        info_suprimido = tem_infos
+        pagamento_suprimido = tem_pagamento
+        segunda_via_suprimida = tem_segunda_via
+        gate_motivo = "identificacao"
+    elif (tem_infos or tem_pagamento) and not db_atualizada:
+        info_suprimido = tem_infos
+        pagamento_suprimido = tem_pagamento
+        gate_motivo = "db"
+    elif (
+        tem_infos
         and conv.identificacao == Conversa.MetodoIdentificacao.CPF
         and tipo_contato == Conversa.TipoContato.DESCONHECIDO
     ):
-        responder(msgs.msg_info_negada_desconhecido)
-        _log_auditoria(conv, resultado, "gate:info_negada_desconhecido -> negou dado a desconhecido")
-        return
+        # Desconhecido identificado só por CPF (nunca por telefone
+        # cadastrado) pedindo dado de contrato -> só o boleto tem os dados;
+        # pagamento/segunda via continuam permitidos fora deste bloco.
+        info_suprimido = True
+        fila.append(msgs.msg_info_negada_desconhecido)
+        acoes_log.append("info_negada_desconhecido")
 
-    if resultado.precisa_humano:
-        conv.precisa_revisao_humana = True
-        conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
+    # 8.4) Info de contrato -> renderer determinístico (nunca texto da IA);
+    # fan-out: intro + 1 mensagem por contrato + totalizador (2+ contratos).
+    if tem_infos and not info_suprimido:
+        fila.extend(renderizar_infos_contrato(cliente, resultado.infos_contrato, msgs))
+        acoes_log.append(f"info_contrato:{len(resultado.infos_contrato)}")
 
-    # 9) Pagamento: cria solicitações quando pronto, senão pergunta de slot
-    if resultado.tipo_intencao == TipoIntencaoV2.PAGAMENTO:
-        if resultado.pronto_para_criar_solicitacao and resultado.solicitacoes and cliente:
+    # 8.5) Pagamento: cria solicitações quando pronto, senão pergunta de slot
+    if tem_pagamento and not pagamento_suprimido:
+        if resultado.pronto_para_criar_solicitacao and cliente:
             _criar_solicitacoes(conv, cliente, resultado.solicitacoes)
             conv.estado = Conversa.Estado.AGUARDANDO_BOLETO
             conv.save(update_fields=["estado", "ultima_interacao"])
-            responder(msgs.msg_solicitacao_criada)
-            _log_auditoria(conv, resultado, "acao:pagamento_pronto -> criou solicitação(ões)")
+            fila.append(msgs.msg_solicitacao_criada)
+            acoes_log.append("pagamento_pronto")
         else:
-            responder(_montar_pergunta_pagamento_incompleto(cliente, msgs))
-            _log_auditoria(conv, resultado, "acao:pagamento_incompleto -> pediu slot faltante")
-        return
+            fila.append(_montar_pergunta_pagamento_incompleto(cliente, msgs))
+            acoes_log.append("pagamento_incompleto")
 
-    # 10) Segunda via
-    if resultado.tipo_intencao == TipoIntencaoV2.SEGUNDA_VIA and cliente:
-        fila = _handle_segunda_via(conv, cliente, msgs)
-        _enviar_fila(fila, responder, responder_arquivo, conv)
-        _log_auditoria(conv, resultado, "acao:segunda_via -> clonou solicitação/pediu confirmação")
-        return
+    # 8.6) Segunda via
+    if tem_segunda_via and not segunda_via_suprimida and cliente:
+        fila.extend(_handle_segunda_via(conv, cliente, msgs))
+        acoes_log.append("segunda_via")
 
-    # 11) Info de contrato -> renderer determinístico (nunca texto da IA);
-    # fan-out: intro + 1 mensagem por contrato + totalizador (2+ contratos).
-    if resultado.tipo_intencao == TipoIntencaoV2.INFO_CONTRATO and resultado.infos_contrato:
-        fila = renderizar_infos_contrato(cliente, resultado.infos_contrato, msgs)
-        _enviar_fila(fila, responder, responder_arquivo, conv)
-        _log_auditoria(conv, resultado, "acao:info_contrato -> renderizou template de contrato")
-        return
-
-    # 12) Resposta via FAQ (com suporte a múltiplas mensagens e arquivos)
-    if resultado.faq_id:
-        try:
-            faq = FAQ.objects.get(id=resultado.faq_id, ativo=True)
-            respostas = faq.respostas.all().order_by("ordem")
-            fila = []
-            for resp in respostas:
-                if resp.arquivo:
-                    caminho_completo = resp.arquivo.path
-                    nome_arquivo = os.path.basename(resp.arquivo.name)
-                    fila.append((caminho_completo, nome_arquivo, resp.texto))
-                elif resp.texto:
-                    fila.append(resp.texto)
-            _enviar_fila(fila, responder, responder_arquivo, conv)
-            _log_auditoria(conv, resultado, f"acao:faq -> respondeu FAQ {faq.id}")
-            return
-        except FAQ.DoesNotExist:
-            logger.warning("FAQ %s classificada pela IA não existe ou está inativa.", resultado.faq_id)
-
-    # 13) Saudação
-    if resultado.tipo_intencao == TipoIntencaoV2.SAUDACAO:
-        if identificado and cliente:
-            primeiro_nome = (cliente.nome or "").split()[0] if cliente.nome else ""
-            responder(render_template(msgs.tpl_saudacao_cliente, saudacao=_saudacao(), nome=primeiro_nome))
+    # 8.7) Mensagem agregada do gate de identificação/database, UMA vez.
+    if gate_motivo == "identificacao":
+        if tipo_contato == Conversa.TipoContato.DESCONHECIDO:
+            fila.append(msgs.msg_cadastro_nao_localizado)
         else:
-            responder(render_template(msgs.msg_saudacao, saudacao=_saudacao()))
-        _log_auditoria(conv, resultado, "acao:saudacao -> respondeu saudação")
-        return
+            conv.estado = Conversa.Estado.AGUARDANDO_VERIFICACAO
+            conv.save(update_fields=["estado", "ultima_interacao"])
+            fila.append(msgs.msg_pedir_cpf)
+        acoes_log.append("gate:identificacao_ausente")
+    elif gate_motivo == "db":
+        _marcar_revisao()
+        fila.append(msgs.msg_db_desatualizada)
+        acoes_log.append("gate:db_desatualizada")
 
-    # 14) Fallback: dúvida geral sem FAQ, "outro", ou qualquer coisa que não
-    # casou em nenhuma ação acima. Registra sugestão de FAQ + marca revisão.
-    FAQSugerida.registrar(
-        resultado.pergunta_sugerida_faq or mensagem.texto,
-        conversa=conv,
-        pergunta_original=mensagem.texto,
-    )
-    conv.precisa_revisao_humana = True
-    conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
-    responder(msgs.msg_fallback_sem_resposta)
-    _log_auditoria(conv, resultado, "acao:fallback -> sugeriu FAQ + marcou revisão")
+    # 8.8) Dúvidas sem FAQ correspondente: registra sugestão de FAQ por
+    # dúvida + marca revisão; com outras ações na fila, anexa
+    # msg_duvida_anotada; sozinhas, cai no fallback padrão.
+    if resultado.duvidas_sem_faq:
+        for duvida in resultado.duvidas_sem_faq:
+            FAQSugerida.registrar(duvida, conversa=conv, pergunta_original=mensagem.texto)
+        _marcar_revisao()
+        if fila:
+            duvidas_txt = "; ".join(resultado.duvidas_sem_faq)
+            fila.append(render_template(msgs.msg_duvida_anotada, duvidas=duvidas_txt))
+        else:
+            fila.append(msgs.msg_fallback_sem_resposta)
+        acoes_log.append(f"duvida_sem_faq:{len(resultado.duvidas_sem_faq)}")
+
+    # 8.9) Nenhuma ação classificada no lote inteiro -> fallback padrão.
+    # Fila vazia apesar de haver ação (ex.: FAQ inativa) -> mensagem neutra.
+    if resultado.nenhuma_acao():
+        FAQSugerida.registrar(mensagem.texto, conversa=conv, pergunta_original=mensagem.texto)
+        _marcar_revisao()
+        fila.append(msgs.msg_fallback_sem_resposta)
+        acoes_log.append("nenhuma_acao")
+    elif not fila:
+        _marcar_revisao()
+        fila.append(msgs.msg_neutra_padrao)
+        acoes_log.append("fila_vazia_apos_acao")
+
+    if resultado.precisa_humano:
+        _marcar_revisao()
+        acoes_log.append("precisa_humano")
+
+    if marcar_revisao:
+        conv.precisa_revisao_humana = True
+        conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
+
+    _enviar_fila(fila, responder, responder_arquivo, conv)
+    _log_auditoria(conv, resultado, "acoes=" + (",".join(acoes_log) if acoes_log else "nenhuma"))
 
 
 def processar_nao_lidas():

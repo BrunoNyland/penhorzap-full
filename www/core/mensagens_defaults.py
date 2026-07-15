@@ -114,6 +114,10 @@ DEFAULT_MSG_FALLBACK_SEM_RESPOSTA = (
     "Boa pergunta! Deixa eu verificar com calma e já te retorno por aqui "
     "mesmo, combinado?"
 )
+DEFAULT_MSG_DUVIDA_ANOTADA = (
+    "Sobre {duvidas}: vou verificar com calma e te retorno por aqui mesmo, "
+    "combinado? 🙂"
+)
 DEFAULT_MSG_INFO_NEGADA_DESCONHECIDO = (
     "Por segurança, as informações do seu contrato constam no próprio "
     "boleto. Quer que eu gere o boleto pra você?"
@@ -129,35 +133,40 @@ WhatsApp. Você NUNCA escreve resposta ao cliente — apenas preenche o schema
 JSON pedido. Todo texto que o cliente recebe nasce de templates fixos em
 Python, fora do seu controle.
 
-Você recebe: a mensagem atual, o histórico recente, um bloco ESTADO
-(identificado, database_atualizada, contato_tipo — apenas contexto; as
-regras de acesso são aplicadas pelo sistema, não por você), a lista de
-contratos ativos do cliente (número, vencimento, parcelado — sem valores) e
-a lista de FAQs (id + pergunta).
+Você recebe: as MENSAGENS NÃO RESPONDIDAS do cliente (em ordem, pode ser mais
+de uma), o histórico recente, um bloco ESTADO (identificado,
+database_atualizada, contato_tipo — apenas contexto; as regras de acesso são
+aplicadas pelo sistema, não por você), a lista de contratos ativos do cliente
+(número, vencimento, parcelado — sem valores) e a lista de FAQs (id + pergunta).
 
-tipo_intencao:
-- saudacao: cumprimento sem pedido concreto.
-- duvida_geral: pergunta que não depende dos contratos do cliente (horário,
-  endereço, juros, como funciona...). Se corresponder claramente a uma FAQ,
-  preencha faq_id. Se NÃO houver FAQ correspondente, deixe faq_id nulo e
-  preencha pergunta_sugerida_faq com a pergunta reescrita de forma curta e
-  genérica.
-- info_contrato: o cliente quer um dado dos contratos DELE. Preencha
-  infos_contrato, um item por informação: vencimento | valor_renovacao
-  (prazo_dias se citado) | valor_quitacao | valor_parcela | lista_contratos
-  ("quais contratos eu tenho?") | detalhe_contrato. Em contratos, liste os
-  números citados; vazio = todos.
-- pagamento: quer renovar/quitar/pagar parcela. Preencha solicitacoes (uma
-  por ação: tipo + contratos + prazo_dias para renovar; contratos vazio =
-  todos). pronto_para_criar_solicitacao=true só quando a ação, os contratos
-  (ou "todos") e o prazo (para renovação) estiverem claros na conversa.
-- segunda_via: pedir reenvio de boleto já solicitado antes.
-- outro: nada acima.
+TAREFA: identifique TODAS as solicitações presentes no lote, sem esquecer
+nenhuma. Uma mensagem pode conter várias intenções ao mesmo tempo; preencha
+todos os campos que se aplicarem:
+
+- saudacao: true se o cliente cumprimentou neste lote.
+- faq_ids: IDs de TODAS as FAQs que respondem perguntas do lote.
+- infos_contrato: um item por dado de contrato pedido: vencimento |
+  valor_renovacao (prazo_dias se citado) | valor_quitacao | valor_parcela |
+  lista_contratos ("quais contratos eu tenho?") | detalhe_contrato. Em
+  contratos, liste os números citados; vazio = todos.
+- solicitacoes: um item por ação de pagamento (renovar/quitar/parcela), com
+  contratos citados (vazio = todos) e prazo_dias para renovar.
+  pronto_para_criar_solicitacao=true só quando ação, contratos (ou "todos") e
+  prazo (para renovação) estiverem claros na conversa.
+- segunda_via: true se pediu reenvio de boleto já solicitado antes.
+- duvidas_sem_faq: perguntas sem FAQ correspondente e que não dependem dos
+  contratos do cliente, cada uma reescrita curta e genérica.
+- precisa_humano: true se houver irritação, urgência, insistência sem resposta
+  ou pedido fora do escopo.
 
 Regras:
 1. Nunca invente números de contrato: use apenas os da lista fornecida.
-2. Se o cliente insistir sem obter resposta ou demonstrar irritação/urgência,
-   marque precisa_humano=true.
-3. Na dúvida entre duvida_geral e info_contrato: se a resposta depende dos
-   dados DO cliente, é info_contrato.
+2. Um CPF digitado sozinho não é uma solicitação: ignore-o (o sistema já o
+   validou).
+3. Na dúvida entre duvidas_sem_faq e infos_contrato: se a resposta depende dos
+   dados DO cliente, é infos_contrato.
+4. Não repita ações já atendidas no histórico; classifique apenas o que está
+   pendente nas mensagens não respondidas.
+5. Se o lote não contém nenhum pedido (ex.: só "ok", "obrigado"), deixe tudo
+   vazio/false.
 """

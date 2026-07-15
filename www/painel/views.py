@@ -16,6 +16,7 @@ from core.mensagens_defaults import (
     DEFAULT_MSG_CPF_INVALIDO,
     DEFAULT_MSG_CPF_NAO_BATE,
     DEFAULT_MSG_DB_DESATUALIZADA,
+    DEFAULT_MSG_DUVIDA_ANOTADA,
     DEFAULT_MSG_INSISTIU_HUMANO,
     DEFAULT_MSG_NEUTRA_PADRAO,
     DEFAULT_MSG_PEDIR_CPF,
@@ -63,6 +64,7 @@ MENSAGENS_DEFAULTS = {
     "msg_segunda_via_confirma": DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
     "msg_insistiu_humano": DEFAULT_MSG_INSISTIU_HUMANO,
     "msg_neutra_padrao": DEFAULT_MSG_NEUTRA_PADRAO,
+    "msg_duvida_anotada": DEFAULT_MSG_DUVIDA_ANOTADA,
     "tpl_totalizador": DEFAULT_TPL_TOTALIZADOR,
     "tpl_totalizador_sem_valor": DEFAULT_TPL_TOTALIZADOR_SEM_VALOR,
 }

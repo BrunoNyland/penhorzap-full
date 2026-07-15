@@ -27,11 +27,10 @@ from core.models import (
     Telefone,
 )
 from ia.schemas import (
-    ClassificacaoMensagem,
+    ClassificacaoLote,
     InfoContrato,
     InfoContratoPedido,
     SolicitacaoDraft,
-    TipoIntencaoV2,
     TipoPagamento,
 )
 from whatsapp.respostas_contrato import (
@@ -49,18 +48,23 @@ from whatsapp.tasks import (
 from whatsapp.views import _extrair_conteudo
 
 
-def _classificacao(tipo_intencao=TipoIntencaoV2.OUTRO, **kwargs):
+def _classificacao(**kwargs):
+    """Constrói um `ClassificacaoLote` de teste: todos os campos partem do
+    "neutro" (nenhuma ação) e os testes só sobrescrevem o que precisam via
+    kwargs (ex.: `_classificacao(saudacao=True)`,
+    `_classificacao(infos_contrato=[...])`, `_classificacao(faq_ids=[1, 2])`)."""
     defaults = dict(
-        tipo_intencao=tipo_intencao,
-        faq_id=None,
+        saudacao=False,
+        faq_ids=[],
         infos_contrato=[],
         solicitacoes=[],
         pronto_para_criar_solicitacao=False,
+        segunda_via=False,
+        duvidas_sem_faq=[],
         precisa_humano=False,
-        pergunta_sugerida_faq=None,
     )
     defaults.update(kwargs)
-    return ClassificacaoMensagem(**defaults)
+    return ClassificacaoLote(**defaults)
 
 
 class WhatsappTasksTestCase(TestCase):
@@ -135,7 +139,6 @@ class IdentificacaoTelefoneTests(WhatsappTasksTestCase):
         Mensagem.objects.create(conversa=self.conv, direcao=Mensagem.Direcao.OUT, texto="oi")
 
         mock_ia.return_value = _classificacao(
-            TipoIntencaoV2.INFO_CONTRATO,
             infos_contrato=[InfoContratoPedido(info=InfoContrato.VENCIMENTO)],
         )
         mensagem = self._in(self.conv, "quando vence meu contrato?")
@@ -157,7 +160,6 @@ class DesconhecidoTests(WhatsappTasksTestCase):
 
         with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
             mock_ia.return_value = _classificacao(
-                TipoIntencaoV2.INFO_CONTRATO,
                 infos_contrato=[InfoContratoPedido(info=InfoContrato.VENCIMENTO)],
             )
             mensagem = self._in(conv, "quanto devo no meu contrato?")
@@ -174,7 +176,6 @@ class DesconhecidoTests(WhatsappTasksTestCase):
         conv = Conversa.objects.create(remote_jid="5567900000002@s.whatsapp.net")
         with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
             mock_ia.return_value = _classificacao(
-                TipoIntencaoV2.INFO_CONTRATO,
                 infos_contrato=[InfoContratoPedido(info=InfoContrato.VENCIMENTO)],
             )
             mensagem = self._in(conv, "quando vence?", push_name="PHN_99999999999_Fulano")
@@ -200,7 +201,6 @@ class DesconhecidoTests(WhatsappTasksTestCase):
 
         with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
             mock_ia.return_value = _classificacao(
-                TipoIntencaoV2.INFO_CONTRATO,
                 infos_contrato=[InfoContratoPedido(info=InfoContrato.VENCIMENTO)],
             )
             mensagem = self._in(conv, "quando vence meu contrato?")
@@ -226,7 +226,6 @@ class DesconhecidoTests(WhatsappTasksTestCase):
 
         with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
             mock_ia.return_value = _classificacao(
-                TipoIntencaoV2.PAGAMENTO,
                 solicitacoes=[SolicitacaoDraft(tipo=TipoPagamento.QUITAR, contratos=["C1"])],
                 pronto_para_criar_solicitacao=True,
             )
@@ -264,7 +263,6 @@ class InfoContratoRendererIntegrationTests(WhatsappTasksTestCase):
 
         with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
             mock_ia.return_value = _classificacao(
-                TipoIntencaoV2.INFO_CONTRATO,
                 infos_contrato=[InfoContratoPedido(info=InfoContrato.VENCIMENTO)],
             )
             mensagem = self._in(conv, "quando vence o C42?")
@@ -297,7 +295,6 @@ class InfoContratoRendererIntegrationTests(WhatsappTasksTestCase):
 
         with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
             mock_ia.return_value = _classificacao(
-                TipoIntencaoV2.INFO_CONTRATO,
                 infos_contrato=[InfoContratoPedido(info=InfoContrato.VENCIMENTO)],
             )
             mensagem = self._in(conv, "quando vencem meus contratos?")
@@ -337,7 +334,7 @@ class FaqEFallbackTests(WhatsappTasksTestCase):
         FAQResposta.objects.create(faq=faq, ordem=1, texto="Segunda resposta")
 
         with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
-            mock_ia.return_value = _classificacao(TipoIntencaoV2.DUVIDA_GERAL, faq_id=faq.id)
+            mock_ia.return_value = _classificacao(faq_ids=[faq.id])
             mensagem = self._in(self.conv, "aceita relógio?")
             process_mensagem(mensagem.id)
 
@@ -349,7 +346,7 @@ class FaqEFallbackTests(WhatsappTasksTestCase):
     def test_fallback_sem_resposta_cria_faq_sugerida_e_marca_revisao(self):
         with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
             mock_ia.return_value = _classificacao(
-                TipoIntencaoV2.DUVIDA_GERAL, pergunta_sugerida_faq="Vocês trabalham feriado?",
+                duvidas_sem_faq=["Vocês trabalham feriado?"],
             )
             mensagem = self._in(self.conv, "vcs abrem no feriado?")
             process_mensagem(mensagem.id)
@@ -364,7 +361,7 @@ class FaqEFallbackTests(WhatsappTasksTestCase):
     def test_fallback_pergunta_duplicada_incrementa_ocorrencias(self):
         with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
             mock_ia.return_value = _classificacao(
-                TipoIntencaoV2.DUVIDA_GERAL, pergunta_sugerida_faq="Vocês trabalham feriado?",
+                duvidas_sem_faq=["Vocês trabalham feriado?"],
             )
             m1 = self._in(self.conv, "vcs abrem no feriado?")
             process_mensagem(m1.id)
@@ -374,6 +371,144 @@ class FaqEFallbackTests(WhatsappTasksTestCase):
         self.assertEqual(FAQSugerida.objects.filter(pergunta="Vocês trabalham feriado?").count(), 1)
         sugestao = FAQSugerida.objects.get(pergunta="Vocês trabalham feriado?")
         self.assertEqual(sugestao.ocorrencias, 2)
+
+
+class MultiAcaoLoteTests(WhatsappTasksTestCase):
+    """Dispatch sequencial multi-ação (Fase 2/WS-A v3): a IA classifica
+    TODAS as solicitações do lote de uma vez (`ClassificacaoLote`) e o
+    dispatch acumula uma fila só, enviada ao final via `_enviar_fila` --
+    sem esquecer nenhuma ação e sem retornos precoces entre elas."""
+
+    def setUp(self):
+        super().setUp()
+        self.cliente = Cliente.objects.create(cpf="52998224725", nome="Paula Reis")
+        Telefone.objects.create(cliente=self.cliente, numero="+5567966665555")
+        self.contrato = ContratoPenhor.objects.create(
+            contrato="C1", cliente=self.cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            data_vencimento=timezone.localdate() + timedelta(days=10),
+            liquidacao="R$ 500,00",
+        )
+        self.conv = Conversa.objects.create(
+            remote_jid="5567966665555@s.whatsapp.net",
+            identificacao=Conversa.MetodoIdentificacao.TELEFONE,
+            tipo_contato=Conversa.TipoContato.CLIENTE,
+            cliente=self.cliente,
+        )
+        Mensagem.objects.create(conversa=self.conv, direcao=Mensagem.Direcao.OUT, texto="oi")
+        self.faq = FAQ.objects.create(pergunta="Vocês abrem sábado?", ativo=True)
+        FAQResposta.objects.create(faq=self.faq, ordem=0, texto="Sim, sábado até meio-dia!")
+
+    def test_lote_saudacao_faq_e_quitacao_sai_na_ordem(self):
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mock_ia.return_value = _classificacao(
+                saudacao=True,
+                faq_ids=[self.faq.id],
+                infos_contrato=[InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO)],
+            )
+            mensagem = self._in(self.conv, "bom dia, quanto pra quitar? vcs abrem sábado?")
+            process_mensagem(mensagem.id)
+
+        outs = list(
+            self.conv.mensagens.filter(direcao=Mensagem.Direcao.OUT).order_by("criado_em").values_list("texto", flat=True)
+        )
+        # "oi" (setup) + saudação + faq + quitação (1 contrato = 1 linha)
+        self.assertEqual(len(outs), 4)
+        self.assertIn("Paula", outs[1])
+        self.assertEqual(outs[2], "Sim, sábado até meio-dia!")
+        self.assertIn("C1", outs[3])
+
+    def test_faq_mais_pagamento_sem_identificacao_faq_sai_e_pede_cpf_uma_vez(self):
+        # PHN_<cpf>_<nome> na agenda mas o CPF não existe no cadastro de
+        # clientes -> tipo_contato=CLIENTE, cliente=None -> pede CPF (branch
+        # "else" do gate; distinto do desconhecido puro, que recebe
+        # msg_cadastro_nao_localizado).
+        conv = Conversa.objects.create(remote_jid="5567900000020@s.whatsapp.net")
+        Mensagem.objects.create(conversa=conv, direcao=Mensagem.Direcao.OUT, texto="oi")
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mock_ia.return_value = _classificacao(
+                faq_ids=[self.faq.id],
+                solicitacoes=[SolicitacaoDraft(tipo=TipoPagamento.QUITAR)],
+            )
+            mensagem = self._in(
+                conv, "vcs abrem sábado? quero quitar meu contrato", push_name="PHN_99999999999_Fulano"
+            )
+            process_mensagem(mensagem.id)
+
+        outs = list(
+            conv.mensagens.filter(direcao=Mensagem.Direcao.OUT).order_by("criado_em").values_list("texto", flat=True)
+        )
+        self.assertEqual(outs, ["oi", "Sim, sábado até meio-dia!", self.msgs.msg_pedir_cpf])
+
+    def test_gate_db_suprime_infos_mas_faq_sai(self):
+        self.bot.ultima_atualizacao_dados = timezone.now() - timedelta(days=10)
+        self.bot.freshness_horas = 1
+        self.bot.save()
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mock_ia.return_value = _classificacao(
+                faq_ids=[self.faq.id],
+                infos_contrato=[InfoContratoPedido(info=InfoContrato.VENCIMENTO)],
+            )
+            mensagem = self._in(self.conv, "vcs abrem sábado? quando vence meu contrato?")
+            process_mensagem(mensagem.id)
+
+        outs = list(
+            self.conv.mensagens.filter(direcao=Mensagem.Direcao.OUT).order_by("criado_em").values_list("texto", flat=True)
+        )
+        self.assertEqual(outs, ["oi", "Sim, sábado até meio-dia!", self.msgs.msg_db_desatualizada])
+        self.conv.refresh_from_db()
+        self.assertTrue(self.conv.precisa_revisao_humana)
+
+    def test_duas_faqs_no_mesmo_lote(self):
+        faq2 = FAQ.objects.create(pergunta="Aceita relógio?", ativo=True)
+        FAQResposta.objects.create(faq=faq2, ordem=0, texto="Aceitamos sim!")
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mock_ia.return_value = _classificacao(faq_ids=[self.faq.id, faq2.id])
+            mensagem = self._in(self.conv, "abrem sábado? aceita relógio?")
+            process_mensagem(mensagem.id)
+
+        outs = list(
+            self.conv.mensagens.filter(direcao=Mensagem.Direcao.OUT).order_by("criado_em").values_list("texto", flat=True)
+        )
+        self.assertEqual(outs, ["oi", "Sim, sábado até meio-dia!", "Aceitamos sim!"])
+
+    def test_duvidas_sem_faq_com_outra_acao_gera_faqsugerida_por_duvida_e_msg_duvida_anotada(self):
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mock_ia.return_value = _classificacao(
+                saudacao=True,
+                duvidas_sem_faq=["Vocês fazem entrega em domicílio?", "Tem estacionamento?"],
+            )
+            mensagem = self._in(self.conv, "bom dia! fazem entrega? tem estacionamento?")
+            process_mensagem(mensagem.id)
+
+        self.assertEqual(FAQSugerida.objects.count(), 2)
+        outs = list(
+            self.conv.mensagens.filter(direcao=Mensagem.Direcao.OUT).order_by("criado_em").values_list("texto", flat=True)
+        )
+        # "oi" (setup) + saudação + msg_duvida_anotada
+        self.assertEqual(len(outs), 3)
+        self.assertIn("Vocês fazem entrega em domicílio?", outs[-1])
+        self.assertIn("Tem estacionamento?", outs[-1])
+        self.conv.refresh_from_db()
+        self.assertTrue(self.conv.precisa_revisao_humana)
+
+    def test_nenhuma_acao_cai_no_fallback(self):
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mock_ia.return_value = _classificacao()
+            mensagem = self._in(self.conv, "ok, obrigado")
+            process_mensagem(mensagem.id)
+
+        self.assertEqual(self._last_out_texto(self.conv), self.msgs.msg_fallback_sem_resposta)
+        self.assertEqual(FAQSugerida.objects.filter(pergunta_original="ok, obrigado").count(), 1)
+
+    def test_precisa_humano_nao_suprime_acoes(self):
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mock_ia.return_value = _classificacao(saudacao=True, precisa_humano=True)
+            mensagem = self._in(self.conv, "bom dia, quero falar com atendente humano")
+            process_mensagem(mensagem.id)
+
+        self.assertIn("Paula", self._last_out_texto(self.conv))
+        self.conv.refresh_from_db()
+        self.assertTrue(self.conv.precisa_revisao_humana)
 
 
 class FalsoPositivoCpfTests(WhatsappTasksTestCase):
@@ -386,7 +521,7 @@ class FalsoPositivoCpfTests(WhatsappTasksTestCase):
         self.conv.estado = Conversa.Estado.NOVA
         self.conv.save()
         with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
-            mock_ia.return_value = _classificacao(TipoIntencaoV2.SAUDACAO)
+            mock_ia.return_value = _classificacao(saudacao=True)
             mensagem = self._in(self.conv, "meu contrato eh 12345678901 valeu")
             process_mensagem(mensagem.id)
 
@@ -401,7 +536,7 @@ class FalsoPositivoCpfTests(WhatsappTasksTestCase):
         self.conv.save()
         Cliente.objects.create(cpf="52998224725", nome="Sem Telefone Cadastrado")
         with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
-            mock_ia.return_value = _classificacao(TipoIntencaoV2.SAUDACAO)
+            mock_ia.return_value = _classificacao(saudacao=True)
             mensagem = self._in(self.conv, "meu cpf eh 529.982.247-25")
             process_mensagem(mensagem.id)
 
@@ -414,7 +549,7 @@ class FalsoPositivoCpfTests(WhatsappTasksTestCase):
         self.conv.save()
         Cliente.objects.create(cpf="52998224725", nome="Cliente CPF Cru")
         with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
-            mock_ia.return_value = _classificacao(TipoIntencaoV2.SAUDACAO)
+            mock_ia.return_value = _classificacao(saudacao=True)
             mensagem = self._in(self.conv, "52998224725")
             process_mensagem(mensagem.id)
 
@@ -447,7 +582,7 @@ class LockECoalescenciaTests(WhatsappTasksTestCase):
         self.assertGreater(mais_nova.criado_em, mais_antiga.criado_em)
 
         with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
-            mock_ia.return_value = _classificacao(TipoIntencaoV2.SAUDACAO)
+            mock_ia.return_value = _classificacao(saudacao=True)
             process_mensagem(mais_antiga.id)
 
         mock_ia.assert_not_called()

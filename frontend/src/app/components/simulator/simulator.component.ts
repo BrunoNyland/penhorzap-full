@@ -81,11 +81,25 @@ import { IconComponent } from '../../shared/icon/icon.component';
                       <span>Depuração da IA</span>
                     </div>
                     <ul class="debug-details">
-                      <li>Intenção: <strong class="badge badge-info">{{ turn.debug.tipo_intencao }}</strong></li>
+                      <li>
+                        Ações:
+                        @if (turn.debug.acoes?.length > 0) {
+                          <span class="acoes-chips">
+                            @for (acao of turn.debug.acoes; track acao) {
+                              <span class="badge badge-info">{{ acao }}</span>
+                            }
+                          </span>
+                        } @else {
+                          <span class="badge">nenhuma</span>
+                        }
+                      </li>
                       <li>Encaminhar p/ Humano: <span class="badge" [ngClass]="turn.debug.precisa_humano ? 'badge-warning' : 'badge-success'">{{ turn.debug.precisa_humano ? 'SIM' : 'NÃO' }}</span></li>
                       <li>Draft pronto: <span class="badge" [ngClass]="turn.debug.pronto_para_criar_solicitacao ? 'badge-success' : 'badge-danger'">{{ turn.debug.pronto_para_criar_solicitacao ? 'SIM' : 'NÃO' }}</span></li>
-                      @if (turn.debug.cpf_extraido) {
-                        <li>CPF extraído: <code>{{ turn.debug.cpf_extraido }}</code></li>
+                      @if (turn.debug.duvidas_sem_faq?.length > 0) {
+                        <li>
+                          <strong>Dúvidas sem FAQ:</strong>
+                          <pre class="debug-code">{{ turn.debug.duvidas_sem_faq | json }}</pre>
+                        </li>
                       }
                       @if (turn.debug.solicitacoes?.length > 0) {
                         <li>
@@ -283,6 +297,12 @@ import { IconComponent } from '../../shared/icon/icon.component';
       display: flex;
       flex-direction: column;
       gap: 4px;
+    }
+    .acoes-chips {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-left: 4px;
     }
     .debug-code {
       background-color: #161b22;

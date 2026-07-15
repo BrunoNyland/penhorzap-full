@@ -7,6 +7,7 @@ from .mensagens_defaults import (
     DEFAULT_MSG_CPF_INVALIDO,
     DEFAULT_MSG_CPF_NAO_BATE,
     DEFAULT_MSG_DB_DESATUALIZADA,
+    DEFAULT_MSG_DUVIDA_ANOTADA,
     DEFAULT_MSG_FALLBACK_SEM_RESPOSTA,
     DEFAULT_MSG_INFO_NEGADA_DESCONHECIDO,
     DEFAULT_MSG_INSISTIU_HUMANO,
@@ -477,6 +478,10 @@ class MensagensConfig(models.Model):
     tpl_totalizador = models.TextField(default=DEFAULT_TPL_TOTALIZADOR)
     tpl_totalizador_sem_valor = models.TextField(default=DEFAULT_TPL_TOTALIZADOR_SEM_VALOR)
     msg_fallback_sem_resposta = models.TextField(default=DEFAULT_MSG_FALLBACK_SEM_RESPOSTA)
+    msg_duvida_anotada = models.TextField(
+        default=DEFAULT_MSG_DUVIDA_ANOTADA,
+        help_text="Anexada ao final da fila quando há dúvidas sem FAQ junto com outras ações. Use {duvidas}.",
+    )
     msg_info_negada_desconhecido = models.TextField(default=DEFAULT_MSG_INFO_NEGADA_DESCONHECIDO)
     msg_midia_nao_suportada = models.TextField(default=DEFAULT_MSG_MIDIA_NAO_SUPORTADA)
     atualizado_em = models.DateTimeField(auto_now=True)

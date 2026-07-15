@@ -422,7 +422,8 @@ export class ConfigComponent implements OnInit {
     { key: 'msg_quitacao_garantia', label: 'Quitação: Resgate de Garantia', help: 'Instrução para retirada de bens. Usa a tag {data_resgate}.' },
     { key: 'msg_segunda_via_confirma', label: 'Confirmação de 2ª via', help: 'Usa as tags {contratos} e {tipo}.' },
     { key: 'msg_insistiu_humano', label: 'Insistiu por Humano', help: 'Feedback enviado se o usuário repetir comandos de fallback sucessivamente.' },
-    { key: 'msg_neutra_padrao', label: 'Mensagem Neutra Padrão', help: 'Conversa genérica sem intenção identificável.' }
+    { key: 'msg_neutra_padrao', label: 'Mensagem Neutra Padrão', help: 'Conversa genérica sem intenção identificável.' },
+    { key: 'msg_duvida_anotada', label: 'Dúvida Anotada', help: 'Anexada ao final da fila quando há dúvida(s) sem FAQ junto de outras ações no mesmo lote. Use a tag {duvidas}.' }
   ];
 
   camposContrato = [

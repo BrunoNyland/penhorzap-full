@@ -7,7 +7,7 @@ só o necessário para desambiguar (número/vencimento/parcelado; id+pergunta).
 """
 from django.test import TestCase, override_settings
 
-from ia.schemas import ClassificacaoMensagem
+from ia.schemas import ClassificacaoLote
 from ia.services import _formatar_contratos, _formatar_faqs, _montar_prompt, extrair_intencao
 
 
@@ -23,14 +23,31 @@ class ExtrairIntencaoSemApiKeyTests(TestCase):
             db_atualizada=True,
             contato_tipo="cliente",
         )
-        self.assertIsInstance(resultado, ClassificacaoMensagem)
+        self.assertIsInstance(resultado, ClassificacaoLote)
         self.assertTrue(resultado.precisa_humano)
 
     @override_settings(GEMINI_API_KEY="")
     def test_sem_api_key_nao_levanta_mesmo_com_entrada_vazia(self):
         # Garantia dura: nenhuma combinação de entrada pode fazer levantar.
         resultado = extrair_intencao("", [], [], [], identificado=False, db_atualizada=False, contato_tipo="desconhecido")
-        self.assertIsInstance(resultado, ClassificacaoMensagem)
+        self.assertIsInstance(resultado, ClassificacaoLote)
+        self.assertTrue(resultado.precisa_humano)
+
+    @override_settings(GEMINI_API_KEY="")
+    def test_sem_api_key_aceita_lote_de_mensagens_como_lista(self):
+        # `mensagens_lote` aceita list[str] (lote de N mensagens não
+        # respondidas) além de str única -- forma que a Fase 3/debounce vai
+        # passar a usar.
+        resultado = extrair_intencao(
+            ["oi", "quero renovar meu contrato"],
+            [],
+            [],
+            [],
+            identificado=True,
+            db_atualizada=True,
+            contato_tipo="cliente",
+        )
+        self.assertIsInstance(resultado, ClassificacaoLote)
         self.assertTrue(resultado.precisa_humano)
 
 
@@ -123,3 +140,46 @@ class PrivacidadeDoPromptTests(TestCase):
 
     def test_formatar_faqs_sem_faqs(self):
         self.assertIn("sem FAQ cadastrado", _formatar_faqs([]))
+
+    def test_montar_prompt_lote_numera_mensagens_em_ordem(self):
+        prompt = _montar_prompt(
+            ["bom dia", "quero renovar o contrato"],
+            [],
+            [],
+            [],
+            identificado=True,
+            db_atualizada=True,
+            contato_tipo="cliente",
+        )
+        self.assertIn("MENSAGENS DO CLIENTE (não respondidas, em ordem):", prompt)
+        self.assertIn("1. bom dia", prompt)
+        self.assertIn("2. quero renovar o contrato", prompt)
+        # a seção antiga (single-mensagem) não deve mais existir
+        self.assertNotIn("MENSAGEM ATUAL DO CLIENTE:", prompt)
+
+    def test_montar_prompt_lote_com_duas_mensagens_nao_contem_valores_financeiros(self):
+        contrato = self._contrato_fake()
+        faqs = [{"id": 1, "pergunta": "Vocês aceitam relógio?"}]
+        prompt = _montar_prompt(
+            ["bom dia", "quero renovar"],
+            [{"direcao": "in", "texto": "oi"}],
+            [contrato],
+            faqs,
+            identificado=True,
+            db_atualizada=True,
+            contato_tipo="cliente",
+        )
+        valores_financeiros = [
+            contrato["vlr_emprestimo"],
+            contrato["vlr_liquido"],
+            contrato["liquidacao"],
+            contrato["vlr_renovacao_30"],
+            contrato["vlr_renovacao_60"],
+            contrato["vlr_renovacao_90"],
+            contrato["vlr_renovacao_120"],
+            contrato["vlr_renovacao_150"],
+            contrato["vlr_renovacao_180"],
+            contrato["vlr_parcela"],
+        ]
+        for valor in valores_financeiros:
+            self.assertNotIn(valor, prompt, f"valor financeiro {valor!r} vazou para o prompt do lote")

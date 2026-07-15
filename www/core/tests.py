@@ -215,6 +215,7 @@ class MensagensConfigGetSoloTests(TestCase):
             "msg_fallback_sem_resposta",
             "msg_info_negada_desconhecido",
             "msg_midia_nao_suportada",
+            "msg_duvida_anotada",
         ]
         for campo in campos_tpl:
             valor = getattr(config, campo)

@@ -432,6 +432,7 @@ class MensagensConfigAPIView(GenericAPIView):
             DEFAULT_MSG_CPF_INVALIDO,
             DEFAULT_MSG_CPF_NAO_BATE,
             DEFAULT_MSG_DB_DESATUALIZADA,
+            DEFAULT_MSG_DUVIDA_ANOTADA,
             DEFAULT_MSG_INSISTIU_HUMANO,
             DEFAULT_MSG_NEUTRA_PADRAO,
             DEFAULT_MSG_PEDIR_CPF,
@@ -467,6 +468,7 @@ class MensagensConfigAPIView(GenericAPIView):
             "msg_quitacao_garantia": DEFAULT_MSG_QUITACAO_GARANTIA,
             "msg_segunda_via_confirma": DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
             "msg_insistiu_humano": DEFAULT_MSG_INSISTIU_HUMANO,
+            "msg_duvida_anotada": DEFAULT_MSG_DUVIDA_ANOTADA,
             "msg_neutra_padrao": DEFAULT_MSG_NEUTRA_PADRAO,
             "tpl_totalizador": DEFAULT_TPL_TOTALIZADOR,
             "tpl_totalizador_sem_valor": DEFAULT_TPL_TOTALIZADOR_SEM_VALOR,
@@ -502,6 +504,7 @@ class MensagensConfigRestoreAPIView(GenericAPIView):
             DEFAULT_MSG_CPF_INVALIDO,
             DEFAULT_MSG_CPF_NAO_BATE,
             DEFAULT_MSG_DB_DESATUALIZADA,
+            DEFAULT_MSG_DUVIDA_ANOTADA,
             DEFAULT_MSG_INSISTIU_HUMANO,
             DEFAULT_MSG_NEUTRA_PADRAO,
             DEFAULT_MSG_PEDIR_CPF,
@@ -537,6 +540,7 @@ class MensagensConfigRestoreAPIView(GenericAPIView):
             "msg_quitacao_garantia": DEFAULT_MSG_QUITACAO_GARANTIA,
             "msg_segunda_via_confirma": DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
             "msg_insistiu_humano": DEFAULT_MSG_INSISTIU_HUMANO,
+            "msg_duvida_anotada": DEFAULT_MSG_DUVIDA_ANOTADA,
             "msg_neutra_padrao": DEFAULT_MSG_NEUTRA_PADRAO,
             "tpl_totalizador": DEFAULT_TPL_TOTALIZADOR,
             "tpl_totalizador_sem_valor": DEFAULT_TPL_TOTALIZADOR_SEM_VALOR,
@@ -1046,68 +1050,100 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 def _montar_resposta_simulador(resultado, cliente, msgs) -> list:
-    """Espelha (sem efeitos colaterais em BD) o dispatch determinístico de
-    `whatsapp.tasks.process_mensagem` para o simulador: a partir do WS-A a
-    IA é só classificadora -- o texto de exibição vem de templates/renderer
-    em Python, nunca de um campo de texto da IA. Não cria Solicitacao real
-    nem envia nada via WhatsApp; é só uma prévia do que o bot responderia.
+    """Espelha (sem efeitos colaterais em BD) o dispatch sequencial
+    multi-ação de `whatsapp.tasks._processar_mensagem_com_lock` para o
+    simulador: a partir do WS-A a IA é só classificadora -- o texto de
+    exibição vem de templates/renderer em Python, nunca de um campo de
+    texto da IA. Não cria Solicitacao real nem envia nada via WhatsApp; é
+    só uma prévia do que o bot responderia. O simulador sempre chama
+    `extrair_intencao` com `identificado=True, db_atualizada=True` (ver
+    `SimulatorView.post`), então os gates de identificação/database do
+    dispatch real nunca disparam aqui -- a ordem das ações é a mesma:
+    saudação -> FAQs -> infos_contrato -> pagamento -> segunda_via ->
+    dúvidas/fallback.
 
     Retorna uma LISTA de mensagens (paridade com o fan-out real de
     `whatsapp.tasks._enviar_fila`): cada item vira uma bolha/turno separado
     no simulador. Uma FAQResposta com arquivo vira uma entrada
     "📎 {nome}" + o texto da legenda, já que o simulador não envia arquivo
     de verdade."""
-    from ia.schemas import TipoIntencaoV2
     from whatsapp.respostas_contrato import render_template, renderizar_infos_contrato
     from whatsapp.tasks import _montar_pergunta_pagamento_incompleto, _saudacao
 
-    if resultado.tipo_intencao == TipoIntencaoV2.PAGAMENTO:
-        if resultado.pronto_para_criar_solicitacao and resultado.solicitacoes and cliente:
-            return [f"{msgs.msg_solicitacao_criada}\n\n(simulação: nenhuma solicitação real foi criada)"]
-        return [_montar_pergunta_pagamento_incompleto(cliente, msgs)]
+    fila: list = []
 
-    if resultado.tipo_intencao == TipoIntencaoV2.SEGUNDA_VIA:
-        return [msgs.msg_segunda_via_confirma.format(contratos='(simulação)', tipo='(simulação)')]
-
-    if resultado.tipo_intencao == TipoIntencaoV2.INFO_CONTRATO and resultado.infos_contrato:
-        return renderizar_infos_contrato(cliente, resultado.infos_contrato, msgs)
-
-    if resultado.faq_id:
-        try:
-            faq = FAQ.objects.get(id=resultado.faq_id, ativo=True)
-            itens = []
-            for resp in faq.respostas.all().order_by("ordem"):
-                if resp.arquivo:
-                    nome_arquivo = os.path.basename(resp.arquivo.name)
-                    entrada = f"📎 {nome_arquivo}"
-                    if resp.texto:
-                        entrada = f"{entrada}\n{resp.texto}"
-                    itens.append(entrada)
-                elif resp.texto:
-                    itens.append(resp.texto)
-            if itens:
-                return itens
-        except FAQ.DoesNotExist:
-            pass
-
-    if resultado.tipo_intencao == TipoIntencaoV2.SAUDACAO:
+    if resultado.saudacao:
         if cliente:
             primeiro_nome = (cliente.nome or "").split()[0] if cliente.nome else ""
-            return [render_template(msgs.tpl_saudacao_cliente, saudacao=_saudacao(), nome=primeiro_nome)]
-        return [msgs.msg_saudacao.format(saudacao=_saudacao())]
+            fila.append(render_template(msgs.tpl_saudacao_cliente, saudacao=_saudacao(), nome=primeiro_nome))
+        else:
+            fila.append(render_template(msgs.msg_saudacao, saudacao=_saudacao()))
 
-    return [msgs.msg_fallback_sem_resposta]
+    for faq_id in resultado.faq_ids:
+        try:
+            faq = FAQ.objects.get(id=faq_id, ativo=True)
+        except FAQ.DoesNotExist:
+            continue
+        for resp in faq.respostas.all().order_by("ordem"):
+            if resp.arquivo:
+                nome_arquivo = os.path.basename(resp.arquivo.name)
+                entrada = f"📎 {nome_arquivo}"
+                if resp.texto:
+                    entrada = f"{entrada}\n{resp.texto}"
+                fila.append(entrada)
+            elif resp.texto:
+                fila.append(resp.texto)
+
+    if resultado.infos_contrato:
+        fila.extend(renderizar_infos_contrato(cliente, resultado.infos_contrato, msgs))
+
+    if resultado.solicitacoes:
+        if resultado.pronto_para_criar_solicitacao and cliente:
+            fila.append(f"{msgs.msg_solicitacao_criada}\n\n(simulação: nenhuma solicitação real foi criada)")
+        else:
+            fila.append(_montar_pergunta_pagamento_incompleto(cliente, msgs))
+
+    if resultado.segunda_via:
+        fila.append(msgs.msg_segunda_via_confirma.format(contratos='(simulação)', tipo='(simulação)'))
+
+    if resultado.duvidas_sem_faq:
+        duvidas_txt = "; ".join(resultado.duvidas_sem_faq)
+        if fila:
+            fila.append(render_template(msgs.msg_duvida_anotada, duvidas=duvidas_txt))
+        else:
+            fila.append(msgs.msg_fallback_sem_resposta)
+
+    if resultado.nenhuma_acao():
+        fila.append(msgs.msg_fallback_sem_resposta)
+    elif not fila:
+        fila.append(msgs.msg_neutra_padrao)
+
+    return fila
 
 
 def _debug_resultado_simulador(resultado):
+    acoes = []
+    if resultado.saudacao:
+        acoes.append("saudacao")
+    if resultado.faq_ids:
+        acoes.append(f"faq:{len(resultado.faq_ids)}")
+    if resultado.infos_contrato:
+        acoes.append(f"info_contrato:{len(resultado.infos_contrato)}")
+    if resultado.solicitacoes:
+        acoes.append("pagamento")
+    if resultado.segunda_via:
+        acoes.append("segunda_via")
+    if resultado.duvidas_sem_faq:
+        acoes.append(f"duvida_sem_faq:{len(resultado.duvidas_sem_faq)}")
+
     return {
-        "tipo_intencao": resultado.tipo_intencao.value if resultado.tipo_intencao else None,
+        "acoes": acoes,
         "precisa_humano": resultado.precisa_humano,
-        "faq_id": resultado.faq_id,
+        "faq_ids": resultado.faq_ids,
         "infos_contrato": [i.model_dump() for i in resultado.infos_contrato],
         "solicitacoes": [s.model_dump() for s in resultado.solicitacoes],
         "pronto_para_criar_solicitacao": resultado.pronto_para_criar_solicitacao,
-        "pergunta_sugerida_faq": resultado.pergunta_sugerida_faq,
+        "duvidas_sem_faq": resultado.duvidas_sem_faq,
     }
 
 

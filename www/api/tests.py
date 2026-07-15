@@ -22,7 +22,7 @@ from core.models import (
     MensagensConfig,
     Solicitacao,
 )
-from ia.schemas import ClassificacaoMensagem, InfoContrato, InfoContratoPedido, TipoIntencaoV2
+from ia.schemas import ClassificacaoLote, InfoContrato, InfoContratoPedido
 from painel.views import MENSAGENS_DEFAULTS, SIMULADOR_SESSION_KEY
 
 
@@ -653,15 +653,16 @@ class APIEndpointsTestCase(APITestCase):
 
         # Send simulated message. A partir do WS-A a IA é só classificadora
         # (nunca redige texto); o texto exibido vem do renderer determinístico
-        # -- aqui, duvida_geral sem faq_id cai no fallback padrão.
-        mock_result = ClassificacaoMensagem(
-            tipo_intencao=TipoIntencaoV2.DUVIDA_GERAL,
+        # -- aqui, dúvida sem FAQ correspondente e sem outra ação cai no
+        # fallback padrão.
+        mock_result = ClassificacaoLote(
+            saudacao=False,
             precisa_humano=False,
             solicitacoes=[],
             infos_contrato=[],
             pronto_para_criar_solicitacao=False,
-            faq_id=None,
-            pergunta_sugerida_faq="Aceita relógio?",
+            faq_ids=[],
+            duvidas_sem_faq=["Aceita relógio?"],
         )
         mock_extrair_intencao.return_value = mock_result
 
@@ -670,7 +671,7 @@ class APIEndpointsTestCase(APITestCase):
         self.assertEqual(len(response.data["turnos"]), 2)
         self.assertEqual(response.data["turnos"][0]["texto"], "Aceita relógio?")
         self.assertEqual(response.data["turnos"][1]["texto"], MensagensConfig.get_solo().msg_fallback_sem_resposta)
-        self.assertEqual(response.data["turnos"][1]["debug"]["tipo_intencao"], "duvida_geral")
+        self.assertEqual(response.data["turnos"][1]["debug"]["acoes"], ["duvida_sem_faq:1"])
 
         # Restart
         response = self.client.post(url, {"acao": "reiniciar"}, format="json")
@@ -704,14 +705,14 @@ class APIEndpointsTestCase(APITestCase):
         response = self.client.post(url, {"acao": "selecionar_cliente", "cpf": self.cliente.cpf}, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        mock_extrair_intencao.return_value = ClassificacaoMensagem(
-            tipo_intencao=TipoIntencaoV2.INFO_CONTRATO,
+        mock_extrair_intencao.return_value = ClassificacaoLote(
+            saudacao=False,
             precisa_humano=False,
             solicitacoes=[],
             infos_contrato=[InfoContratoPedido(info=InfoContrato.VENCIMENTO)],
             pronto_para_criar_solicitacao=False,
-            faq_id=None,
-            pergunta_sugerida_faq=None,
+            faq_ids=[],
+            duvidas_sem_faq=[],
         )
 
         response = self.client.post(url, {"acao": "enviar", "mensagem": "quando vencem meus contratos?"}, format="json")
@@ -725,7 +726,7 @@ class APIEndpointsTestCase(APITestCase):
         for turno in turnos_out[:-1]:
             self.assertNotIn("debug", turno)
         self.assertIn("debug", turnos_out[-1])
-        self.assertEqual(turnos_out[-1]["debug"]["tipo_intencao"], "info_contrato")
+        self.assertEqual(turnos_out[-1]["debug"]["acoes"], ["info_contrato:1"])
 
 
 # --- WS-D2: mídia no detail de conversa, envio de arquivo, FAQs sugeridas ----

@@ -85,6 +85,7 @@ class MensagensConfigSerializer(serializers.ModelSerializer):
             "msg_fallback_sem_resposta",
             "msg_info_negada_desconhecido",
             "msg_midia_nao_suportada",
+            "msg_duvida_anotada",
             "atualizado_em",
         ]
         read_only_fields = ["atualizado_em"]

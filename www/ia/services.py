@@ -17,7 +17,7 @@ from django.conf import settings
 
 from core.mensagens_defaults import DEFAULT_SYSTEM_PROMPT
 
-from .schemas import ClassificacaoMensagem, TipoIntencaoV2
+from .schemas import ClassificacaoLote
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +68,22 @@ def _formatar_faqs(faqs):
     return "\n".join(f"- ID: {f.get('id')}\n  P: {f.get('pergunta')}" for f in faqs) or "(sem FAQ cadastrado)"
 
 
-def _montar_prompt(mensagem_atual, historico_mensagens, contratos_cliente, faqs,
+def _formatar_mensagens_lote(mensagens_lote) -> str:
+    """Formata o lote de mensagens não respondidas do cliente numa lista
+    numerada -- nesta fase (WS-A v3/Fase 2) o processamento ainda é
+    imediato (1 mensagem por task, o debounce é a Fase 3), então o lote
+    normalmente tem 1 item; o formato já suporta N para quando o debounce
+    passar a acumular várias mensagens antes de chamar a IA."""
+    if not mensagens_lote:
+        return "(nenhuma mensagem)"
+    return "\n".join(f"{i}. {texto}" for i, texto in enumerate(mensagens_lote, start=1))
+
+
+def _montar_prompt(mensagens_lote, historico_mensagens, contratos_cliente, faqs,
                     identificado, db_atualizada, contato_tipo):
+    if isinstance(mensagens_lote, str):
+        mensagens_lote = [mensagens_lote]
+
     estado = (
         f"identificado={'sim' if identificado else 'nao'}\n"
         f"database_atualizada={'sim' if db_atualizada else 'nao'}\n"
@@ -80,8 +94,8 @@ def _montar_prompt(mensagem_atual, historico_mensagens, contratos_cliente, faqs,
 HISTÓRICO RECENTE DA CONVERSA:
 {_formatar_historico(historico_mensagens)}
 
-MENSAGEM ATUAL DO CLIENTE:
-{mensagem_atual}
+MENSAGENS DO CLIENTE (não respondidas, em ordem):
+{_formatar_mensagens_lote(mensagens_lote)}
 
 ESTADO:
 {estado}
@@ -94,21 +108,13 @@ FAQ DISPONÍVEL (id + pergunta):
 """
 
 
-def _resultado_fallback(motivo: str) -> ClassificacaoMensagem:
+def _resultado_fallback(motivo: str) -> ClassificacaoLote:
     logger.warning("extrair_intencao: usando fallback neutro (%s)", motivo)
-    return ClassificacaoMensagem(
-        tipo_intencao=TipoIntencaoV2.OUTRO,
-        faq_id=None,
-        infos_contrato=[],
-        solicitacoes=[],
-        pronto_para_criar_solicitacao=False,
-        precisa_humano=True,
-        pergunta_sugerida_faq=None,
-    )
+    return ClassificacaoLote(precisa_humano=True)
 
 
 def extrair_intencao(
-    mensagem_atual,
+    mensagens_lote,
     historico_mensagens,
     contratos_cliente,
     faqs,
@@ -116,9 +122,14 @@ def extrair_intencao(
     identificado=False,
     db_atualizada=True,
     contato_tipo="desconhecido",
-) -> ClassificacaoMensagem:
-    """Classifica a mensagem do cliente via Gemini (saída estruturada
-    Pydantic). Nunca levanta.
+) -> ClassificacaoLote:
+    """Classifica o LOTE de mensagens não respondidas do cliente via Gemini
+    (saída estruturada Pydantic, schema `ClassificacaoLote` -- multi-ação:
+    a IA identifica TODAS as solicitações do lote, não só uma). Nunca
+    levanta. `mensagens_lote` aceita tanto `str` (mensagem única, forma
+    usada nesta fase e pelo simulador) quanto `list[str]` (lote de N
+    mensagens não respondidas, em ordem -- forma que a Fase 3/debounce vai
+    passar a usar); `str` é envelopado em `[str]` internamente.
 
     Os parâmetros keyword-only descrevem o estado da conversa que a IA
     precisa saber (contato já identificado -- por telefone cadastrado ou CPF
@@ -126,8 +137,10 @@ def extrair_intencao(
     (validar CPF, filtrar contratos, checar freshness, negar dados a
     desconhecidos) são aplicadas pelo chamador (whatsapp.tasks), NÃO pela
     IA -- e o texto de resposta nunca vem daqui: nasce de templates
-    renderizados em Python a partir do tipo_intencao/infos_contrato/faq_id
-    classificados."""
+    renderizados em Python a partir dos campos classificados."""
+    if isinstance(mensagens_lote, str):
+        mensagens_lote = [mensagens_lote]
+
     system_prompt = _config_textos()
 
     api_key = settings.GEMINI_API_KEY
@@ -141,7 +154,7 @@ def extrair_intencao(
         return _resultado_fallback("SDK google-genai não disponível")
 
     prompt = _montar_prompt(
-        mensagem_atual, historico_mensagens, contratos_cliente, faqs,
+        mensagens_lote, historico_mensagens, contratos_cliente, faqs,
         identificado, db_atualizada, contato_tipo,
     )
 
@@ -153,15 +166,15 @@ def extrair_intencao(
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 response_mime_type="application/json",
-                response_schema=ClassificacaoMensagem,
+                response_schema=ClassificacaoLote,
                 temperature=0.2,
             ),
         )
         parsed = getattr(response, "parsed", None)
-        if isinstance(parsed, ClassificacaoMensagem):
+        if isinstance(parsed, ClassificacaoLote):
             return parsed
         if parsed is not None:
-            return ClassificacaoMensagem.model_validate(parsed)
-        return ClassificacaoMensagem.model_validate_json(response.text)
+            return ClassificacaoLote.model_validate(parsed)
+        return ClassificacaoLote.model_validate_json(response.text)
     except Exception as exc:  # noqa: BLE001 - never let Gemini errors break the webhook
         return _resultado_fallback(f"erro ao chamar Gemini: {exc}")
