@@ -17,6 +17,7 @@ from core.models import (
     Conversa,
     FAQ,
     FAQResposta,
+    FAQSugerida,
     Mensagem,
     MensagensConfig,
     Solicitacao,
@@ -680,3 +681,203 @@ class APIEndpointsTestCase(APITestCase):
         response = self.client.post(url, {"acao": "remover_cliente"}, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIsNone(response.data["cliente"])
+
+
+# --- WS-D2: mídia no detail de conversa, envio de arquivo, FAQs sugeridas ----
+
+
+class ConversaDetailMidiaTestCase(APITestCase):
+    """`ConversaDetailSerializer.get_mensagens` usa `MensagemPainelSerializer`
+    (WS-B): precisa expor os campos de mídia/envio que o frontend consome e
+    NUNCA `payload_bruto` (não deve vazar o payload bruto da Evolution)."""
+
+    def setUp(self):
+        self.staff_user = User.objects.create_user(username="admin2", password="password", is_staff=True)
+        self.conversa = Conversa.objects.create(
+            remote_jid="5567988776655@s.whatsapp.net",
+            estado=Conversa.Estado.NOVA,
+            tipo_contato=Conversa.TipoContato.DESCONHECIDO,
+        )
+        self.mensagem_midia = Mensagem.objects.create(
+            conversa=self.conversa,
+            direcao=Mensagem.Direcao.IN,
+            texto="",
+            tipo_midia=Mensagem.TipoMidia.IMAGE,
+            payload_bruto={"segredo_evolution": "nao_deve_vazar_para_o_frontend"},
+        )
+
+    def test_detail_expoe_campos_de_midia_e_envio(self):
+        self.client.force_authenticate(user=self.staff_user)
+        url = reverse("api:conversa-detail", kwargs={"pk": self.conversa.id})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        mensagens = response.data["mensagens"]
+        self.assertEqual(len(mensagens), 1)
+        msg_data = mensagens[0]
+        for campo in ("possui_midia", "tipo_midia", "enviado_ok", "arquivo"):
+            self.assertIn(campo, msg_data)
+        self.assertTrue(msg_data["possui_midia"])
+        self.assertEqual(msg_data["tipo_midia"], "image")
+        self.assertNotIn("payload_bruto", msg_data)
+        self.assertNotIn("segredo_evolution", json.dumps(msg_data))
+
+
+class ConversaEnviarArquivoTestCase(APITestCase):
+    def setUp(self):
+        self.staff_user = User.objects.create_user(username="staffarq", password="password", is_staff=True)
+        self.regular_user = User.objects.create_user(username="userarq", password="password", is_staff=False)
+        self.conversa = Conversa.objects.create(
+            remote_jid="5567999999999@s.whatsapp.net",
+            estado=Conversa.Estado.NOVA,
+            tipo_contato=Conversa.TipoContato.CLIENTE,
+        )
+        self.url = reverse("api:conversa-enviar-arquivo", kwargs={"pk": self.conversa.id})
+
+    @patch("api.views.get_client")
+    def test_enviar_arquivo_sucesso(self, mock_get_client):
+        self.client.force_authenticate(user=self.staff_user)
+        mock_evo = MagicMock()
+        mock_evo.send_file.return_value = True
+        mock_get_client.return_value = mock_evo
+
+        arquivo = SimpleUploadedFile("foto.jpg", b"fake jpg bytes", content_type="image/jpeg")
+        response = self.client.post(
+            self.url, {"arquivo": arquivo, "legenda": "segue a foto"}, format="multipart"
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["tipo_midia"], "image")
+        self.assertEqual(response.data["enviado_ok"], True)
+        mock_evo.send_file.assert_called_once()
+
+        mensagem = Mensagem.objects.get(conversa=self.conversa, direcao=Mensagem.Direcao.OUT)
+        self.assertEqual(mensagem.tipo_midia, Mensagem.TipoMidia.IMAGE)
+        self.assertTrue(mensagem.enviado_ok)
+        self.assertEqual(mensagem.texto, "segue a foto")
+
+    def test_enviar_arquivo_extensao_proibida(self):
+        self.client.force_authenticate(user=self.staff_user)
+        arquivo = SimpleUploadedFile("virus.exe", b"binario qualquer", content_type="application/octet-stream")
+        response = self.client.post(self.url, {"arquivo": arquivo}, format="multipart")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(Mensagem.objects.filter(conversa=self.conversa).count(), 0)
+
+    def test_enviar_arquivo_excede_tamanho_maximo(self):
+        self.client.force_authenticate(user=self.staff_user)
+        from api.views import ConversaViewSet
+
+        with patch.object(ConversaViewSet, "_TAMANHO_MAXIMO_ANEXO_BYTES", 10):
+            arquivo = SimpleUploadedFile("foto.jpg", b"mais de dez bytes de conteudo", content_type="image/jpeg")
+            response = self.client.post(self.url, {"arquivo": arquivo}, format="multipart")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("tamanho", response.data["detail"].lower())
+
+    def test_enviar_arquivo_sem_arquivo(self):
+        self.client.force_authenticate(user=self.staff_user)
+        response = self.client.post(self.url, {}, format="multipart")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_enviar_arquivo_nao_staff_forbidden(self):
+        self.client.force_authenticate(user=self.regular_user)
+        arquivo = SimpleUploadedFile("foto.jpg", b"fake jpg bytes", content_type="image/jpeg")
+        response = self.client.post(self.url, {"arquivo": arquivo}, format="multipart")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class FAQSugeridaViewSetTestCase(APITestCase):
+    def setUp(self):
+        self.staff_user = User.objects.create_user(username="staffsug", password="password", is_staff=True)
+        self.regular_user = User.objects.create_user(username="usersug", password="password", is_staff=False)
+        self.pendente = FAQSugerida.objects.create(
+            pergunta="Vocês trabalham no feriado?",
+            pergunta_original="vcs abrem no feriado?",
+            ocorrencias=3,
+        )
+        self.aprovada = FAQSugerida.objects.create(
+            pergunta="Já aprovada antes",
+            status=FAQSugerida.Status.APROVADA,
+        )
+
+    def test_list_todas(self):
+        self.client.force_authenticate(user=self.staff_user)
+        response = self.client.get(reverse("api:faq-sugerida-list"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 2)
+
+    def test_list_filtro_status(self):
+        self.client.force_authenticate(user=self.staff_user)
+        response = self.client.get(reverse("api:faq-sugerida-list"), {"status": "pendente"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], self.pendente.id)
+
+    def test_aprovar_cria_faq_com_respostas_e_marca_aprovada(self):
+        self.client.force_authenticate(user=self.staff_user)
+        url = reverse("api:faq-sugerida-aprovar", kwargs={"pk": self.pendente.id})
+        payload = {
+            "pergunta_final": "Vocês atendem em feriados?",
+            "respostas": [
+                {"ordem": 0, "texto": "Sim, em horário reduzido."},
+                {"ordem": 1, "texto": "Confira o quadro de horários no local."},
+            ],
+        }
+        response = self.client.post(url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        self.pendente.refresh_from_db()
+        self.assertEqual(self.pendente.status, FAQSugerida.Status.APROVADA)
+        self.assertEqual(self.pendente.revisado_por, self.staff_user)
+        self.assertIsNotNone(self.pendente.revisado_em)
+        self.assertIsNotNone(self.pendente.faq_criada)
+
+        faq = self.pendente.faq_criada
+        self.assertEqual(faq.pergunta, "Vocês atendem em feriados?")
+        self.assertTrue(faq.ativo)
+        self.assertEqual(faq.respostas.count(), 2)
+
+    def test_aprovar_sem_pergunta_final_usa_pergunta_da_sugestao(self):
+        self.client.force_authenticate(user=self.staff_user)
+        url = reverse("api:faq-sugerida-aprovar", kwargs={"pk": self.pendente.id})
+        response = self.client.post(url, {"respostas": []}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.pendente.refresh_from_db()
+        self.assertEqual(self.pendente.faq_criada.pergunta, self.pendente.pergunta)
+
+    def test_rejeitar(self):
+        self.client.force_authenticate(user=self.staff_user)
+        url = reverse("api:faq-sugerida-rejeitar", kwargs={"pk": self.pendente.id})
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.pendente.refresh_from_db()
+        self.assertEqual(self.pendente.status, FAQSugerida.Status.REJEITADA)
+        self.assertEqual(self.pendente.revisado_por, self.staff_user)
+        self.assertIsNotNone(self.pendente.revisado_em)
+        self.assertIsNone(self.pendente.faq_criada)
+
+    def test_permissoes_nao_staff_forbidden(self):
+        self.client.force_authenticate(user=self.regular_user)
+        response = self.client.get(reverse("api:faq-sugerida-list"))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        url = reverse("api:faq-sugerida-aprovar", kwargs={"pk": self.pendente.id})
+        response = self.client.post(url, {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_permissoes_anonimo_forbidden(self):
+        response = self.client.get(reverse("api:faq-sugerida-list"))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class DashboardFaqsSugeridasPendentesTestCase(APITestCase):
+    def setUp(self):
+        self.staff_user = User.objects.create_user(username="staffdash", password="password", is_staff=True)
+        FAQSugerida.objects.create(pergunta="Pendente 1")
+        FAQSugerida.objects.create(pergunta="Pendente 2")
+        FAQSugerida.objects.create(pergunta="Já tratada", status=FAQSugerida.Status.REJEITADA)
+
+    def test_dashboard_retorna_contagem_de_pendentes(self):
+        self.client.force_authenticate(user=self.staff_user)
+        response = self.client.get(reverse("api:dashboard-stats"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["faqs_sugeridas_pendentes"], 2)
