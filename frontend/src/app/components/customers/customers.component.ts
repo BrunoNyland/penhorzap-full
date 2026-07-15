@@ -25,7 +25,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
             (ngModelChange)="loadClientes()"
           />
         </div>
-        <div class="form-group" style="width: 200px;">
+        <div class="form-group filter-select-group">
           <select [(ngModel)]="filterBloqueado" (change)="loadClientes()">
             <option value="">Todos os Clientes</option>
             <option value="1">Apenas Bloqueados IA</option>
@@ -239,6 +239,10 @@ import { IconComponent } from '../../shared/icon/icon.component';
       font-weight: 700;
     }
     .wrap { flex-wrap: wrap; }
+    .filter-select-group {
+      width: 200px;
+      max-width: 100%;
+    }
     .btn-xs {
       padding: 4px 8px;
       font-size: 12px;
@@ -295,6 +299,22 @@ import { IconComponent } from '../../shared/icon/icon.component';
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(4px); }
       to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 639px) {
+      .filter-select-group {
+        width: 100%;
+      }
+      .grid-2 {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 20px;
+      }
+      .modal-large {
+        max-width: 100%;
+        max-height: 100vh;
+        border-radius: 0;
+      }
     }
   `]
 })

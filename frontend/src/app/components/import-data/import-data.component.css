@@ -124,9 +124,15 @@
 
 .historico-main {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: 8px 12px;
+}
+
+.historico-main strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .historico-meta {
@@ -139,3 +145,15 @@
 .margin-top-xs { margin-top: 6px; }
 .margin-top-sm { margin-top: 10px; }
 .text-small { font-size: 12px; }
+
+@media (max-width: 639px) {
+  .import-header h1 {
+    font-size: 22px;
+  }
+  .file-row {
+    align-items: stretch;
+  }
+  .file-row button {
+    width: 100%;
+  }
+}

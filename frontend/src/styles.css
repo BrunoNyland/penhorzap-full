@@ -1,5 +1,13 @@
 /* Global styles.css */
 
+/*
+  Breakpoints canônicos do projeto (WS-C):
+  - Mobile:  largura < 640px   → `@media (max-width: 639px)`
+  - Tablet:  640px – 1023px    → `@media (min-width: 640px) and (max-width: 1023px)`
+  - Desktop: >= 1024px         → estilo base (sem media query)
+  Meta: nenhuma tela deve produzir scroll horizontal de página em 390px de largura.
+*/
+
 :root {
   /* Dark theme variables by default */
   --bg-primary: #0b0f19;
@@ -239,9 +247,30 @@ button, .btn {
 .gap-2 { gap: 8px; }
 .gap-4 { gap: 16px; }
 
+/* Utilitários responsivos (WS-C) */
+
+/* Wrapper para tabelas largas: permite rolagem horizontal contida em vez de
+   estourar a largura da página. Use em qualquer <table> que não esteja já
+   dentro de .table-container. */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Aplique junto de display:flex ou display:grid: no mobile força coluna única,
+   sem exigir que o componente redefina toda a regra de layout. */
+.stack-sm {
+  /* neutro em telas >= 640px */
+}
+
+/* Esconde o elemento apenas em telas < 640px (ex: colunas secundárias de tabela). */
+.hide-sm {
+}
+
 /* Table */
 .table-container {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   background-color: var(--bg-secondary);
@@ -293,4 +322,49 @@ tr:hover td {
   width: 100%;
   padding: 24px;
   box-shadow: var(--shadow-lg);
+}
+
+/* ==========================================================================
+   Mobile (< 640px) — regras globais
+   ========================================================================== */
+@media (max-width: 639px) {
+  /* Evita zoom automático do iOS ao focar campos e garante alvo de toque >= 44px */
+  input, textarea, select {
+    font-size: 16px;
+    min-height: 44px;
+  }
+
+  button, .btn {
+    min-height: 44px;
+  }
+
+  .checkbox-container {
+    min-height: 44px;
+    padding: 4px 0;
+  }
+
+  /* Qualquer linha "flex + justify-between" (cabeçalhos de card, badges, ações)
+     passa a poder quebrar em duas linhas em vez de estourar a largura da tela. */
+  .flex.justify-between {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .modal-overlay {
+    padding: 12px;
+  }
+
+  .modal-content {
+    max-width: 100%;
+  }
+
+  .stack-sm {
+    grid-template-columns: 1fr !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .hide-sm {
+    display: none !important;
+  }
 }

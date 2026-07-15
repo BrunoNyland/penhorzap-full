@@ -44,22 +44,24 @@
           <div class="status-success">
             <span class="status-badge success">✓ Importação concluída</span>
             @if (counts()) {
-              <table class="counts-table margin-top-sm">
-                <thead>
-                  <tr>
-                    <th>Tabela</th>
-                    <th>Registros importados</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (row of countRows; track row.key) {
+              <div class="table-scroll margin-top-sm">
+                <table class="counts-table">
+                  <thead>
                     <tr>
-                      <td>{{ row.label }}</td>
-                      <td>{{ counts()[row.key] ?? 0 }}</td>
+                      <th>Tabela</th>
+                      <th>Registros importados</th>
                     </tr>
-                  }
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    @for (row of countRows; track row.key) {
+                      <tr>
+                        <td>{{ row.label }}</td>
+                        <td>{{ counts()[row.key] ?? 0 }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
             }
           </div>
         }

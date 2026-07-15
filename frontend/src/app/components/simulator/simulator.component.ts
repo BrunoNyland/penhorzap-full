@@ -297,6 +297,29 @@ import { IconComponent } from '../../shared/icon/icon.component';
     }
     .text-small { font-size: 12px; }
     .italic { font-style: italic; }
+
+    @media (max-width: 639px) {
+      .simulator-layout {
+        flex-direction: column;
+        height: auto;
+        gap: 16px;
+      }
+      .context-panel {
+        width: 100%;
+        flex-shrink: 1;
+        padding: 14px;
+      }
+      .chat-panel {
+        padding: 16px;
+        min-height: 65vh;
+      }
+      .messages-viewport {
+        max-height: 55vh;
+      }
+      .message-balloon {
+        max-width: 90%;
+      }
+    }
   `]
 })
 export class SimulatorComponent implements OnInit, AfterViewChecked {

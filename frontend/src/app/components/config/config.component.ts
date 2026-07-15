@@ -299,6 +299,28 @@ import { ApiService } from '../../services/api.service';
     .label-only {
       padding-top: 24px;
     }
+
+    @media (max-width: 639px) {
+      .config-header h1 {
+        font-size: 22px;
+      }
+      .tabs {
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .tab-btn {
+        flex: 1 1 auto;
+        padding: 10px 12px;
+        font-size: 13px;
+        text-align: center;
+      }
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+      .code-editor {
+        font-size: 14px;
+      }
+    }
   `]
 })
 export class ConfigComponent implements OnInit {

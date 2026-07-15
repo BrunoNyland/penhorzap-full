@@ -174,6 +174,18 @@ import { IconComponent } from '../../shared/icon/icon.component';
     }
     .italic { font-style: italic; }
     .text-small { font-size: 12px; }
+
+    @media (max-width: 639px) {
+      .whatsapp-header h1 {
+        font-size: 22px;
+      }
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+      .qrcode-card {
+        min-height: 320px;
+      }
+    }
   `]
 })
 export class WhatsappComponent implements OnInit, OnDestroy {

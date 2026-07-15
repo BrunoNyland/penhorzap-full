@@ -395,6 +395,28 @@ import { IconComponent } from '../../shared/icon/icon.component';
     .text-small {
       font-size: 12px;
     }
+
+    @media (max-width: 639px) {
+      .dashboard-header h1 {
+        font-size: 22px;
+      }
+      .dashboard-header button {
+        width: 100%;
+      }
+      .kpi-grid, .distributions-grid {
+        grid-template-columns: 1fr;
+      }
+      .charts-row {
+        flex-direction: column;
+      }
+      .chart-container {
+        min-width: 0;
+        width: 100%;
+      }
+      .bar-label {
+        width: 56px;
+      }
+    }
   `]
 })
 export class DashboardComponent implements OnInit {
