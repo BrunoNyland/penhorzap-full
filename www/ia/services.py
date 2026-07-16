@@ -145,13 +145,19 @@ def extrair_intencao(
 
     api_key = settings.GEMINI_API_KEY
     if not api_key:
-        return _resultado_fallback("GEMINI_API_KEY não configurada")
+        res = _resultado_fallback("GEMINI_API_KEY não configurada")
+        res._raw_prompt = "Não gerado (GEMINI_API_KEY não configurada)"
+        res._raw_response = "Fallback: GEMINI_API_KEY não configurada"
+        return res
 
     try:
         from google import genai
         from google.genai import types
     except ImportError:
-        return _resultado_fallback("SDK google-genai não disponível")
+        res = _resultado_fallback("SDK google-genai não disponível")
+        res._raw_prompt = "Não gerado (SDK google-genai não disponível)"
+        res._raw_response = "Fallback: SDK google-genai não disponível"
+        return res
 
     prompt = _montar_prompt(
         mensagens_lote, historico_mensagens, contratos_cliente, faqs,
@@ -172,9 +178,16 @@ def extrair_intencao(
         )
         parsed = getattr(response, "parsed", None)
         if isinstance(parsed, ClassificacaoLote):
-            return parsed
-        if parsed is not None:
-            return ClassificacaoLote.model_validate(parsed)
-        return ClassificacaoLote.model_validate_json(response.text)
+            res = parsed
+        elif parsed is not None:
+            res = ClassificacaoLote.model_validate(parsed)
+        else:
+            res = ClassificacaoLote.model_validate_json(response.text)
+        res._raw_prompt = f"System Instruction:\n{system_prompt}\n\nContents:\n{prompt}"
+        res._raw_response = response.text
+        return res
     except Exception as exc:  # noqa: BLE001 - never let Gemini errors break the webhook
-        return _resultado_fallback(f"erro ao chamar Gemini: {exc}")
+        res = _resultado_fallback(f"erro ao chamar Gemini: {exc}")
+        res._raw_prompt = f"System Instruction:\n{system_prompt}\n\nContents:\n{prompt}"
+        res._raw_response = f"Erro ao chamar Gemini: {exc}"
+        return res

@@ -71,14 +71,28 @@ import { IconComponent } from '../../shared/icon/icon.component';
           @for (turn of turnos(); track idx; let idx = $index) {
             <div class="message-wrapper" [class.incoming]="turn.direcao === 'in'">
               <div class="message-balloon">
-                <div class="message-text">{{ turn.texto }}</div>
+                <div class="message-text-wrapper flex justify-between align-start gap-2">
+                  <div class="message-text">{{ turn.texto }}</div>
+                  @if (turn.direcao === 'out' && turn.debug?.raw_prompt) {
+                    <button type="button" class="btn-prompt-debug" (click)="abrirModalPrompt(turn.debug)" title="Ver Prompt/Resposta da IA">
+                      <app-icon name="file-text" [size]="16"></app-icon>
+                    </button>
+                  }
+                </div>
                 
                 <!-- Debug Parameters under Gemini response -->
                 @if (turn.direcao === 'out' && turn.debug) {
                   <div class="debug-panel margin-top-sm">
-                    <div class="debug-title flex align-center gap-2">
-                      <app-icon name="settings" [size]="14"></app-icon>
-                      <span>Depuração da IA</span>
+                    <div class="debug-title flex align-center justify-between gap-2">
+                      <div class="flex align-center gap-2">
+                        <app-icon name="settings" [size]="14"></app-icon>
+                        <span>Depuração da IA</span>
+                      </div>
+                      @if (turn.debug.raw_prompt) {
+                        <button type="button" class="btn-ver-prompt" (click)="abrirModalPrompt(turn.debug)">
+                          <app-icon name="file-text" [size]="12"></app-icon> Ver Prompt/Response IA
+                        </button>
+                      }
                     </div>
                     <ul class="debug-details">
                       <li>
@@ -142,6 +156,37 @@ import { IconComponent } from '../../shared/icon/icon.component';
         </div>
       </div>
     </div>
+
+    <!-- Prompt/Response Viewer Modal -->
+    @if (modalPromptAberto() && activeDebugData()) {
+      <div class="modal-overlay" (click)="fecharModalPrompt()">
+        <div class="modal-content modal-prompt fade-in" (click)="$event.stopPropagation()">
+          <div class="modal-header flex justify-between align-center border-bottom padding-bottom-sm">
+            <h3 class="flex align-center gap-2">
+              <app-icon name="file-text" [size]="18"></app-icon>
+              <span>Prompt & Resposta do Gemini</span>
+            </h3>
+            <button type="button" class="clear-file" style="font-size: 24px; cursor: pointer; border: none; background: transparent; color: var(--text-primary);" (click)="fecharModalPrompt()">×</button>
+          </div>
+          
+          <div class="modal-body-scroll margin-top" style="max-height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;">
+            <div>
+              <h4 style="margin-bottom: 6px; color: var(--color-accent);">Prompt Enviado (System Instruction & Contents)</h4>
+              <pre class="debug-code-modal">{{ activeDebugData().raw_prompt }}</pre>
+            </div>
+            
+            <div>
+              <h4 style="margin-bottom: 6px; color: #58a6ff;">Resposta Recebida (JSON)</h4>
+              <pre class="debug-code-modal">{{ activeDebugData().raw_response }}</pre>
+            </div>
+          </div>
+          
+          <div class="modal-footer margin-top flex justify-end" style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 16px;">
+            <button type="button" class="btn btn-secondary" (click)="fecharModalPrompt()">Fechar</button>
+          </div>
+        </div>
+      </div>
+    }
   `,
   styles: [`
     .simulator-layout {
@@ -363,6 +408,62 @@ import { IconComponent } from '../../shared/icon/icon.component';
         max-width: 90%;
       }
     }
+    
+    .btn-prompt-debug {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: var(--radius-sm);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+    }
+    .btn-prompt-debug:hover {
+      color: var(--color-accent);
+      background-color: var(--bg-secondary);
+    }
+    .btn-ver-prompt {
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.2s ease;
+    }
+    .btn-ver-prompt:hover {
+      background-color: #30363d;
+      border-color: #8b949e;
+      color: #f0f6fc;
+    }
+    .modal-prompt {
+      max-width: 850px !important;
+      width: 90% !important;
+    }
+    .debug-code-modal {
+      background-color: #0d1117;
+      color: #c9d1d9;
+      padding: 12px;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      font-family: monospace;
+      font-size: 12px;
+      overflow-x: auto;
+      max-height: 280px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      margin: 0;
+    }
+    .message-text-wrapper {
+      width: 100%;
+    }
   `]
 })
 export class SimulatorComponent implements OnInit, AfterViewChecked {
@@ -378,6 +479,19 @@ export class SimulatorComponent implements OnInit, AfterViewChecked {
   
   msgInput = '';
   sending = signal(false);
+
+  modalPromptAberto = signal(false);
+  activeDebugData = signal<any | null>(null);
+
+  abrirModalPrompt(debugData: any): void {
+    this.activeDebugData.set(debugData);
+    this.modalPromptAberto.set(true);
+  }
+
+  fecharModalPrompt(): void {
+    this.modalPromptAberto.set(false);
+    this.activeDebugData.set(null);
+  }
 
   ngOnInit(): void {
     this.fetchSimulatorState();

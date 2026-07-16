@@ -1146,6 +1146,8 @@ def _debug_resultado_simulador(resultado):
         "solicitacoes": [s.model_dump() for s in resultado.solicitacoes],
         "pronto_para_criar_solicitacao": resultado.pronto_para_criar_solicitacao,
         "duvidas_sem_faq": resultado.duvidas_sem_faq,
+        "raw_prompt": getattr(resultado, "_raw_prompt", None),
+        "raw_response": getattr(resultado, "_raw_response", None),
     }
 
 
