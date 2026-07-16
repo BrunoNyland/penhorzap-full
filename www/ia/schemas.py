@@ -30,6 +30,7 @@ class InfoContrato(str, Enum):
     VALOR_PARCELA = "valor_parcela"
     LISTA_CONTRATOS = "lista_contratos"
     DETALHE_CONTRATO = "detalhe_contrato"
+    LAUDO = "laudo"
 
 
 class InfoContratoPedido(BaseModel):

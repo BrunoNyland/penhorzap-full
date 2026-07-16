@@ -209,6 +209,7 @@ class MensagensConfigGetSoloTests(TestCase):
             "tpl_contrato_quitacao",
             "tpl_contrato_parcela",
             "tpl_contrato_resumo",
+            "tpl_contrato_laudo",
             "tpl_lista_header",
             "tpl_totalizador",
             "tpl_totalizador_sem_valor",

@@ -24,6 +24,7 @@ from .mensagens_defaults import (
     DEFAULT_TPL_CONTRATO_QUITACAO,
     DEFAULT_TPL_CONTRATO_RENOVACAO,
     DEFAULT_TPL_CONTRATO_RESUMO,
+    DEFAULT_TPL_CONTRATO_LAUDO,
     DEFAULT_TPL_CONTRATO_VENCIMENTO,
     DEFAULT_TPL_LISTA_HEADER,
     DEFAULT_TPL_SAUDACAO_CLIENTE,
@@ -469,6 +470,7 @@ class MensagensConfig(models.Model):
     tpl_contrato_quitacao = models.TextField(default=DEFAULT_TPL_CONTRATO_QUITACAO)
     tpl_contrato_parcela = models.TextField(default=DEFAULT_TPL_CONTRATO_PARCELA)
     tpl_contrato_resumo = models.TextField(default=DEFAULT_TPL_CONTRATO_RESUMO)
+    tpl_contrato_laudo = models.TextField(default=DEFAULT_TPL_CONTRATO_LAUDO)
     tpl_lista_header = models.TextField(default=DEFAULT_TPL_LISTA_HEADER)
     tpl_totalizador = models.TextField(default=DEFAULT_TPL_TOTALIZADOR)
     tpl_totalizador_sem_valor = models.TextField(default=DEFAULT_TPL_TOTALIZADOR_SEM_VALOR)

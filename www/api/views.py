@@ -442,6 +442,7 @@ class MensagensConfigAPIView(GenericAPIView):
             DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
             DEFAULT_MSG_SOLICITACAO_CRIADA,
             DEFAULT_SYSTEM_PROMPT,
+            DEFAULT_TPL_CONTRATO_LAUDO,
             DEFAULT_TPL_TOTALIZADOR,
             DEFAULT_TPL_TOTALIZADOR_SEM_VALOR,
         )
@@ -462,6 +463,7 @@ class MensagensConfigAPIView(GenericAPIView):
             "msg_segunda_via_confirma": DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
             "msg_duvida_anotada": DEFAULT_MSG_DUVIDA_ANOTADA,
             "msg_neutra_padrao": DEFAULT_MSG_NEUTRA_PADRAO,
+            "tpl_contrato_laudo": DEFAULT_TPL_CONTRATO_LAUDO,
             "tpl_totalizador": DEFAULT_TPL_TOTALIZADOR,
             "tpl_totalizador_sem_valor": DEFAULT_TPL_TOTALIZADOR_SEM_VALOR,
         }
@@ -506,6 +508,7 @@ class MensagensConfigRestoreAPIView(GenericAPIView):
             DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
             DEFAULT_MSG_SOLICITACAO_CRIADA,
             DEFAULT_SYSTEM_PROMPT,
+            DEFAULT_TPL_CONTRATO_LAUDO,
             DEFAULT_TPL_TOTALIZADOR,
             DEFAULT_TPL_TOTALIZADOR_SEM_VALOR,
         )
@@ -526,6 +529,7 @@ class MensagensConfigRestoreAPIView(GenericAPIView):
             "msg_segunda_via_confirma": DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
             "msg_duvida_anotada": DEFAULT_MSG_DUVIDA_ANOTADA,
             "msg_neutra_padrao": DEFAULT_MSG_NEUTRA_PADRAO,
+            "tpl_contrato_laudo": DEFAULT_TPL_CONTRATO_LAUDO,
             "tpl_totalizador": DEFAULT_TPL_TOTALIZADOR,
             "tpl_totalizador_sem_valor": DEFAULT_TPL_TOTALIZADOR_SEM_VALOR,
         }

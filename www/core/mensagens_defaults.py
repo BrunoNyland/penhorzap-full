@@ -73,6 +73,9 @@ DEFAULT_TPL_CONTRATO_PARCELA = "📄 *Contrato*: {contrato}\n💰 Valor das parc
 DEFAULT_TPL_CONTRATO_RESUMO = (
     "📄 *Contrato*: {contrato}\n🗓️ *Vencimento*: {vencimento}\n💰 *Empréstimo*: {valor_emprestimo}"
 )
+DEFAULT_TPL_CONTRATO_LAUDO = (
+    "📄 *Contrato*: {contrato}\n📝 *Laudo/Garantia*: {laudo}"
+)
 DEFAULT_TPL_LISTA_HEADER = "{nome}, você tem {qtd} contrato(s) ativo(s):"
 DEFAULT_TPL_TOTALIZADOR = (
     "📊 Resumo: {qtd} contrato(s), total de {total}. Se precisar de mais "
@@ -120,7 +123,7 @@ todos os campos que se aplicarem:
 - faq_ids: IDs de TODAS as FAQs que respondem perguntas do lote.
 - infos_contrato: um item por dado de contrato pedido: vencimento |
   valor_renovacao (prazo_dias se citado) | valor_quitacao | valor_parcela |
-  lista_contratos ("quais contratos eu tenho?") | detalhe_contrato. Em
+  lista_contratos ("quais contratos eu tenho?") | detalhe_contrato | laudo ("quero ver o laudo do contrato", "qual a descrição da garantia/joias?"). Em
   contratos, liste os números citados; vazio = todos.
 - solicitacoes: um item por ação de pagamento (renovar/quitar/parcela/indefinido), com
   contratos citados (vazio = todos) e prazo_dias para renovar.

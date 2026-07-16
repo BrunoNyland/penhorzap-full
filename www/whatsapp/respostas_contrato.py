@@ -331,6 +331,16 @@ def renderizar_infos_contrato(cliente, pedidos, msgs) -> list[str]:
                 ))
                 contratos_incluidos.append(num)
 
+        elif pedido.info == InfoContrato.LAUDO:
+            for num in alvo:
+                c = ativos_map[num]
+                linhas.append(render_template(
+                    msgs.tpl_contrato_laudo,
+                    contrato=c["contrato"],
+                    laudo=c.get("laudo") or "Laudo não disponível",
+                ))
+                contratos_incluidos.append(num)
+
         if not linhas:
             continue
 

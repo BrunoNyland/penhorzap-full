@@ -951,6 +951,13 @@ class RenderizarInfosContratoTests(TestCase):
             self.assertIn("C1", resultado[0])
             self.assertIn("R$ 500,00", resultado[0])
 
+    def test_laudo_contrato(self):
+        self._contrato(contrato="C1", laudo="Anel de ouro com diamante de 18k")
+        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.LAUDO)], self.msgs)
+        self.assertEqual(len(resultado), 1)
+        self.assertIn("C1", resultado[0])
+        self.assertIn("Anel de ouro com diamante de 18k", resultado[0])
+
     # --- Totalizador: soma dos valores + quantidade -------------------------
 
     def test_totalizador_renovacao_soma_valores(self):

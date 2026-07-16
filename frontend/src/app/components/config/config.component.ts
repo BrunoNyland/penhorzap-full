@@ -423,9 +423,6 @@ export class ConfigComponent implements OnInit {
     { key: 'msg_pedir_cpf', label: 'Pedir CPF', help: 'Mensagem solicitando que o usuário digite seu CPF.' },
     { key: 'msg_cpf_invalido', label: 'CPF Inválido', help: 'Erro retornado se o CPF falhar na validação do dígito verificador.' },
     { key: 'msg_cpf_nao_bate', label: 'CPF Não Confere', help: 'Mensagem de erro quando o CPF digitado difere do CPF registrado p/ aquele contato.' },
-    { key: 'msg_verificacao_ok', label: 'Verificação OK', help: 'Confirmação de que o CPF foi digitado com sucesso e os dados combinam.' },
-    { key: 'msg_verificacao_falhou', label: 'Verificação Falhou', help: 'Fallback enviado se a verificação expirar ou falhar seguidamente.' },
-    { key: 'msg_sem_info_faq', label: 'Sem Informação na FAQ', help: 'Enviado quando o cliente faz uma pergunta geral que o bot não encontra na base.' },
     { key: 'msg_db_desatualizada', label: 'Base de dados Desatualizada', help: 'Erro emitido ao pedir informações financeiras se a base do ERP estiver fora do freshness.' },
     { key: 'msg_sem_contratos_ativos', label: 'Sem Contratos Ativos', help: 'Retorno quando o cliente verificado não possui contratos ativos em aberto.' },
     { key: 'msg_solicitacao_criada', label: 'Solicitação Criada', help: 'Confirmando a abertura da solicitação para envio dos boletos.' },
@@ -433,7 +430,6 @@ export class ConfigComponent implements OnInit {
     { key: 'msg_renovacao_proximo_vencimento', label: 'Renovação: Próximo Vencimento', help: 'Usa a tag {proximo_vencimento}.' },
     { key: 'msg_quitacao_garantia', label: 'Quitação: Resgate de Garantia', help: 'Instrução para retirada de bens. Usa a tag {data_resgate}.' },
     { key: 'msg_segunda_via_confirma', label: 'Confirmação de 2ª via', help: 'Usa as tags {contratos} e {tipo}.' },
-    { key: 'msg_insistiu_humano', label: 'Insistiu por Humano', help: 'Feedback enviado se o usuário repetir comandos de fallback sucessivamente.' },
     { key: 'msg_neutra_padrao', label: 'Mensagem Neutra Padrão', help: 'Conversa genérica sem intenção identificável.' },
     { key: 'msg_duvida_anotada', label: 'Dúvida Anotada', help: 'Anexada ao final da fila quando há dúvida(s) sem FAQ junto de outras ações no mesmo lote. Use a tag {duvidas}.' }
   ];
@@ -474,6 +470,12 @@ export class ConfigComponent implements OnInit {
       label: 'Contrato: Resumo Geral',
       help: 'Resposta padrão quando o cliente pede um resumo do contrato sem especificar o tipo de informação.',
       placeholders: ['{contrato}', '{vencimento}', '{valor_emprestimo}']
+    },
+    {
+      key: 'tpl_contrato_laudo',
+      label: 'Contrato: Laudo / Garantia',
+      help: 'Resposta com a descrição da garantia (joias) sob contrato.',
+      placeholders: ['{contrato}', '{laudo}']
     },
     {
       key: 'tpl_lista_header',
