@@ -21,7 +21,7 @@ from .schemas import ClassificacaoLote
 
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "gemini-2.5-flash"
+MODEL_NAME = "gemini-3.1-flash-lite"
 
 
 def _config_textos() -> str:

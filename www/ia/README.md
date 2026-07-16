@@ -1,6 +1,6 @@
 # App `ia` — Gemini (classificação de intenção + resposta sugerida)
 
-Camada de IA: chama o Google Gemini (`gemini-2.5-flash`, `temperature=0.2`) com o
+Camada de IA: chama o Google Gemini (`gemini-3.1-flash-lite`, `temperature=0.2`) com o
 histórico da conversa + contratos filtrados + FAQ, recebe um JSON estruturado
 (Pydantic) e devolve uma intenção + resposta sugerida. **Não toma decisão**: o
 `whatsapp/tasks.py` é quem aplica os gates e executa.

@@ -1,6 +1,6 @@
 """Motor de conversa do bot penhorzap (executado pelo django-q2).
 
-Fluxo por mensagem (process_mensagem):
+Fluxo por mensagem (process_mensagem, split em Fase 3/debounce):
   0. Lock leve por conversa (`Conversa.processando_desde`): evita que duas
      tasks concorrentes (ex.: replay + webhook) processem a mesma conversa
      ao mesmo tempo. Coalescência: se já existe uma mensagem IN mais nova na
@@ -9,26 +9,35 @@ Fluxo por mensagem (process_mensagem):
      desconhecido) via Telefone + ContatoSalvo (sync da agenda) + pushName.
      Cliente reconhecido por telefone -> `identificacao="telefone"`, nunca
      expira; primeira interação -> saudação nominal e encerra o turno.
-  2. Contato pessoal -> ignora (o dono responde). Desconhecido sem resposta
-     prévia -> saúda conforme o horário.
-  3. Cliente bloqueado -> armazena, marca humana, sem responder.
-  4. Mídia sem texto (áudio/vídeo/etc.) -> mensagem de "não suportado" +
+  2. Contato pessoal -> ignora (o dono responde); marca todo o lote pendente
+     como respondido (nunca vai virar chamada de IA).
+  3. Cliente bloqueado -> armazena, marca humana, sem responder (não marca
+     a mensagem -- cada nova mensagem do bloqueado só re-sinaliza revisão).
+  4. Mídia sem texto (áudio/vídeo/etc.): se há outra mensagem com texto
+     ainda pendente no lote, só marca a mídia e segue para o passo 6 (não
+     interrompe o lote); se é a única pendente, responde "não suportado" +
      revisão humana, sem chamar a IA.
   5. Se o cliente digitou um CPF nesta mensagem: valida em Python; se
-     inválido pede de novo, se não bate com o cadastro pede o correto, senão
-     marca `identificacao="cpf"` (expira em 24h) e segue.
-  6. Chama a IA (classificador puro, NUNCA redige texto) com ESTADO
-     (identificado, database_atualizada, contato_tipo) e os CONTRATOS ATIVOS
-     — que só são passados se identificado E database fresca (garantia dura:
-     a IA nunca vê dados desatualizados/de terceiro).
-  7. Gates pós-IA em Python: exige identificação p/ info_contrato/pagamento/
-     segunda_via; exige database fresca p/ info_contrato/pagamento;
-     desconhecido identificado por CPF pedindo info_contrato -> só boleto
-     (nega dado fora dele).
-  8. Ações determinísticas: cria Solicitação(ões) quando pronto; pergunta de
-     slot quando falta dado; renderiza template de contrato; responde FAQ;
-     segunda via clona a última solicitação com boleto do dia anterior;
-     fallback registra FAQSugerida + marca revisão.
+     inválido pede de novo, se não bate com o cadastro pede o correto (e
+     marca a mensagem nos dois casos); se válido, marca `identificacao="cpf"`
+     (expira em 24h) e NÃO marca a mensagem -- ela segue no lote como
+     contexto (o prompt já instrui a IA a ignorar CPF isolado).
+  6. Debounce: silêncio do cliente (`BotConfig.debounce_segundos`, 0 =
+     imediato/kill-switch) desde a última IN >= debounce -> processa o LOTE
+     agora (`_processar_lote`, síncrono); senão agenda `process_lote_conversa`
+     para quando o silêncio se completar (`_agendar_debounce`).
+  7. `_processar_lote`: monta o lote de IN não respondidas (até 24h/50
+     mensagens), chama a IA (classificador puro, NUNCA redige texto) com
+     ESTADO (identificado, database_atualizada, contato_tipo) e os
+     CONTRATOS ATIVOS -- só passados se identificado E database fresca
+     (garantia dura: a IA nunca vê dados desatualizados/de terceiro) --,
+     aplica os gates pós-IA (identificação/database/desconhecido-por-CPF) e
+     despacha sequencialmente TODAS as ações classificadas (saudação -> FAQs
+     -> info_contrato -> pagamento -> segunda_via -> dúvidas/fallback), ao
+     final marcando TODAS as mensagens do lote como respondidas.
+  8. `process_lote_conversa`: acordada pelo Schedule agendado no passo 6;
+     recheca o silêncio dentro do próprio lock (corrida webhook x scheduler)
+     antes de chamar `_processar_lote`.
 """
 import logging
 import os
@@ -439,9 +448,117 @@ def _reagendar(mensagem_id: int, atraso: timedelta = REAGENDAR_ATRASO):
         mensagem_id,
         schedule_type=Schedule.ONCE,
         next_run=timezone.now() + atraso,
-        repeats=1,
+        repeats=-1,
     )
     logger.info("process_mensagem: conversa ocupada, mensagem %s reagendada (+%ss)", mensagem_id, atraso.seconds)
+
+
+def _reagendar_lote(conversa_id: int, atraso: timedelta = REAGENDAR_ATRASO):
+    """Mesma ideia de `_reagendar`, mas para `process_lote_conversa`: mutex
+    ocupado (outra task processando a conversa) -- reagenda usando o MESMO
+    `name` determinístico (`pz-debounce-<id>`), atualizando o Schedule via
+    `update_or_create` em vez de duplicá-lo."""
+    from django_q.models import Schedule
+
+    Schedule.objects.update_or_create(
+        name=f"pz-debounce-{conversa_id}",
+        defaults=dict(
+            func="whatsapp.tasks.process_lote_conversa",
+            args=str(conversa_id),
+            schedule_type=Schedule.ONCE,
+            next_run=timezone.now() + atraso,
+            repeats=-1,
+        ),
+    )
+    logger.info("process_lote_conversa: conversa %s ocupada, lote reagendado (+%ss)", conversa_id, atraso.seconds)
+
+
+def _agendar_debounce(conv: Conversa, bot: BotConfig):
+    """Agenda `process_lote_conversa` para quando o cliente completar
+    `bot.debounce_segundos` de silêncio, contados a partir da última IN da
+    conversa. `update_or_create` por `name=f"pz-debounce-{conv.id}"` faz de
+    1 Schedule por conversa a chave lógica: uma 2ª mensagem do cliente
+    durante a espera só empurra `next_run` para frente (mesmo Schedule,
+    "reinicia o cronômetro" do silêncio) em vez de duplicar. `repeats=-1`
+    auto-deleta o Schedule assim que dispara -- não deixa lixo na tabela."""
+    from django_q.models import Schedule
+
+    ultima_in = conv.mensagens.filter(direcao=Mensagem.Direcao.IN).order_by("-criado_em").first()
+    referencia = ultima_in.criado_em if ultima_in else timezone.now()
+    next_run = max(
+        referencia + timedelta(seconds=bot.debounce_segundos),
+        timezone.now() + timedelta(seconds=1),
+    )
+    Schedule.objects.update_or_create(
+        name=f"pz-debounce-{conv.id}",
+        defaults=dict(
+            func="whatsapp.tasks.process_lote_conversa",
+            args=str(conv.id),
+            schedule_type=Schedule.ONCE,
+            next_run=next_run,
+            repeats=-1,
+        ),
+    )
+    logger.info("process_mensagem: debounce agendado conversa=%s next_run=%s", conv.id, next_run)
+
+
+def _mensagens_pendentes(conv: Conversa):
+    """Lote de mensagens IN ainda não cobertas por uma resposta do bot
+    (`respondida_em` nulo). Usado tanto para decidir se uma mídia sem texto
+    tem outra mensagem com texto pendente ao lado, quanto para montar o
+    lote que vai para a IA (`_processar_lote`) e para o "marca tudo" de
+    contato pessoal. Janela de 24h e teto de 50 protegem contra reprocessar
+    histórico antigo (ex.: bot ficou muito tempo desligado)."""
+    limite = timezone.now() - timedelta(hours=24)
+    return conv.mensagens.filter(
+        direcao=Mensagem.Direcao.IN, respondida_em__isnull=True, criado_em__gte=limite
+    ).order_by("criado_em")[:50]
+
+
+def _marcar_mensagens_respondidas(mensagens) -> None:
+    """Bulk update de `respondida_em=now()` para as mensagens dadas (aceita
+    lista de instâncias ou queryset -- só precisa dar pra iterar e ler
+    `.pk`). Chamado tanto pelos passos determinísticos (marcam só a
+    mensagem que cobriram) quanto por `_processar_lote` (marca todas as do
+    lote ao final do dispatch, mesmo no fallback)."""
+    ids = [m.pk for m in mensagens]
+    if ids:
+        Mensagem.objects.filter(pk__in=ids).update(respondida_em=timezone.now())
+
+
+def _criar_responders(conv: Conversa):
+    """Fábrica dos closures `responder`/`responder_arquivo` (e do client
+    Evolution) usados tanto por `_processar_mensagem_com_lock` quanto por
+    `_processar_lote_com_lock` (acordado pelo Schedule) -- evita duplicar a
+    lógica de envio + persistência de `Mensagem` OUT + marcação de
+    `precisa_revisao_humana` em caso de falha de envio."""
+    client = get_client()
+    numero_destino = _remote_jid_para_numero(conv.remote_jid)
+
+    def responder(texto: str):
+        ok = False
+        if numero_destino:
+            ok = client.send_text(numero_destino, texto)
+        else:
+            logger.warning("Não foi possível normalizar número para responder conversa %s", conv.id)
+        Mensagem.objects.create(conversa=conv, direcao=Mensagem.Direcao.OUT, texto=texto, enviado_ok=ok)
+        if not ok:
+            conv.precisa_revisao_humana = True
+            conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
+
+    def responder_arquivo(caminho_completo: str, nome_arquivo: str, legenda: str = ""):
+        texto_msg = legenda or f"Enviou arquivo: {nome_arquivo}"
+        ok = False
+        if numero_destino:
+            ok = client.send_file(numero_destino, caminho_completo, nome_arquivo, caption=legenda)
+        else:
+            logger.warning("Não foi possível normalizar número para enviar arquivo na conversa %s", conv.id)
+        Mensagem.objects.create(conversa=conv, direcao=Mensagem.Direcao.OUT, texto=texto_msg, enviado_ok=ok)
+        if not ok:
+            conv.precisa_revisao_humana = True
+            conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
+
+    return client, numero_destino, responder, responder_arquivo
 
 
 def _log_auditoria(conv, resultado, acoes: str):
@@ -488,7 +605,9 @@ def process_mensagem(mensagem_id: int):
 
 def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotConfig):
     # Coalescência: se já chegou uma mensagem IN mais nova nesta conversa, a
-    # task dela responde por todas -- esta aborta sem responder.
+    # task dela cobre esta -- aborta sem responder (mesmo com debounce
+    # ativo: a mais nova vai encontrar esta mensagem ainda pendente e
+    # incluí-la no próprio lote).
     mais_nova_existe = conv.mensagens.filter(
         direcao=Mensagem.Direcao.IN, criado_em__gt=mensagem.criado_em
     ).exists()
@@ -499,8 +618,7 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
         )
         return
 
-    client = get_client()
-    numero_destino = _remote_jid_para_numero(conv.remote_jid)
+    client, numero_destino, responder, responder_arquivo = _criar_responders(conv)
     msgs = MensagensConfig.get_solo()
 
     # mark_as_read é best-effort e já nunca levanta (evolution_client
@@ -510,29 +628,6 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
         client.mark_as_read(conv.remote_jid, mensagem.wa_message_id)
     except Exception:  # noqa: BLE001 - cosmético, nunca deve afetar o turno
         logger.debug("mark_as_read: falha inesperada (ignorada)", exc_info=True)
-
-    def responder(texto: str):
-        ok = False
-        if numero_destino:
-            ok = client.send_text(numero_destino, texto)
-        else:
-            logger.warning("Não foi possível normalizar número para responder conversa %s", conv.id)
-        Mensagem.objects.create(conversa=conv, direcao=Mensagem.Direcao.OUT, texto=texto, enviado_ok=ok)
-        if not ok:
-            conv.precisa_revisao_humana = True
-            conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
-
-    def responder_arquivo(caminho_completo: str, nome_arquivo: str, legenda: str = ""):
-        texto_msg = legenda or f"Enviou arquivo: {nome_arquivo}"
-        ok = False
-        if numero_destino:
-            ok = client.send_file(numero_destino, caminho_completo, nome_arquivo, caption=legenda)
-        else:
-            logger.warning("Não foi possível normalizar número para enviar arquivo na conversa %s", conv.id)
-        Mensagem.objects.create(conversa=conv, direcao=Mensagem.Direcao.OUT, texto=texto_msg, enviado_ok=ok)
-        if not ok:
-            conv.precisa_revisao_humana = True
-            conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
 
     # 1) Classificar contato
     tipo_contato, nome_salvo, cliente = _classificar_contato(conv, mensagem.push_name or "")
@@ -549,29 +644,35 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
 
     tem_out_anterior = conv.mensagens.filter(direcao=Mensagem.Direcao.OUT).exists()
 
-    # 2) Contato pessoal -> ignora
+    # 2) Contato pessoal -> ignora; marca TODO o lote pendente como
+    # respondido (contato pessoal nunca vai gerar uma chamada de IA).
     if tipo_contato == Conversa.TipoContato.PESSOAL:
+        _marcar_mensagens_respondidas(_mensagens_pendentes(conv))
         logger.info("Contato pessoal %s: mensagem %s armazenada sem resposta", conv.remote_jid, mensagem.id)
         return
 
-    # 3) Cliente bloqueado
+    # 3) Cliente bloqueado -- não marca a mensagem: cada nova mensagem do
+    # bloqueado passa por aqui de novo e apenas re-sinaliza revisão.
     if cliente and cliente.bloqueado_ia:
         conv.precisa_revisao_humana = True
         conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
         logger.info("Cliente %s bloqueado p/ IA: mensagem %s sem resposta", cliente.cpf, mensagem.id)
         return
 
-    # 4) Desconhecido sem resposta prévia -> saúda e encerra este turno
+    # 4) Desconhecido sem resposta prévia -> saúda, marca só esta mensagem e
+    # encerra este turno (sem IA).
     if tipo_contato == Conversa.TipoContato.DESCONHECIDO and not tem_out_anterior:
         if bot.responder_desconhecidos:
             responder(render_template(msgs.msg_saudacao, saudacao=_saudacao()))
         else:
             conv.precisa_revisao_humana = True
             conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
+        _marcar_mensagens_respondidas([mensagem])
         return
 
     # 4.5) Cliente identificado por telefone, primeira interação -> saudação
-    # nominal (decisão do dono: telefone cadastrado = identificado, sem CPF).
+    # nominal (decisão do dono: telefone cadastrado = identificado, sem
+    # CPF), sem IA; marca só esta mensagem.
     if (
         tipo_contato == Conversa.TipoContato.CLIENTE
         and conv.identificacao == Conversa.MetodoIdentificacao.TELEFONE
@@ -579,14 +680,27 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
     ):
         primeiro_nome = (cliente.nome or "").split()[0] if cliente and cliente.nome else ""
         responder(render_template(msgs.tpl_saudacao_cliente, saudacao=_saudacao(), nome=primeiro_nome))
+        _marcar_mensagens_respondidas([mensagem])
         return
 
-    # 5) Mídia sem texto (áudio/vídeo/imagem sem legenda) -> não chama a IA
+    # 5) Mídia sem texto (áudio/vídeo/imagem sem legenda) -> nunca chama a
+    # IA. Se há outra IN com texto ainda pendente no lote, só marca a mídia
+    # e SEGUE (não responde msg_midia_nao_suportada no meio do lote); se é
+    # a única pendente, responde a recusa e encerra o turno.
     if mensagem.tipo_midia and not (mensagem.texto or "").strip():
-        conv.precisa_revisao_humana = True
-        conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
-        responder(msgs.msg_midia_nao_suportada)
-        return
+        outras_com_texto = any(
+            (m.texto or "").strip()
+            for m in _mensagens_pendentes(conv)
+            if m.pk != mensagem.pk
+        )
+        if outras_com_texto:
+            _marcar_mensagens_respondidas([mensagem])
+        else:
+            conv.precisa_revisao_humana = True
+            conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
+            responder(msgs.msg_midia_nao_suportada)
+            _marcar_mensagens_respondidas([mensagem])
+            return
 
     # 6) CPF digitado nesta mensagem -> valida em Python
     permitir_cru = conv.estado == Conversa.Estado.AGUARDANDO_VERIFICACAO
@@ -594,11 +708,15 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
     if cpf_digitado:
         if not validar_cpf(cpf_digitado):
             responder(msgs.msg_cpf_invalido)
+            _marcar_mensagens_respondidas([mensagem])
             return
         if cliente and normalizar_cpf(cliente.cpf) and normalizar_cpf(cliente.cpf) != cpf_digitado:
             responder(msgs.msg_cpf_nao_bate)
+            _marcar_mensagens_respondidas([mensagem])
             return
-        # válido (e confere, se houver cliente conhecido)
+        # válido (e confere, se houver cliente conhecido) -- NÃO marca:
+        # fica no lote como contexto (o prompt já instrui a IA a ignorar um
+        # CPF isolado como solicitação).
         conv.cpf_verificado = cpf_digitado
         conv.verified_at = timezone.now()
         conv.identificacao = Conversa.MetodoIdentificacao.CPF
@@ -622,21 +740,62 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
         conv.estado = Conversa.Estado.AGUARDANDO_VERIFICACAO
         conv.save(update_fields=["cpf_verificado", "verified_at", "identificacao", "estado", "ultima_interacao"])
 
+    # 7) Ponto de decisão do debounce (WS-A v3/Fase 3): silêncio do cliente
+    # desde a última IN >= debounce_segundos (ou kill-switch debounce=0) ->
+    # processa o lote agora, síncrono; senão agenda para quando o silêncio
+    # se completar.
+    debounce = bot.debounce_segundos
+    ultima_in = conv.mensagens.filter(direcao=Mensagem.Direcao.IN).order_by("-criado_em").first()
+    silencio = timezone.now() - ultima_in.criado_em if ultima_in else timedelta(0)
+    if debounce == 0 or silencio >= timedelta(seconds=debounce):
+        _processar_lote(conv, bot, msgs, client, numero_destino, responder, responder_arquivo)
+    else:
+        _agendar_debounce(conv, bot)
+
+
+def _processar_lote(conv: Conversa, bot: BotConfig, msgs, client, numero_destino, responder, responder_arquivo):
+    """Chama a IA com o LOTE de mensagens IN não respondidas e despacha
+    sequencialmente TODAS as ações classificadas. Extraído do antigo passo
+    6-8 de `process_mensagem` (Fase 2) para ser reutilizável tanto no
+    caminho síncrono (debounce=0 ou silêncio já cumprido, chamado por
+    `_processar_mensagem_com_lock`) quanto acordado pelo Schedule
+    (`process_lote_conversa` -> `_processar_lote_com_lock`).
+
+    Histórico x lote: para não duplicar contexto, o histórico enviado à IA
+    inclui só mensagens ANTERIORES à primeira do lote (`criado_em` menor);
+    as próprias mensagens do lote entram apenas como `mensagens_lote`.
+    """
+    lote = list(_mensagens_pendentes(conv))
+    if not lote:
+        return
+
+    lote_texto = [m.texto for m in lote if (m.texto or "").strip()]
+    if not lote_texto:
+        # Lote só tem mídia/mensagens vazias (já teriam sido marcadas pelos
+        # passos determinísticos, mas cobre qualquer sobra) -- não há o que
+        # classificar; marca e sai sem chamar a IA.
+        _marcar_mensagens_respondidas(lote)
+        return
+
+    cliente = conv.cliente
+    tipo_contato = conv.tipo_contato
     identificado = conv.identificacao != Conversa.MetodoIdentificacao.NENHUM
     db_atualizada = bot.database_atualizada()
 
-    # 7) Garantia dura: contratos só chegam à IA se identificado E db fresca.
+    # Garantia dura: contratos só chegam à IA se identificado E db fresca.
     contratos_para_ia = []
     if cliente and identificado and db_atualizada:
         contratos_para_ia = _contratos_ativos_values(cliente)
 
     faqs = list(FAQ.objects.filter(ativo=True).values("id", "pergunta"))
+    primeira_do_lote = lote[0]
     historico = list(
-        conv.mensagens.order_by("-criado_em").values("direcao", "texto")[:HISTORICO_TAMANHO]
+        conv.mensagens.filter(criado_em__lt=primeira_do_lote.criado_em)
+        .order_by("-criado_em").values("direcao", "texto")[:HISTORICO_TAMANHO]
     )[::-1]
 
     resultado = extrair_intencao(
-        [mensagem.texto],
+        lote_texto,
         historico,
         contratos_para_ia,
         faqs,
@@ -645,9 +804,9 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
         contato_tipo=tipo_contato,
     )
 
-    # 8) Dispatch sequencial multi-ação (WS-A v3/Fase 2): a IA identifica
-    # TODAS as solicitações do lote de uma vez (schema ClassificacaoLote) --
-    # em vez de responder-e-retornar na primeira ação que casar, acumulamos
+    # Dispatch sequencial multi-ação (WS-A v3/Fase 2): a IA identifica TODAS
+    # as solicitações do lote de uma vez (schema ClassificacaoLote) -- em
+    # vez de responder-e-retornar na primeira ação que casar, acumulamos
     # tudo numa única `fila` e enviamos ao final via `_enviar_fila`, na
     # ordem: saudação -> FAQs -> infos_contrato -> pagamento -> segunda_via
     # -> dúvidas/fallback. Os gates de identificação/database (hard rules em
@@ -662,7 +821,7 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
         nonlocal marcar_revisao
         marcar_revisao = True
 
-    # 8.1) Saudação
+    # 1) Saudação
     if resultado.saudacao:
         if identificado and cliente:
             primeiro_nome = (cliente.nome or "").split()[0] if cliente.nome else ""
@@ -671,7 +830,7 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
             fila.append(render_template(msgs.msg_saudacao, saudacao=_saudacao()))
         acoes_log.append("saudacao")
 
-    # 8.2) FAQs -- todas as classificadas, cada FAQResposta vira 1 item da fila
+    # 2) FAQs -- todas as classificadas, cada FAQResposta vira 1 item da fila
     for faq_id in resultado.faq_ids:
         try:
             faq = FAQ.objects.get(id=faq_id, ativo=True)
@@ -687,7 +846,7 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
                 fila.append(resp.texto)
         acoes_log.append(f"faq:{faq.id}")
 
-    # 8.3) Gates POR AÇÃO (identificação/database/desconhecido-por-CPF):
+    # 3) Gates POR AÇÃO (identificação/database/desconhecido-por-CPF):
     # calculados uma vez, suprimem só infos_contrato/pagamento/segunda_via.
     tem_infos = bool(resultado.infos_contrato)
     tem_pagamento = bool(resultado.solicitacoes)
@@ -719,13 +878,13 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
         fila.append(msgs.msg_info_negada_desconhecido)
         acoes_log.append("info_negada_desconhecido")
 
-    # 8.4) Info de contrato -> renderer determinístico (nunca texto da IA);
+    # 4) Info de contrato -> renderer determinístico (nunca texto da IA);
     # fan-out: intro + 1 mensagem por contrato + totalizador (2+ contratos).
     if tem_infos and not info_suprimido:
         fila.extend(renderizar_infos_contrato(cliente, resultado.infos_contrato, msgs))
         acoes_log.append(f"info_contrato:{len(resultado.infos_contrato)}")
 
-    # 8.5) Pagamento: cria solicitações quando pronto, senão pergunta de slot
+    # 5) Pagamento: cria solicitações quando pronto, senão pergunta de slot
     if tem_pagamento and not pagamento_suprimido:
         if resultado.pronto_para_criar_solicitacao and cliente:
             _criar_solicitacoes(conv, cliente, resultado.solicitacoes)
@@ -737,12 +896,12 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
             fila.append(_montar_pergunta_pagamento_incompleto(cliente, msgs))
             acoes_log.append("pagamento_incompleto")
 
-    # 8.6) Segunda via
+    # 6) Segunda via
     if tem_segunda_via and not segunda_via_suprimida and cliente:
         fila.extend(_handle_segunda_via(conv, cliente, msgs))
         acoes_log.append("segunda_via")
 
-    # 8.7) Mensagem agregada do gate de identificação/database, UMA vez.
+    # 7) Mensagem agregada do gate de identificação/database, UMA vez.
     if gate_motivo == "identificacao":
         if tipo_contato == Conversa.TipoContato.DESCONHECIDO:
             fila.append(msgs.msg_cadastro_nao_localizado)
@@ -756,12 +915,14 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
         fila.append(msgs.msg_db_desatualizada)
         acoes_log.append("gate:db_desatualizada")
 
-    # 8.8) Dúvidas sem FAQ correspondente: registra sugestão de FAQ por
+    # 8) Dúvidas sem FAQ correspondente: registra sugestão de FAQ por
     # dúvida + marca revisão; com outras ações na fila, anexa
-    # msg_duvida_anotada; sozinhas, cai no fallback padrão.
+    # msg_duvida_anotada; sozinhas, cai no fallback padrão. `pergunta_original`
+    # usa o lote inteiro (não há mais 1 "mensagem" única no contexto do lote).
+    lote_texto_join = "\n".join(lote_texto)
     if resultado.duvidas_sem_faq:
         for duvida in resultado.duvidas_sem_faq:
-            FAQSugerida.registrar(duvida, conversa=conv, pergunta_original=mensagem.texto)
+            FAQSugerida.registrar(duvida, conversa=conv, pergunta_original=lote_texto_join)
         _marcar_revisao()
         if fila:
             duvidas_txt = "; ".join(resultado.duvidas_sem_faq)
@@ -770,10 +931,10 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
             fila.append(msgs.msg_fallback_sem_resposta)
         acoes_log.append(f"duvida_sem_faq:{len(resultado.duvidas_sem_faq)}")
 
-    # 8.9) Nenhuma ação classificada no lote inteiro -> fallback padrão.
+    # 9) Nenhuma ação classificada no lote inteiro -> fallback padrão.
     # Fila vazia apesar de haver ação (ex.: FAQ inativa) -> mensagem neutra.
     if resultado.nenhuma_acao():
-        FAQSugerida.registrar(mensagem.texto, conversa=conv, pergunta_original=mensagem.texto)
+        FAQSugerida.registrar(lote_texto_join, conversa=conv, pergunta_original=lote_texto_join)
         _marcar_revisao()
         fila.append(msgs.msg_fallback_sem_resposta)
         acoes_log.append("nenhuma_acao")
@@ -791,7 +952,59 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
         conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
 
     _enviar_fila(fila, responder, responder_arquivo, conv)
+    _marcar_mensagens_respondidas(lote)
     _log_auditoria(conv, resultado, "acoes=" + (",".join(acoes_log) if acoes_log else "nenhuma"))
+
+
+def process_lote_conversa(conversa_id: int):
+    """Task acordada pelo Schedule agendado em `_agendar_debounce`: processa
+    o lote de mensagens não respondidas da conversa após o cliente
+    completar `debounce_segundos` de silêncio. Usa o MESMO mutex leve
+    (`Conversa.processando_desde`) de `process_mensagem` -- se ocupado,
+    reagenda via `_reagendar_lote` em vez de duplicar o Schedule."""
+    try:
+        conv = Conversa.objects.select_related("cliente").get(pk=conversa_id)
+    except Conversa.DoesNotExist:
+        logger.warning("process_lote_conversa: conversa %s não encontrada", conversa_id)
+        return
+
+    bot = BotConfig.get_solo()
+    if not bot.ativo:
+        conv.precisa_revisao_humana = True
+        conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
+        logger.info("Bot desativado: lote da conversa %s armazenado sem resposta", conversa_id)
+        return
+
+    with transaction.atomic():
+        conv = Conversa.objects.select_for_update().get(pk=conversa_id)
+        agora = timezone.now()
+        if conv.processando_desde and (agora - conv.processando_desde) < LOCK_TIMEOUT:
+            _reagendar_lote(conversa_id)
+            return
+        conv.processando_desde = agora
+        conv.save(update_fields=["processando_desde"])
+
+    try:
+        _processar_lote_com_lock(conv, bot)
+    finally:
+        Conversa.objects.filter(pk=conversa_id).update(processando_desde=None)
+
+
+def _processar_lote_com_lock(conv: Conversa, bot: BotConfig):
+    # Recheck de silêncio dentro do lock: corrida webhook x scheduler -- uma
+    # nova IN pode ter chegado entre o agendamento e a execução deste
+    # Schedule (`_agendar_debounce` já teria reagendado o `next_run` para a
+    # frente, mas a task antiga já pode estar em voo).
+    ultima_in = conv.mensagens.filter(direcao=Mensagem.Direcao.IN).order_by("-criado_em").first()
+    if ultima_in and bot.debounce_segundos > 0:
+        silencio = timezone.now() - ultima_in.criado_em
+        if silencio < timedelta(seconds=bot.debounce_segundos):
+            _agendar_debounce(conv, bot)
+            return
+
+    msgs = MensagensConfig.get_solo()
+    client, numero_destino, responder, responder_arquivo = _criar_responders(conv)
+    _processar_lote(conv, bot, msgs, client, numero_destino, responder, responder_arquivo)
 
 
 def processar_nao_lidas():

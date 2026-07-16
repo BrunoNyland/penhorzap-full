@@ -43,9 +43,13 @@ from whatsapp.tasks import (
     MAX_MENSAGENS_TURNO,
     PAUSA_FANOUT,
     _enviar_fila,
+    _mensagens_pendentes,
+    process_lote_conversa,
     process_mensagem,
 )
 from whatsapp.views import _extrair_conteudo
+
+from django_q.models import Schedule
 
 
 def _classificacao(**kwargs):
@@ -75,6 +79,12 @@ class WhatsappTasksTestCase(TestCase):
         self.bot.ativo = True
         self.bot.ultima_atualizacao_dados = timezone.now()
         self.bot.freshness_horas = 24
+        # Fase 3 (debounce): kill-switch ligado por padrão nos testes
+        # existentes -- mantém o processamento síncrono (1 mensagem = 1
+        # chamada de IA imediata) sem precisar reescrever toda a suíte.
+        # `DebounceTests` sobrescreve para testar o comportamento com
+        # debounce > 0.
+        self.bot.debounce_segundos = 0
         self.bot.save()
 
         self.msgs = MensagensConfig.get_solo()
@@ -963,3 +973,245 @@ class EnviarFilaTests(TestCase):
         # não colapsa (fila tem item não-string) -> todos os 15 itens são enviados.
         self.assertEqual(len(enviados) + len(arquivos), 15)
         self.assertEqual(arquivos, [("caminho.pdf", "boleto.pdf", "legenda")])
+
+
+class DebounceZeroTests(WhatsappTasksTestCase):
+    """`debounce_segundos=0` (default do setUp da base) é o kill-switch: o
+    processamento continua 100% síncrono, sem nunca criar um Schedule."""
+
+    def test_debounce_zero_processa_sincrono_sem_schedule(self):
+        conv = Conversa.objects.create(remote_jid="5567900000040@s.whatsapp.net")
+        Mensagem.objects.create(conversa=conv, direcao=Mensagem.Direcao.OUT, texto="oi")
+
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mock_ia.return_value = _classificacao(saudacao=True)
+            mensagem = self._in(conv, "bom dia")
+            process_mensagem(mensagem.id)
+
+        mock_ia.assert_called_once()
+        self.mock_client.send_text.assert_called_once()
+        self.assertFalse(Schedule.objects.filter(name=f"pz-debounce-{conv.id}").exists())
+        mensagem.refresh_from_db()
+        self.assertIsNotNone(mensagem.respondida_em)
+
+
+class DebounceTests(WhatsappTasksTestCase):
+    """Fase 3 (debounce): com `debounce_segundos > 0`, a IA só é chamada
+    quando o cliente completa aquele silêncio (ou o Schedule agendado por
+    `_agendar_debounce` acorda e encontra o silêncio já cumprido). Respostas
+    determinísticas (CPF, saudação de 1º contato, mídia sozinha) continuam
+    imediatas e marcam só a mensagem que cobriram; o dispatch via IA marca
+    todo o lote de uma vez."""
+
+    def setUp(self):
+        super().setUp()
+        self.bot.debounce_segundos = 120
+        self.bot.save()
+        self.cliente = Cliente.objects.create(cpf="52998224725", nome="Paula Reis")
+        Telefone.objects.create(cliente=self.cliente, numero="+5567966665555")
+        self.contrato = ContratoPenhor.objects.create(
+            contrato="C1", cliente=self.cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            data_vencimento=timezone.localdate() + timedelta(days=10),
+            liquidacao="R$ 500,00",
+        )
+        self.conv = Conversa.objects.create(
+            remote_jid="5567966665555@s.whatsapp.net",
+            identificacao=Conversa.MetodoIdentificacao.TELEFONE,
+            tipo_contato=Conversa.TipoContato.CLIENTE,
+            cliente=self.cliente,
+        )
+        Mensagem.objects.create(conversa=self.conv, direcao=Mensagem.Direcao.OUT, texto="oi")
+
+    def _envelhecer(self, *mensagens, segundos=200):
+        ids = [m.pk for m in mensagens]
+        Mensagem.objects.filter(pk__in=ids).update(
+            criado_em=timezone.now() - timedelta(seconds=segundos)
+        )
+
+    # --- process_mensagem: agenda em vez de chamar a IA na hora ------------
+
+    def test_mensagem_recente_agenda_schedule_sem_chamar_ia(self):
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mensagem = self._in(self.conv, "quanto pra quitar?")
+            process_mensagem(mensagem.id)
+
+        mock_ia.assert_not_called()
+        self.mock_client.send_text.assert_not_called()
+        sched = Schedule.objects.get(name=f"pz-debounce-{self.conv.id}")
+        self.assertEqual(sched.func, "whatsapp.tasks.process_lote_conversa")
+        self.assertEqual(sched.args, str(self.conv.id))
+        esperado = mensagem.criado_em + timedelta(seconds=120)
+        self.assertAlmostEqual(sched.next_run, esperado, delta=timedelta(seconds=5))
+
+    def test_segunda_mensagem_atualiza_mesmo_schedule(self):
+        with patch("whatsapp.tasks.extrair_intencao"):
+            m1 = self._in(self.conv, "oi, tudo bem?")
+            process_mensagem(m1.id)
+            m2 = self._in(self.conv, "quanto pra quitar?")
+            process_mensagem(m2.id)
+
+        self.assertEqual(Schedule.objects.filter(name=f"pz-debounce-{self.conv.id}").count(), 1)
+        sched = Schedule.objects.get(name=f"pz-debounce-{self.conv.id}")
+        esperado = m2.criado_em + timedelta(seconds=120)
+        self.assertAlmostEqual(sched.next_run, esperado, delta=timedelta(seconds=5))
+
+    # --- lote só coleta o que ainda não foi marcado -------------------------
+
+    def test_lote_ignora_mensagem_ja_marcada_respondida(self):
+        antiga = self._in(self.conv, "mensagem já coberta antes")
+        antiga.respondida_em = timezone.now()
+        antiga.save(update_fields=["respondida_em"])
+        pendente = self._in(self.conv, "quanto pra quitar?")
+
+        self.assertEqual(list(_mensagens_pendentes(self.conv)), [pendente])
+
+    # --- process_lote_conversa: recheck de silêncio dentro do lock --------
+
+    def test_process_lote_conversa_silencio_insuficiente_reagenda_sem_ia(self):
+        self._in(self.conv, "quanto pra quitar?")
+
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            process_lote_conversa(self.conv.id)
+
+        mock_ia.assert_not_called()
+        self.mock_client.send_text.assert_not_called()
+        sched = Schedule.objects.get(name=f"pz-debounce-{self.conv.id}")
+        self.assertGreater(sched.next_run, timezone.now())
+
+    def test_process_lote_conversa_silencio_suficiente_chama_ia_com_lote_completo(self):
+        m1 = self._in(self.conv, "msg1")
+        m2 = self._in(self.conv, "msg2")
+        # Chamadas separadas (staggered): uma única bulk update daria o
+        # MESMO `criado_em` às duas, deixando a ordem do lote sujeita a
+        # empate.
+        self._envelhecer(m1, segundos=200)
+        self._envelhecer(m2, segundos=190)
+
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mock_ia.return_value = _classificacao(saudacao=True)
+            process_lote_conversa(self.conv.id)
+
+        mock_ia.assert_called_once()
+        args, kwargs = mock_ia.call_args
+        self.assertEqual(args[0], ["msg1", "msg2"])
+        self.mock_client.send_text.assert_called_once()
+        m1.refresh_from_db()
+        m2.refresh_from_db()
+        self.assertIsNotNone(m1.respondida_em)
+        self.assertIsNotNone(m2.respondida_em)
+
+    def test_process_lote_conversa_bot_inativo_marca_revisao_sem_ia(self):
+        self.bot.ativo = False
+        self.bot.save()
+        conv = Conversa.objects.create(remote_jid="5567900000041@s.whatsapp.net")
+
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            process_lote_conversa(conv.id)
+
+        mock_ia.assert_not_called()
+        conv.refresh_from_db()
+        self.assertTrue(conv.precisa_revisao_humana)
+
+    # --- determinísticos marcam a mensagem (ou o lote todo) que cobriram --
+
+    def test_cpf_invalido_marca_mensagem_sem_agendar(self):
+        conv = Conversa.objects.create(remote_jid="5567900000042@s.whatsapp.net")
+        Mensagem.objects.create(conversa=conv, direcao=Mensagem.Direcao.OUT, texto="oi")
+
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mensagem = self._in(conv, "meu cpf é 111.111.111-11")
+            process_mensagem(mensagem.id)
+
+        mock_ia.assert_not_called()
+        mensagem.refresh_from_db()
+        self.assertIsNotNone(mensagem.respondida_em)
+        self.assertEqual(self._last_out_texto(conv), self.msgs.msg_cpf_invalido)
+        self.assertFalse(Schedule.objects.filter(name=f"pz-debounce-{conv.id}").exists())
+
+    def test_midia_unica_pendente_marca_e_responde_na_hora(self):
+        conv = Conversa.objects.create(remote_jid="5567900000043@s.whatsapp.net")
+        Mensagem.objects.create(conversa=conv, direcao=Mensagem.Direcao.OUT, texto="oi")
+        mensagem = Mensagem.objects.create(
+            conversa=conv, direcao=Mensagem.Direcao.IN, tipo_midia=Mensagem.TipoMidia.IMAGE, texto="",
+        )
+
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            process_mensagem(mensagem.id)
+
+        mock_ia.assert_not_called()
+        mensagem.refresh_from_db()
+        self.assertIsNotNone(mensagem.respondida_em)
+        self.assertEqual(self._last_out_texto(conv), self.msgs.msg_midia_nao_suportada)
+
+    def test_midia_com_texto_pendente_no_lote_nao_responde_e_marca_so_a_midia(self):
+        texto_msg = self._in(self.conv, "quanto pra quitar?")
+        midia_msg = Mensagem.objects.create(
+            conversa=self.conv, direcao=Mensagem.Direcao.IN, tipo_midia=Mensagem.TipoMidia.IMAGE, texto="",
+        )
+
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            process_mensagem(midia_msg.id)
+
+        mock_ia.assert_not_called()
+        midia_msg.refresh_from_db()
+        texto_msg.refresh_from_db()
+        self.assertIsNotNone(midia_msg.respondida_em)
+        self.assertIsNone(texto_msg.respondida_em)
+        self.assertNotEqual(self._last_out_texto(self.conv), self.msgs.msg_midia_nao_suportada)
+        # não retorna sem agendar -- segue até o ponto de decisão do debounce.
+        self.assertTrue(Schedule.objects.filter(name=f"pz-debounce-{self.conv.id}").exists())
+
+    def test_saudacao_primeiro_contato_marca_mensagem_sem_ia(self):
+        conv = Conversa.objects.create(remote_jid="5567900000044@s.whatsapp.net")
+
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mensagem = self._in(conv, "oi")
+            process_mensagem(mensagem.id)
+
+        mock_ia.assert_not_called()
+        mensagem.refresh_from_db()
+        self.assertIsNotNone(mensagem.respondida_em)
+
+    # --- caso do dono: CPF válido + pergunta 10s depois --------------------
+
+    def test_cpf_valido_depois_pergunta_uma_chamada_ia_com_lote_completo(self):
+        conv = Conversa.objects.create(remote_jid="5567900000045@s.whatsapp.net")
+        Mensagem.objects.create(conversa=conv, direcao=Mensagem.Direcao.OUT, texto="oi")
+
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia_cpf:
+            m_cpf = self._in(conv, "529.982.247-25")
+            process_mensagem(m_cpf.id)
+        mock_ia_cpf.assert_not_called()
+        m_cpf.refresh_from_db()
+        # CPF válido não vira ação: a mensagem NÃO é marcada -- fica no lote
+        # como contexto (o prompt manda ignorar CPF isolado).
+        self.assertIsNone(m_cpf.respondida_em)
+        conv.refresh_from_db()
+        self.assertEqual(conv.identificacao, Conversa.MetodoIdentificacao.CPF)
+
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia_pergunta:
+            m_pergunta = self._in(conv, "quanto pra quitar?")
+            process_mensagem(m_pergunta.id)
+        mock_ia_pergunta.assert_not_called()  # ainda dentro da janela de debounce
+
+        # Envelhece em chamadas separadas (staggered) -- uma única chamada
+        # bulk daria o MESMO `criado_em` às duas, deixando a ordem do lote
+        # sujeita a empate.
+        self._envelhecer(m_cpf, segundos=150)
+        self._envelhecer(m_pergunta, segundos=140)
+
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mock_ia.return_value = _classificacao(saudacao=True)
+            process_lote_conversa(conv.id)
+
+        # 1 chamada de IA com o lote completo (as 2 mensagens, incluindo o
+        # texto do CPF -- é a IA quem ignora, não o corte do lote).
+        mock_ia.assert_called_once()
+        args, kwargs = mock_ia.call_args
+        self.assertEqual(args[0], ["529.982.247-25", "quanto pra quitar?"])
+        # 1 conjunto de respostas -- não duas chamadas separadas.
+        self.mock_client.send_text.assert_called_once()
+        m_cpf.refresh_from_db()
+        m_pergunta.refresh_from_db()
+        self.assertIsNotNone(m_cpf.respondida_em)
+        self.assertIsNotNone(m_pergunta.respondida_em)

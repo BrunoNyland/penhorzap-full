@@ -104,6 +104,18 @@ import { ApiService } from '../../services/api.service';
 
             <div class="grid-2 margin-top">
               <div class="form-group">
+                <label for="debounce_segundos">Debounce da IA (Segundos)</label>
+                <input
+                  type="number"
+                  id="debounce_segundos"
+                  name="debounce_segundos"
+                  min="0"
+                  [(ngModel)]="botConfig.debounce_segundos"
+                />
+                <span class="help-text">Segundos de silêncio antes de a IA responder (0 = imediato). Agrupa rajadas de mensagens numa única chamada à IA.</span>
+              </div>
+
+              <div class="form-group">
                 <label for="dias_resgate_garantia">Dias de Resgate da Garantia</label>
                 <input 
                   type="number" 

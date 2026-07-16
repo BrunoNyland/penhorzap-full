@@ -38,6 +38,7 @@ class BotConfigSerializer(serializers.ModelSerializer):
             "ativo",
             "ultima_atualizacao_dados",
             "freshness_horas",
+            "debounce_segundos",
             "horario_encerramento",
             "responder_desconhecidos",
             "dias_resgate_garantia",

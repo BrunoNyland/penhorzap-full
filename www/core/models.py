@@ -353,6 +353,10 @@ class Mensagem(models.Model):
         help_text="OUT: resultado do envio via Evolution. None = mensagem IN ou registro legado.",
     )
     payload_bruto = models.JSONField(default=dict, blank=True)
+    respondida_em = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Quando o bot considerou esta mensagem IN respondida (controle do lote do debounce).",
+    )
     criado_em = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -401,6 +405,10 @@ class BotConfig(models.Model):
     freshness_horas = models.PositiveIntegerField(
         default=24,
         help_text="Idade máxima (em horas) do último import para considerar a database atualizada.",
+    )
+    debounce_segundos = models.PositiveIntegerField(
+        default=120,
+        help_text="Segundos de silêncio do cliente antes de a IA responder. 0 = responder imediatamente. Respostas sem IA (CPF, saudação, mídia) continuam imediatas.",
     )
     horario_encerramento = models.TimeField(
         null=True, blank=True,

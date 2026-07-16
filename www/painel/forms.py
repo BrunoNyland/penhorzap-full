@@ -78,11 +78,13 @@ class BotConfigForm(forms.ModelForm):
             "ativo",
             "horario_encerramento",
             "freshness_horas",
+            "debounce_segundos",
             "responder_desconhecidos",
             "dias_resgate_garantia",
         ]
         widgets = {
             "horario_encerramento": forms.TimeInput(attrs={"type": "time", "class": "input"}),
             "freshness_horas": forms.NumberInput(attrs={"class": "input", "min": 1}),
+            "debounce_segundos": forms.NumberInput(attrs={"class": "input", "min": 0}),
             "dias_resgate_garantia": forms.NumberInput(attrs={"class": "input", "min": 1}),
         }
