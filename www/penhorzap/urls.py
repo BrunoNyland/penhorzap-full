@@ -8,11 +8,10 @@ admin.site.login_template = "admin/login_penhorzap.html"
 admin.site.site_header = "penhorzap"
 
 urlpatterns = [
-    path("", RedirectView.as_view(pattern_name="painel:dashboard", permanent=False)),
+    path("", RedirectView.as_view(url="/painel/", permanent=False)),
     path("admin/", admin.site.urls),
     path("", include("whatsapp.urls")),
     path("api/", include("api.urls")),
-    path("painel/", include("painel.urls")),
 ]
 
 if settings.DEBUG:
