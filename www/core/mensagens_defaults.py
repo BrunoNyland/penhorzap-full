@@ -12,10 +12,6 @@ DEFAULT_MSG_CADASTRO_NAO_LOCALIZADO = (
     "Oi! Não achei seu número aqui no meu cadastro. Assim que eu tiver um "
     "tempinho eu verifico pra você e já te retorno."
 )
-DEFAULT_MSG_INSISTIU_HUMANO = (
-    "*Mensagem automática:* Oi. Estou ocupado no momento. Mas assim que eu "
-    "tiver um tempinho eu te verifico pra vc. 🤝"
-)
 
 # --- Verificação de CPF ------------------------------------------------------
 
@@ -28,18 +24,8 @@ DEFAULT_MSG_CPF_NAO_BATE = (
     "Esse CPF não bate com o que tenho aqui pra este número. Você pode "
     "confirmar pra mim o CPF certo do titular do contrato?"
 )
-DEFAULT_MSG_VERIFICACAO_OK = "Perfeito, confirmado! Me diz então, em que posso te ajudar hoje?"
-DEFAULT_MSG_VERIFICACAO_FALHOU = (
-    "O CPF não bateu com o que tenho aqui no cadastro para este telefone. "
-    "Dá uma conferida e me manda de novo o CPF?"
-)
-
 # --- Informações / FAQ / database desatualizada ------------------------------
 
-DEFAULT_MSG_SEM_INFO_FAQ = (
-    "*Mensagem automática:* Oi. Estou ocupado no momento. Mas assim que eu "
-    "tiver um tempinho eu te verifico pra vc. 🤝"
-)
 DEFAULT_MSG_DB_DESATUALIZADA = (
     "*Mensagem automática:* Oi. Estou ocupado no momento. Mas assim que eu "
     "tiver um tempinho eu te verifico pra vc. 🤝"
@@ -88,7 +74,6 @@ DEFAULT_TPL_CONTRATO_RESUMO = (
     "📄 *Contrato*: {contrato}\n🗓️ *Vencimento*: {vencimento}\n💰 *Empréstimo*: {valor_emprestimo}"
 )
 DEFAULT_TPL_LISTA_HEADER = "{nome}, você tem {qtd} contrato(s) ativo(s):"
-DEFAULT_TPL_LISTA_FOOTER = "Se precisar de mais alguma informação, é só falar!"
 DEFAULT_TPL_TOTALIZADOR = (
     "📊 Resumo: {qtd} contrato(s), total de {total}. Se precisar de mais "
     "alguma informação, é só falar!"

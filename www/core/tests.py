@@ -210,7 +210,6 @@ class MensagensConfigGetSoloTests(TestCase):
             "tpl_contrato_parcela",
             "tpl_contrato_resumo",
             "tpl_lista_header",
-            "tpl_lista_footer",
             "tpl_totalizador",
             "tpl_totalizador_sem_valor",
             "msg_fallback_sem_resposta",

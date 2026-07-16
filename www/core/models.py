@@ -10,7 +10,6 @@ from .mensagens_defaults import (
     DEFAULT_MSG_DUVIDA_ANOTADA,
     DEFAULT_MSG_FALLBACK_SEM_RESPOSTA,
     DEFAULT_MSG_INFO_NEGADA_DESCONHECIDO,
-    DEFAULT_MSG_INSISTIU_HUMANO,
     DEFAULT_MSG_MIDIA_NAO_SUPORTADA,
     DEFAULT_MSG_NEUTRA_PADRAO,
     DEFAULT_MSG_PEDIR_CPF,
@@ -18,18 +17,14 @@ from .mensagens_defaults import (
     DEFAULT_MSG_RENOVACAO_PROXIMO_VENCIMENTO,
     DEFAULT_MSG_SAUDACAO,
     DEFAULT_MSG_SEM_CONTRATOS_ATIVOS,
-    DEFAULT_MSG_SEM_INFO_FAQ,
     DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
     DEFAULT_MSG_SOLICITACAO_CRIADA,
-    DEFAULT_MSG_VERIFICACAO_FALHOU,
-    DEFAULT_MSG_VERIFICACAO_OK,
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_TPL_CONTRATO_PARCELA,
     DEFAULT_TPL_CONTRATO_QUITACAO,
     DEFAULT_TPL_CONTRATO_RENOVACAO,
     DEFAULT_TPL_CONTRATO_RESUMO,
     DEFAULT_TPL_CONTRATO_VENCIMENTO,
-    DEFAULT_TPL_LISTA_FOOTER,
     DEFAULT_TPL_LISTA_HEADER,
     DEFAULT_TPL_SAUDACAO_CLIENTE,
     DEFAULT_TPL_TOTALIZADOR,
@@ -460,9 +455,6 @@ class MensagensConfig(models.Model):
     msg_pedir_cpf = models.TextField(default=DEFAULT_MSG_PEDIR_CPF)
     msg_cpf_invalido = models.TextField(default=DEFAULT_MSG_CPF_INVALIDO)
     msg_cpf_nao_bate = models.TextField(default=DEFAULT_MSG_CPF_NAO_BATE)
-    msg_verificacao_ok = models.TextField(default=DEFAULT_MSG_VERIFICACAO_OK)
-    msg_verificacao_falhou = models.TextField(default=DEFAULT_MSG_VERIFICACAO_FALHOU)
-    msg_sem_info_faq = models.TextField(default=DEFAULT_MSG_SEM_INFO_FAQ)
     msg_db_desatualizada = models.TextField(default=DEFAULT_MSG_DB_DESATUALIZADA)
     msg_sem_contratos_ativos = models.TextField(default=DEFAULT_MSG_SEM_CONTRATOS_ATIVOS)
     msg_solicitacao_criada = models.TextField(default=DEFAULT_MSG_SOLICITACAO_CRIADA)
@@ -470,7 +462,6 @@ class MensagensConfig(models.Model):
     msg_renovacao_proximo_vencimento = models.TextField(default=DEFAULT_MSG_RENOVACAO_PROXIMO_VENCIMENTO)
     msg_quitacao_garantia = models.TextField(default=DEFAULT_MSG_QUITACAO_GARANTIA)
     msg_segunda_via_confirma = models.TextField(default=DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA)
-    msg_insistiu_humano = models.TextField(default=DEFAULT_MSG_INSISTIU_HUMANO)
     msg_neutra_padrao = models.TextField(default=DEFAULT_MSG_NEUTRA_PADRAO)
     tpl_saudacao_cliente = models.TextField(default=DEFAULT_TPL_SAUDACAO_CLIENTE)
     tpl_contrato_vencimento = models.TextField(default=DEFAULT_TPL_CONTRATO_VENCIMENTO)
@@ -479,10 +470,6 @@ class MensagensConfig(models.Model):
     tpl_contrato_parcela = models.TextField(default=DEFAULT_TPL_CONTRATO_PARCELA)
     tpl_contrato_resumo = models.TextField(default=DEFAULT_TPL_CONTRATO_RESUMO)
     tpl_lista_header = models.TextField(default=DEFAULT_TPL_LISTA_HEADER)
-    tpl_lista_footer = models.TextField(
-        default=DEFAULT_TPL_LISTA_FOOTER,
-        help_text="(não usado — fechamento incorporado ao totalizador)",
-    )
     tpl_totalizador = models.TextField(default=DEFAULT_TPL_TOTALIZADOR)
     tpl_totalizador_sem_valor = models.TextField(default=DEFAULT_TPL_TOTALIZADOR_SEM_VALOR)
     msg_fallback_sem_resposta = models.TextField(default=DEFAULT_MSG_FALLBACK_SEM_RESPOSTA)
