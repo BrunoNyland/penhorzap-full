@@ -1098,10 +1098,12 @@ def _montar_resposta_simulador(resultado, cliente, msgs) -> list:
         fila.extend(renderizar_infos_contrato(cliente, resultado.infos_contrato, msgs))
 
     if resultado.solicitacoes:
-        if resultado.pronto_para_criar_solicitacao and cliente:
+        from ia.schemas import TipoPagamento
+        tem_indefinido = any(d.tipo == TipoPagamento.INDEFINIDO for d in resultado.solicitacoes)
+        if resultado.pronto_para_criar_solicitacao and cliente and not tem_indefinido:
             fila.append(f"{msgs.msg_solicitacao_criada}\n\n(simulação: nenhuma solicitação real foi criada)")
         else:
-            fila.append(_montar_pergunta_pagamento_incompleto(cliente, msgs))
+            fila.append(_montar_pergunta_pagamento_incompleto(cliente, msgs, resultado.solicitacoes, fila=fila))
 
     if resultado.segunda_via:
         fila.append(msgs.msg_segunda_via_confirma.format(contratos='(simulação)', tipo='(simulação)'))

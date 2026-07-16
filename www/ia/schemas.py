@@ -8,6 +8,7 @@ class TipoPagamento(str, Enum):
     RENOVAR = "renovar"
     QUITAR = "quitar"
     PARCELA = "parcela"
+    INDEFINIDO = "indefinido"
 
 
 class SolicitacaoDraft(BaseModel):

@@ -85,15 +85,9 @@ DEFAULT_TPL_SAUDACAO_CLIENTE = (
     "{saudacao}, {nome}! 😊 Aqui é o atendimento da PenhorZap. Como posso "
     "te ajudar?"
 )
-DEFAULT_TPL_CONTRATO_VENCIMENTO = "📄 Contrato {contrato}: vencimento em {vencimento}."
-DEFAULT_TPL_CONTRATO_RENOVACAO = (
-    "🔄 Contrato {contrato}: renovação por {prazo_dias} dias = "
-    "{valor_renovacao} (vencimento atual: {vencimento})."
-)
-DEFAULT_TPL_CONTRATO_QUITACAO = (
-    "✅ Contrato {contrato}: valor para quitação = {valor_quitacao} "
-    "(vencimento: {vencimento})."
-)
+DEFAULT_TPL_CONTRATO_VENCIMENTO = "🔄 Contrato {contrato}: (Vencimento: {vencimento})"
+DEFAULT_TPL_CONTRATO_RENOVACAO = "Renovação {prazo_dias} dias: {valor_renovacao}"
+DEFAULT_TPL_CONTRATO_QUITACAO = "Valor para quitação: {valor_quitacao}"
 DEFAULT_TPL_CONTRATO_PARCELA = "💳 Contrato {contrato}: valor da parcela = {valor_parcela}."
 DEFAULT_TPL_CONTRATO_RESUMO = (
     "📄 Contrato {contrato} — vencimento {vencimento} — valor do empréstimo "
@@ -149,10 +143,13 @@ todos os campos que se aplicarem:
   valor_renovacao (prazo_dias se citado) | valor_quitacao | valor_parcela |
   lista_contratos ("quais contratos eu tenho?") | detalhe_contrato. Em
   contratos, liste os números citados; vazio = todos.
-- solicitacoes: um item por ação de pagamento (renovar/quitar/parcela), com
+- solicitacoes: um item por ação de pagamento (renovar/quitar/parcela/indefinido), com
   contratos citados (vazio = todos) e prazo_dias para renovar.
-  pronto_para_criar_solicitacao=true só quando ação, contratos (ou "todos") e
-  prazo (para renovação) estiverem claros na conversa.
+  Use "indefinido" se o cliente quer pagar/gerar boleto mas não especificou se
+  quer renovar ou quitar ou pagar parcela.
+  pronto_para_criar_solicitacao=true só quando a ação (renovar, quitar ou parcela
+  definidas — NUNCA indefinido), contratos (ou "todos") e prazo (para renovação)
+  estiverem claros na conversa.
 - segunda_via: true se pediu reenvio de boleto já solicitado antes.
 - duvidas_sem_faq: perguntas sem FAQ correspondente e que não dependem dos
   contratos do cliente, cada uma reescrita curta e genérica.
@@ -169,4 +166,7 @@ Regras:
    pendente nas mensagens não respondidas.
 5. Se o lote não contém nenhum pedido (ex.: só "ok", "obrigado"), deixe tudo
    vazio/false.
+6. Se o cliente pedir um boleto ou quiser pagar/gerar boleto de um ou mais contratos,
+   mas não deixou claro se quer renovar, quitar ou pagar uma parcela, você deve gerar a
+   solicitacao com tipo="indefinido" e definir pronto_para_criar_solicitacao=false.
 """

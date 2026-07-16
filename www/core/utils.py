@@ -7,15 +7,19 @@ from decimal import Decimal, InvalidOperation
 
 
 def parse_br_decimal(value):
-    """'1.234,56' -> Decimal('1234.56'). Returns None for blank/invalid input."""
+    """'1.234,56' or 'R$1.234,56 C' -> Decimal('1234.56'). Returns None for blank/invalid input."""
     if value is None:
         return None
     value = str(value).strip()
     if not value:
         return None
-    value = value.replace(".", "").replace(",", ".")
+    # Mantém apenas dígitos, vírgula, ponto e sinal de menos
+    limpo = re.sub(r"[^\d,.\-]", "", value)
+    if not limpo:
+        return None
+    limpo = limpo.replace(".", "").replace(",", ".")
     try:
-        return Decimal(value)
+        return Decimal(limpo)
     except InvalidOperation:
         return None
 

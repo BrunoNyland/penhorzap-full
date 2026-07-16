@@ -139,6 +139,8 @@ def _montar_totalizador(info, contratos: list, ativos_map: dict, msgs, prazo=Non
     qtd = len(contratos)
 
     if info == InfoContrato.VALOR_RENOVACAO:
+        if prazo is None:
+            return render_template(msgs.tpl_totalizador_sem_valor, qtd=qtd)
         total = _somar_decimais(ativos_map[num].get(f"vlr_renovacao_{prazo}") for num in contratos)
         return render_template(msgs.tpl_totalizador, qtd=qtd, total=formatar_moeda(total))
 
@@ -227,30 +229,83 @@ def renderizar_infos_contrato(cliente, pedidos, msgs) -> list[str]:
 
         elif pedido.info == InfoContrato.VALOR_RENOVACAO:
             prazo_informado = pedido.prazo_dias is not None
-            prazo = _prazo_mais_proximo(pedido.prazo_dias or 30)
-            for num in alvo:
-                c = ativos_map[num]
-                linha = render_template(
-                    msgs.tpl_contrato_renovacao,
-                    contrato=c["contrato"],
-                    prazo_dias=prazo,
-                    valor_renovacao=formatar_moeda(c.get(f"vlr_renovacao_{prazo}")),
-                    vencimento=formatar_data(c["data_vencimento"]),
-                )
-                if not prazo_informado:
-                    linha = f"{linha} (prazo padrão de 30 dias)"
-                linhas.append(linha)
-                contratos_incluidos.append(num)
+            if prazo_informado:
+                prazo = _prazo_mais_proximo(pedido.prazo_dias)
+                for num in alvo:
+                    c = ativos_map[num]
+                    linha_venc = render_template(
+                        msgs.tpl_contrato_vencimento,
+                        contrato=c["contrato"],
+                        vencimento=formatar_data(c["data_vencimento"]),
+                    )
+                    linha_renov = render_template(
+                        msgs.tpl_contrato_renovacao,
+                        contrato=c["contrato"],
+                        prazo_dias=prazo,
+                        valor_renovacao=formatar_moeda(c.get(f"vlr_renovacao_{prazo}")),
+                        vencimento=formatar_data(c["data_vencimento"]),
+                    )
+                    linhas.append(f"{linha_venc}\n{linha_renov}")
+                    contratos_incluidos.append(num)
+            else:
+                # Se não foi informado um prazo específico, exibe todas as opções do contrato
+                # agrupadas em uma mensagem única por contrato, usando o template tpl_contrato_renovacao.
+                for num in alvo:
+                    c = ativos_map[num]
+                    linhas_contrato = [
+                        render_template(
+                            msgs.tpl_contrato_vencimento,
+                            contrato=c["contrato"],
+                            vencimento=formatar_data(c["data_vencimento"]),
+                        )
+                    ]
+                    for p in PRAZOS_RENOVACAO:
+                        val = c.get(f"vlr_renovacao_{p}")
+                        if val is not None:
+                            linha = render_template(
+                                msgs.tpl_contrato_renovacao,
+                                contrato=c["contrato"],
+                                prazo_dias=p,
+                                valor_renovacao=formatar_moeda(val),
+                                vencimento=formatar_data(c["data_vencimento"]),
+                            )
+                            linhas_contrato.append(linha)
+                    
+                    if len(linhas_contrato) > 1:
+                        linhas.append("\n".join(linhas_contrato))
+                        contratos_incluidos.append(num)
+                    else:
+                        # Se não tem nenhum valor de renovação, mostra o default de 30 dias
+                        linha_venc = render_template(
+                            msgs.tpl_contrato_vencimento,
+                            contrato=c["contrato"],
+                            vencimento=formatar_data(c["data_vencimento"]),
+                        )
+                        linha_renov = render_template(
+                            msgs.tpl_contrato_renovacao,
+                            contrato=c["contrato"],
+                            prazo_dias=30,
+                            valor_renovacao=formatar_moeda(None),
+                            vencimento=formatar_data(c["data_vencimento"]),
+                        )
+                        linhas.append(f"{linha_venc}\n{linha_renov}")
+                        contratos_incluidos.append(num)
 
         elif pedido.info == InfoContrato.VALOR_QUITACAO:
             for num in alvo:
                 c = ativos_map[num]
-                linhas.append(render_template(
+                linha_venc = render_template(
+                    msgs.tpl_contrato_vencimento,
+                    contrato=c["contrato"],
+                    vencimento=formatar_data(c["data_vencimento"]),
+                )
+                linha_quit = render_template(
                     msgs.tpl_contrato_quitacao,
                     contrato=c["contrato"],
                     valor_quitacao=formatar_moeda_erp(c.get("liquidacao")),
                     vencimento=formatar_data(c["data_vencimento"]),
-                ))
+                )
+                linhas.append(f"{linha_venc}\n{linha_quit}")
                 contratos_incluidos.append(num)
 
         elif pedido.info == InfoContrato.VALOR_PARCELA:

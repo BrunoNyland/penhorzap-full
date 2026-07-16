@@ -24,6 +24,7 @@ from core.models import (
     FAQSugerida,
     Mensagem,
     MensagensConfig,
+    Solicitacao,
     Telefone,
 )
 from ia.schemas import (
@@ -244,6 +245,95 @@ class DesconhecidoTests(WhatsappTasksTestCase):
 
         self.assertEqual(self._last_out_texto(conv), self.msgs.msg_solicitacao_criada)
         self.assertNotEqual(self._last_out_texto(conv), self.msgs.msg_info_negada_desconhecido)
+
+    def test_pagamento_indefinido_pergunta_renovacao_ou_quitacao(self):
+        cliente = Cliente.objects.create(cpf="52998224725", nome="Carlos Lima")
+        ContratoPenhor.objects.create(
+            contrato="C1", cliente=cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            data_vencimento=timezone.localdate() + timedelta(days=10),
+            vlr_emprestimo=100.0,
+        )
+        conv = Conversa.objects.create(
+            remote_jid="5567900000004@s.whatsapp.net",
+            tipo_contato=Conversa.TipoContato.CLIENTE,
+            cliente=cliente,
+            identificacao=Conversa.MetodoIdentificacao.TELEFONE,
+        )
+        Mensagem.objects.create(conversa=conv, direcao=Mensagem.Direcao.OUT, texto="oi")
+
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mock_ia.return_value = _classificacao(
+                solicitacoes=[SolicitacaoDraft(tipo=TipoPagamento.INDEFINIDO, contratos=[])],
+                pronto_para_criar_solicitacao=True,
+            )
+            mensagem = self._in(conv, "preciso do boleto do penhor")
+            process_mensagem(mensagem.id)
+
+        resposta = self._last_out_texto(conv)
+        self.assertIn("O boleto seria de renovação? ou quitação?", resposta)
+        self.assertIn("C1", resposta)
+        self.assertFalse(Solicitacao.objects.filter(conversa=conv).exists())
+
+    def test_pagamento_incompleto_nao_repete_contratos_se_ja_enviado_recentemente(self):
+        cliente = Cliente.objects.create(cpf="52998224725", nome="Carlos Lima")
+        ContratoPenhor.objects.create(
+            contrato="C1", cliente=cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            data_vencimento=timezone.localdate() + timedelta(days=10),
+            vlr_emprestimo=100.0,
+        )
+        conv = Conversa.objects.create(
+            remote_jid="5567900000004@s.whatsapp.net",
+            tipo_contato=Conversa.TipoContato.CLIENTE,
+            cliente=cliente,
+            identificacao=Conversa.MetodoIdentificacao.TELEFONE,
+        )
+        # Simula que o contrato já foi enviado nos últimos 10 minutos
+        Mensagem.objects.create(
+            conversa=conv, 
+            direcao=Mensagem.Direcao.OUT, 
+            texto="📄 Contrato C1 — vencimento 26/07/2026 — valor do empréstimo R$ 100,00."
+        )
+
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mock_ia.return_value = _classificacao(
+                solicitacoes=[SolicitacaoDraft(tipo=TipoPagamento.INDEFINIDO, contratos=[])],
+            )
+            mensagem = self._in(conv, "quero pagar")
+            process_mensagem(mensagem.id)
+
+        resposta = self._last_out_texto(conv)
+        self.assertEqual(resposta, "O boleto seria de renovação? ou quitação?")
+        self.assertNotIn("C1", resposta)
+
+    def test_pagamento_incompleto_nao_repete_contratos_se_na_fila(self):
+        cliente = Cliente.objects.create(cpf="52998224725", nome="Carlos Lima")
+        ContratoPenhor.objects.create(
+            contrato="C1", cliente=cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            data_vencimento=timezone.localdate() + timedelta(days=10),
+            vlr_emprestimo=100.0,
+        )
+        conv = Conversa.objects.create(
+            remote_jid="5567900000004@s.whatsapp.net",
+            tipo_contato=Conversa.TipoContato.CLIENTE,
+            cliente=cliente,
+            identificacao=Conversa.MetodoIdentificacao.TELEFONE,
+        )
+        Mensagem.objects.create(conversa=conv, direcao=Mensagem.Direcao.OUT, texto="oi")
+
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            # IA diz que quer info de contrato (lista) e pagamento na mesma rodada
+            mock_ia.return_value = _classificacao(
+                infos_contrato=[InfoContratoPedido(info=InfoContrato.LISTA_CONTRATOS, contratos=[])],
+                solicitacoes=[SolicitacaoDraft(tipo=TipoPagamento.INDEFINIDO, contratos=[])],
+            )
+            mensagem = self._in(conv, "quais meus contratos e quero pagar")
+            process_mensagem(mensagem.id)
+
+        mensagens = list(conv.mensagens.filter(direcao=Mensagem.Direcao.OUT).order_by("criado_em"))
+        # A última mensagem enviada deve ser apenas a pergunta
+        self.assertEqual(mensagens[-1].texto, "O boleto seria de renovação? ou quitação?")
+        # E a mensagem anterior a ela deve conter os detalhes do contrato
+        self.assertIn("C1", mensagens[-2].texto)
 
 
 class InfoContratoRendererIntegrationTests(WhatsappTasksTestCase):
@@ -776,13 +866,18 @@ class RenderizarInfosContratoTests(TestCase):
         self.assertIn("60", texto)
         self.assertNotIn("prazo padrão", texto)
 
-    def test_renovacao_sem_prazo_usa_30_com_nota(self):
-        self._contrato(contrato="C1", vlr_renovacao_30=1000)
+    def test_renovacao_sem_prazo_retorna_todas_opcoes_disponiveis(self):
+        self._contrato(
+            contrato="C1",
+            vlr_renovacao_30=1000,
+            vlr_renovacao_60=1500,
+        )
         pedido = InfoContratoPedido(info=InfoContrato.VALOR_RENOVACAO)
         resultado = renderizar_infos_contrato(self.cliente, [pedido], self.msgs)
         texto = "\n".join(resultado)
-        self.assertIn("R$ 1.000,00", texto)
-        self.assertIn("prazo padrão de 30 dias", texto)
+        self.assertIn("Renovação 30 dias: R$ 1.000,00", texto)
+        self.assertIn("Renovação 60 dias: R$ 1.500,00", texto)
+        self.assertNotIn("prazo padrão", texto)
 
     def test_renovacao_prazo_45_mapeia_para_mais_proximo(self):
         # |45-30|=15 == |45-60|=15 -> empate resolvido pelo primeiro (30).
@@ -807,8 +902,11 @@ class RenderizarInfosContratoTests(TestCase):
         self._contrato(contrato="C1", liquidacao="R$850,00", vlr_liquido=999)
         resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO)], self.msgs)
         self.assertEqual(len(resultado), 1)
-        self.assertIn("R$ 850,00", resultado[0])
-        self.assertNotIn("999", resultado[0])
+        texto = resultado[0]
+        self.assertIn("C1", texto)
+        self.assertIn("R$ 850,00", texto)
+        self.assertIn("Valor para quitação:", texto)
+        self.assertNotIn("999", texto)
 
     def test_quitacao_sem_liquidacao_avisa_indisponivel(self):
         self._contrato(contrato="C1", liquidacao="")

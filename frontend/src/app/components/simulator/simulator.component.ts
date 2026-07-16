@@ -123,14 +123,14 @@ import { IconComponent } from '../../shared/icon/icon.component';
         <!-- Chat Input field -->
         <div class="chat-input-row">
           <form (ngSubmit)="enviarMensagem()" class="flex gap-2">
-            <input 
-              type="text" 
+            <textarea 
               placeholder="Digite a mensagem de teste..." 
               [(ngModel)]="msgInput"
               name="msg"
               [disabled]="sending()"
-              autocomplete="off"
-            />
+              (keydown)="onKeydown($event)"
+              rows="1"
+            ></textarea>
             <button 
               type="submit" 
               class="btn btn-primary"
@@ -259,6 +259,9 @@ import { IconComponent } from '../../shared/icon/icon.component';
       font-size: 14px;
       line-height: 1.4;
     }
+    .message-text {
+      white-space: pre-wrap;
+    }
     .message-wrapper.incoming .message-balloon {
       background-color: var(--color-accent);
       color: white;
@@ -273,6 +276,26 @@ import { IconComponent } from '../../shared/icon/icon.component';
     
     .chat-input-row {
       margin-top: auto;
+    }
+    .chat-input-row textarea {
+      flex: 1;
+      resize: none;
+      min-height: 38px;
+      max-height: 120px;
+      font-family: inherit;
+      font-size: 14px;
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-color);
+      background-color: var(--bg-secondary);
+      color: var(--text-primary);
+      outline: none;
+    }
+    .chat-input-row textarea:focus {
+      border-color: var(--color-accent);
+    }
+    .chat-input-row button {
+      height: 38px;
     }
 
     /* Debugger styling */
@@ -403,6 +426,13 @@ export class SimulatorComponent implements OnInit, AfterViewChecked {
         this.turnos.set(res.turnos || []);
       }
     });
+  }
+
+  onKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      this.enviarMensagem();
+    }
   }
 
   enviarMensagem(): void {

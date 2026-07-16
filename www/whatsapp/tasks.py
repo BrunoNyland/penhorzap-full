@@ -281,7 +281,7 @@ def _contratos_ativos_values(cliente):
     )
 
 
-def _montar_pergunta_pagamento_incompleto(cliente, msgs) -> str:
+def _montar_pergunta_pagamento_incompleto(cliente, msgs, drafts=None, conversa=None, fila=None) -> str:
     """Pergunta de slot determinística quando PAGAMENTO ainda não tem dados
     suficientes (contrato/prazo) -- nunca texto da IA."""
     if not cliente:
@@ -289,6 +289,14 @@ def _montar_pergunta_pagamento_incompleto(cliente, msgs) -> str:
     ativos = _contratos_ativos_values(cliente)
     if not ativos:
         return msgs.msg_sem_contratos_ativos
+
+    tipo_indefinido = False
+    if drafts:
+        for d in drafts:
+            if d.tipo == TipoPagamento.INDEFINIDO:
+                tipo_indefinido = True
+                break
+
     linhas = [
         render_template(
             msgs.tpl_contrato_resumo,
@@ -299,10 +307,56 @@ def _montar_pergunta_pagamento_incompleto(cliente, msgs) -> str:
         for c in ativos
     ]
     corpo = "\n".join(linhas)
-    pergunta = (
-        "Me confirma qual contrato (e o prazo, se for renovação: "
-        "30/60/90/120/150/180 dias) você quer?"
-    )
+
+    if tipo_indefinido:
+        pergunta = "O boleto seria de renovação? ou quitação?"
+    else:
+        pergunta = (
+            "Me confirma qual contrato (e o prazo, se for renovação: "
+            "30/60/90/120/150/180 dias) você quer?"
+        )
+
+    # Evita reenviar a lista de contratos se ela já foi apresentada recentemente
+    ja_apresentado = False
+
+    # 1. Checa se os contratos já estão na fila de envio deste turno
+    if fila:
+        all_in_fila = True
+        for c in ativos:
+            contract_found = False
+            for item in fila:
+                if isinstance(item, str) and c["contrato"] in item:
+                    contract_found = True
+                    break
+            if not contract_found:
+                all_in_fila = False
+                break
+        if all_in_fila:
+            ja_apresentado = True
+
+    # 2. Checa se foram enviados nas últimas mensagens do histórico recente (últimos 10 min)
+    if conversa and not ja_apresentado:
+        limite = timezone.now() - timedelta(minutes=10)
+        recent_outgoing = conversa.mensagens.filter(
+            direcao=Mensagem.Direcao.OUT,
+            criado_em__gte=limite
+        ).order_by("-criado_em")[:5]
+
+        all_in_history = True
+        for c in ativos:
+            contract_found = False
+            for msg in recent_outgoing:
+                if c["contrato"] in msg.texto:
+                    contract_found = True
+                    break
+            if not contract_found:
+                all_in_history = False
+                break
+        if all_in_history:
+            ja_apresentado = True
+
+    if ja_apresentado:
+        return pergunta
     return f"{corpo}\n\n{pergunta}"
 
 
@@ -886,14 +940,15 @@ def _processar_lote(conv: Conversa, bot: BotConfig, msgs, client, numero_destino
 
     # 5) Pagamento: cria solicitações quando pronto, senão pergunta de slot
     if tem_pagamento and not pagamento_suprimido:
-        if resultado.pronto_para_criar_solicitacao and cliente:
+        tem_indefinido = any(d.tipo == TipoPagamento.INDEFINIDO for d in resultado.solicitacoes)
+        if resultado.pronto_para_criar_solicitacao and cliente and not tem_indefinido:
             _criar_solicitacoes(conv, cliente, resultado.solicitacoes)
             conv.estado = Conversa.Estado.AGUARDANDO_BOLETO
             conv.save(update_fields=["estado", "ultima_interacao"])
             fila.append(msgs.msg_solicitacao_criada)
             acoes_log.append("pagamento_pronto")
         else:
-            fila.append(_montar_pergunta_pagamento_incompleto(cliente, msgs))
+            fila.append(_montar_pergunta_pagamento_incompleto(cliente, msgs, resultado.solicitacoes, conversa=conv, fila=fila))
             acoes_log.append("pagamento_incompleto")
 
     # 6) Segunda via

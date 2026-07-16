@@ -7,11 +7,12 @@ whatsapp/tasks.py nem ia/ aqui — ver whatsapp/tests.py e ia/tests.py
 """
 from datetime import timedelta
 
+from decimal import Decimal
 from django.test import TestCase
 from django.utils import timezone
 
 from core.models import BotConfig, Cliente, FAQSugerida, MensagensConfig
-from core.utils import parse_nome_salvo, validar_cpf
+from core.utils import parse_br_decimal, parse_nome_salvo, validar_cpf
 
 
 class ValidarCpfTests(TestCase):
@@ -220,3 +221,22 @@ class MensagensConfigGetSoloTests(TestCase):
         for campo in campos_tpl:
             valor = getattr(config, campo)
             self.assertTrue(valor and valor.strip(), f"{campo} não deveria estar vazio")
+
+
+class ParseBrDecimalTests(TestCase):
+    def test_parse_simple_decimal(self):
+        self.assertEqual(parse_br_decimal("1.234,56"), Decimal("1234.56"))
+
+    def test_parse_with_currency_prefix_and_space(self):
+        self.assertEqual(parse_br_decimal("R$ 1.234,56"), Decimal("1234.56"))
+        self.assertEqual(parse_br_decimal("R$1.234,56"), Decimal("1234.56"))
+
+    def test_parse_with_suffix_and_space(self):
+        self.assertEqual(parse_br_decimal("R$764,46 C"), Decimal("764.46"))
+        self.assertEqual(parse_br_decimal("R$ 2.140,84 C"), Decimal("2140.84"))
+        self.assertEqual(parse_br_decimal("100,00 D"), Decimal("100.00"))
+
+    def test_parse_invalid(self):
+        self.assertIsNone(parse_br_decimal("abc"))
+        self.assertIsNone(parse_br_decimal(""))
+        self.assertIsNone(parse_br_decimal(None))
