@@ -905,7 +905,7 @@ class RenderizarInfosContratoTests(TestCase):
         texto = resultado[0]
         self.assertIn("C1", texto)
         self.assertIn("R$ 850,00", texto)
-        self.assertIn("Valor para quitação:", texto)
+        self.assertIn("Liquidação:", texto)
         self.assertNotIn("999", texto)
 
     def test_quitacao_sem_liquidacao_avisa_indisponivel(self):
