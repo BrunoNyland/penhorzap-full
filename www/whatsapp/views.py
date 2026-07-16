@@ -2,43 +2,14 @@ import json
 import logging
 
 from django.conf import settings
-from django.contrib.admin.views.decorators import staff_member_required
 from django.http import JsonResponse
-from django.shortcuts import redirect, render
-from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from django_q.tasks import async_task
 
-from core.models import BotConfig, Conversa, Mensagem
-from .evolution_client import get_client
+from core.models import Conversa, Mensagem
 
 logger = logging.getLogger(__name__)
-
-
-@staff_member_required
-def qrcode_view(request):
-    client = get_client()
-    state = client.get_connection_state()
-    context = {"state": state, "bot_config": BotConfig.get_solo(), "active_nav": "conexao"}
-    if state != "open":
-        context["qrcode_base64"] = client.get_qrcode_base64()
-    return render(request, "whatsapp/qrcode.html", context)
-
-
-@staff_member_required
-@require_POST
-def toggle_bot(request):
-    bot_config = BotConfig.get_solo()
-    bot_config.ativo = not bot_config.ativo
-    bot_config.save(update_fields=["ativo", "atualizado_em"])
-    logger.info("Bot %s por %s", "ativado" if bot_config.ativo else "desativado", request.user)
-    if bot_config.ativo:
-        # Ao ativar: sincroniza a agenda (classifica PHN_ vs. pessoal) e
-        # reprocessa mensagens não atendidas que chegaram enquanto desligado.
-        async_task("whatsapp.tasks.sincronizar_contatos")
-        async_task("whatsapp.tasks.processar_nao_lidas")
-    return redirect(reverse("whatsapp:qrcode"))
 
 
 def _extrair_conteudo(message: dict) -> tuple[str, str]:
