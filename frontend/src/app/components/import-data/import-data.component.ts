@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, signal, OnInit, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { ApiService } from '../../services/api.service';
 
@@ -7,6 +7,7 @@ import { ApiService } from '../../services/api.service';
   standalone: true,
   imports: [DatePipe],
   templateUrl: './import-data.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './import-data.component.css'
 })
 export class ImportDataComponent implements OnInit, OnDestroy {

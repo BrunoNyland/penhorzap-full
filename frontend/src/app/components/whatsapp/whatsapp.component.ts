@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, signal, OnInit, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { ApiService } from '../../services/api.service';
 import { IconComponent } from '../../shared/icon/icon.component';
@@ -87,6 +87,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
       </div>
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   styles: [`
     .whatsapp-wrapper {
       display: flex;

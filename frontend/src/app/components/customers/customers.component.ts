@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, OnInit, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe, CurrencyPipe, NgClass } from '@angular/common';
 import { ApiService } from '../../services/api.service';
@@ -228,6 +228,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
       }
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   styles: [`
     .customers-wrapper {
       display: flex;

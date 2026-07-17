@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, ChangeDetectionStrategy } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { ApiService } from '../../services/api.service';
 import { IconComponent } from '../../shared/icon/icon.component';
@@ -229,6 +229,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
       }
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   styles: [`
     .dashboard-wrapper {
       display: flex;

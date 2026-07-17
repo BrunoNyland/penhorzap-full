@@ -61,3 +61,8 @@ frontend/typings
 Thumbs.db
 *.swp
 *.log
+
+# Local Node runner binary
+node-v*
+node-v*-linux-x64/
+

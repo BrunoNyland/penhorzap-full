@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe, NgClass } from '@angular/common';
 import { ApiService } from '../../services/api.service';
@@ -378,6 +378,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
       </div>
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   styles: [`
     .conversa-layout {
       display: flex;

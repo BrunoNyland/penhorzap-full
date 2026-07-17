@@ -28,6 +28,9 @@ FRONTEND_DIR="$PROJECT_DIR/frontend"
 BACKUPS_DIR="$PROJECT_DIR/backups"
 VENV_PYTHON="$PROJECT_DIR/venv/bin/python"
 GUNICORN_SVC="gunicorn@pwa.brunonyland.com.service"
+
+# Prepend local Node 24 bin to PATH for Angular 22 compatibility
+export PATH="/var/www/pwa.brunonyland.com/node-v24.15.0-linux-x64/bin:$PATH"
 QCLUSTER_SVC="penhorzap-qcluster.service"
 BACKUPS_TO_KEEP=7
 
