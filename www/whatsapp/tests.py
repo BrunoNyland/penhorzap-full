@@ -340,6 +340,95 @@ class DesconhecidoTests(WhatsappTasksTestCase):
         # E a mensagem anterior a ela deve conter os detalhes do contrato
         self.assertIn("C1", mensagens[-2].texto)
 
+    def test_renovacao_com_contrato_ja_identificado_nao_repete_lista_so_pergunta_prazo(self):
+        # Bug relatado: cliente já viu a lista, escolheu "o mais antigo" (a IA
+        # já resolveu pra um contrato específico) -- só falta o prazo, não faz
+        # sentido reenviar a lista inteira de novo.
+        cliente = Cliente.objects.create(cpf="52998224725", nome="Carlos Lima")
+        ContratoPenhor.objects.create(
+            contrato="C1", cliente=cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            data_vencimento=timezone.localdate() + timedelta(days=10),
+            vlr_emprestimo=100.0,
+        )
+        ContratoPenhor.objects.create(
+            contrato="C2", cliente=cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            data_vencimento=timezone.localdate() + timedelta(days=20),
+            vlr_emprestimo=200.0,
+        )
+        conv = Conversa.objects.create(
+            remote_jid="5567900000004@s.whatsapp.net",
+            tipo_contato=Conversa.TipoContato.CLIENTE,
+            cliente=cliente,
+            identificacao=Conversa.MetodoIdentificacao.TELEFONE,
+        )
+        Mensagem.objects.create(conversa=conv, direcao=Mensagem.Direcao.OUT, texto="oi")
+
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mock_ia.return_value = _classificacao(
+                solicitacoes=[SolicitacaoDraft(tipo=TipoPagamento.RENOVAR, contratos=["C1"])],
+                pronto_para_criar_solicitacao=False,
+            )
+            mensagem = self._in(conv, "vou querer renovar o contrato mais antigo")
+            process_mensagem(mensagem.id)
+
+        resposta = self._last_out_texto(conv)
+        self.assertEqual(
+            resposta,
+            "Para quantos dias você quer renovar o contrato C1 (30/60/90/120/150/180 dias)?",
+        )
+        self.assertNotIn("C2", resposta)
+
+    def test_quitar_com_contrato_ja_identificado_nao_repete_lista(self):
+        cliente = Cliente.objects.create(cpf="52998224725", nome="Carlos Lima")
+        ContratoPenhor.objects.create(
+            contrato="C1", cliente=cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            data_vencimento=timezone.localdate() + timedelta(days=10),
+        )
+        conv = Conversa.objects.create(
+            remote_jid="5567900000004@s.whatsapp.net",
+            tipo_contato=Conversa.TipoContato.CLIENTE,
+            cliente=cliente,
+            identificacao=Conversa.MetodoIdentificacao.TELEFONE,
+        )
+        Mensagem.objects.create(conversa=conv, direcao=Mensagem.Direcao.OUT, texto="oi")
+
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mock_ia.return_value = _classificacao(
+                solicitacoes=[SolicitacaoDraft(tipo=TipoPagamento.QUITAR, contratos=["C1"])],
+                pronto_para_criar_solicitacao=False,
+            )
+            mensagem = self._in(conv, "quero quitar o C1")
+            process_mensagem(mensagem.id)
+
+        resposta = self._last_out_texto(conv)
+        self.assertEqual(resposta, "Você confirma que quer o boleto de quitação do contrato C1?")
+
+    def test_renovacao_com_contrato_ambiguo_ainda_mostra_a_lista(self):
+        cliente = Cliente.objects.create(cpf="52998224725", nome="Carlos Lima")
+        ContratoPenhor.objects.create(
+            contrato="C1", cliente=cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            data_vencimento=timezone.localdate() + timedelta(days=10),
+            vlr_emprestimo=100.0,
+        )
+        conv = Conversa.objects.create(
+            remote_jid="5567900000004@s.whatsapp.net",
+            tipo_contato=Conversa.TipoContato.CLIENTE,
+            cliente=cliente,
+            identificacao=Conversa.MetodoIdentificacao.TELEFONE,
+        )
+        Mensagem.objects.create(conversa=conv, direcao=Mensagem.Direcao.OUT, texto="oi")
+
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mock_ia.return_value = _classificacao(
+                solicitacoes=[SolicitacaoDraft(tipo=TipoPagamento.RENOVAR, contratos=[])],
+                pronto_para_criar_solicitacao=False,
+            )
+            mensagem = self._in(conv, "quero renovar")
+            process_mensagem(mensagem.id)
+
+        resposta = self._last_out_texto(conv)
+        self.assertIn("C1", resposta)
+
 
 class InfoContratoRendererIntegrationTests(WhatsappTasksTestCase):
     def test_info_contrato_identificado_db_fresca_usa_valores_do_banco(self):

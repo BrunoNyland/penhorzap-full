@@ -286,19 +286,49 @@ def _contratos_ativos_values(cliente):
 
 def _montar_pergunta_pagamento_incompleto(cliente, msgs, drafts=None, conversa=None, fila=None) -> str:
     """Pergunta de slot determinística quando PAGAMENTO ainda não tem dados
-    suficientes (contrato/prazo) -- nunca texto da IA."""
+    suficientes (contrato/prazo) -- nunca texto da IA.
+
+    Se os `drafts` já identificam um contrato específico (não "todos"/
+    ambíguo), a pergunta é só sobre o que falta de verdade (prazo pra
+    renovação, ou confirmação pro tipo indefinido) -- NÃO reenvia a lista de
+    contratos, que o cliente já viu ao escolher aquele contrato. A lista só
+    volta a aparecer quando o contrato ainda é ambíguo."""
     if not cliente:
         return msgs.msg_sem_contratos_ativos
     ativos = _contratos_ativos_values(cliente)
     if not ativos:
         return msgs.msg_sem_contratos_ativos
+    ativos_map = {c["contrato"]: c for c in ativos}
 
     tipo_indefinido = False
+    tipos_pendentes = set()
+    contratos_citados: list[str] = []
     if drafts:
+        algum_ambiguo = False
         for d in drafts:
             if d.tipo == TipoPagamento.INDEFINIDO:
                 tipo_indefinido = True
-                break
+            else:
+                tipos_pendentes.add(d.tipo)
+            if not d.contratos:
+                algum_ambiguo = True
+            else:
+                for num in d.contratos:
+                    if num in ativos_map and num not in contratos_citados:
+                        contratos_citados.append(num)
+        if algum_ambiguo:
+            contratos_citados = []
+
+    if contratos_citados:
+        alvo = ", ".join(contratos_citados)
+        if tipo_indefinido:
+            return f"O boleto do contrato {alvo} seria de renovação ou quitação?"
+        if TipoPagamento.RENOVAR in tipos_pendentes:
+            return f"Para quantos dias você quer renovar o contrato {alvo} (30/60/90/120/150/180 dias)?"
+        if TipoPagamento.QUITAR in tipos_pendentes:
+            return f"Você confirma que quer o boleto de quitação do contrato {alvo}?"
+        if TipoPagamento.PARCELA in tipos_pendentes:
+            return f"Você confirma que quer o boleto da parcela do contrato {alvo}?"
 
     linhas = [
         render_template(
