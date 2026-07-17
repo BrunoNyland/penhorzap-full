@@ -72,7 +72,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
             <div class="message-wrapper" [class.incoming]="turn.direcao === 'in'">
               <div class="message-balloon">
                 <div class="message-text-wrapper flex justify-between align-start gap-2">
-                  <div class="message-text">{{ turn.texto }}</div>
+                  <div class="message-text" [innerHTML]="formatarMensagem(turn.texto)"></div>
                   @if (turn.direcao === 'out' && turn.debug?.raw_prompt) {
                     <button type="button" class="btn-prompt-debug" (click)="abrirModalPrompt(turn.debug)" title="Ver Prompt/Resposta da IA">
                       <app-icon name="file-text" [size]="16"></app-icon>
@@ -568,6 +568,23 @@ export class SimulatorComponent implements OnInit, AfterViewChecked {
         this.sending.set(false);
       }
     });
+  }
+
+  formatarMensagem(texto: string): string {
+    if (!texto) return '';
+    // Escapa HTML para prevenir XSS
+    let html = texto
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    // Formatação estilo WhatsApp: *texto* em negrito e _texto_ em itálico
+    html = html
+      .replace(/(?:\*)([^\s*]|[^\s*](?:[^*]*?[^\s*])?)(?:\*)/g, '<strong>$1</strong>')
+      .replace(/(?:_)([^\s_]|[^\s_](?:[^_]*?[^\s_])?)(?:_)/g, '<em>$1</em>')
+      .replace(/\n/g, '<br>');
+
+    return html;
   }
 
   reiniciarChat(): void {
