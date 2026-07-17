@@ -16,7 +16,7 @@ from core.mensagens_defaults import (
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_TPL_CONTRATO_LAUDO,
     DEFAULT_TPL_TOTALIZADOR,
-    DEFAULT_TPL_TOTALIZADOR_SEM_VALOR,
+    DEFAULT_TPL_TOTALIZADOR_GERAL,
 )
 
 SIMULADOR_SESSION_KEY = "simulador_ia"
@@ -39,5 +39,5 @@ MENSAGENS_DEFAULTS = {
     "msg_duvida_anotada": DEFAULT_MSG_DUVIDA_ANOTADA,
     "tpl_contrato_laudo": DEFAULT_TPL_CONTRATO_LAUDO,
     "tpl_totalizador": DEFAULT_TPL_TOTALIZADOR,
-    "tpl_totalizador_sem_valor": DEFAULT_TPL_TOTALIZADOR_SEM_VALOR,
+    "tpl_totalizador_geral": DEFAULT_TPL_TOTALIZADOR_GERAL,
 }

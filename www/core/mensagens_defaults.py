@@ -74,16 +74,17 @@ DEFAULT_TPL_CONTRATO_RESUMO = (
     "📄 *Contrato*: {contrato}\n🗓️ *Vencimento*: {vencimento}\n💰 *Empréstimo*: {valor_emprestimo}"
 )
 DEFAULT_TPL_CONTRATO_LAUDO = (
-    "📄 *Contrato*: {contrato}\n📝 *Laudo/Garantia*: {laudo}"
+    "📄 *Contrato*: {contrato}\n⚖️ *Peso*: {peso}\n💎 *Valor de avaliação*: "
+    "{valor_avaliacao}\n📝 *Laudo/Garantia*: {laudo}"
 )
 DEFAULT_TPL_LISTA_HEADER = "{nome}, você tem {qtd} contrato(s) ativo(s):"
 DEFAULT_TPL_TOTALIZADOR = (
     "📊 Resumo: {qtd} contrato(s), total de {total}. Se precisar de mais "
     "alguma informação, é só falar!"
 )
-DEFAULT_TPL_TOTALIZADOR_SEM_VALOR = (
-    "São {qtd} contrato(s) ao todo. Se precisar de mais alguma informação, "
-    "é só falar!"
+DEFAULT_TPL_TOTALIZADOR_GERAL = (
+    "📊 Resumo dos {qtd} contrato(s):\n💎 Total avaliado: {total_avaliacao}\n"
+    "💰 Total emprestado: {total_emprestimo}{renovacoes}"
 )
 
 DEFAULT_MSG_FALLBACK_SEM_RESPOSTA = (

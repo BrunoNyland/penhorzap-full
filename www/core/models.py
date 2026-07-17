@@ -29,7 +29,7 @@ from .mensagens_defaults import (
     DEFAULT_TPL_LISTA_HEADER,
     DEFAULT_TPL_SAUDACAO_CLIENTE,
     DEFAULT_TPL_TOTALIZADOR,
-    DEFAULT_TPL_TOTALIZADOR_SEM_VALOR,
+    DEFAULT_TPL_TOTALIZADOR_GERAL,
 )
 
 
@@ -477,7 +477,7 @@ class MensagensConfig(models.Model):
     tpl_contrato_laudo = models.TextField(default=DEFAULT_TPL_CONTRATO_LAUDO)
     tpl_lista_header = models.TextField(default=DEFAULT_TPL_LISTA_HEADER)
     tpl_totalizador = models.TextField(default=DEFAULT_TPL_TOTALIZADOR)
-    tpl_totalizador_sem_valor = models.TextField(default=DEFAULT_TPL_TOTALIZADOR_SEM_VALOR)
+    tpl_totalizador_geral = models.TextField(default=DEFAULT_TPL_TOTALIZADOR_GERAL)
     msg_fallback_sem_resposta = models.TextField(default=DEFAULT_MSG_FALLBACK_SEM_RESPOSTA)
     msg_duvida_anotada = models.TextField(
         default=DEFAULT_MSG_DUVIDA_ANOTADA,

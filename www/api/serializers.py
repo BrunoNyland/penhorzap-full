@@ -79,7 +79,7 @@ class MensagensConfigSerializer(serializers.ModelSerializer):
             "tpl_contrato_laudo",
             "tpl_lista_header",
             "tpl_totalizador",
-            "tpl_totalizador_sem_valor",
+            "tpl_totalizador_geral",
             "msg_fallback_sem_resposta",
             "msg_info_negada_desconhecido",
             "msg_midia_nao_suportada",

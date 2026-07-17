@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, OnInit, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
 
@@ -267,6 +267,7 @@ import { ApiService } from '../../services/api.service';
       }
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   styles: [`
     .config-wrapper {
       display: flex;
@@ -482,8 +483,8 @@ export class ConfigComponent implements OnInit {
     {
       key: 'tpl_contrato_laudo',
       label: 'Contrato: Laudo / Garantia',
-      help: 'Resposta com a descrição da garantia (joias) sob contrato.',
-      placeholders: ['{contrato}', '{laudo}']
+      help: 'Resposta com peso, valor de avaliação e a descrição da garantia (joias) sob contrato.',
+      placeholders: ['{contrato}', '{peso}', '{valor_avaliacao}', '{laudo}']
     },
     {
       key: 'tpl_lista_header',
@@ -498,10 +499,10 @@ export class ConfigComponent implements OnInit {
       placeholders: ['{qtd}', '{total}']
     },
     {
-      key: 'tpl_totalizador_sem_valor',
-      label: 'Lista de Contratos: Totalizador (sem valor)',
-      help: 'Mensagem enviada ao final do lote quando não há soma financeira aplicável (vencimento, lista/detalhe de contratos).',
-      placeholders: ['{qtd}']
+      key: 'tpl_totalizador_geral',
+      label: 'Lista de Contratos: Totalizador Geral',
+      help: 'Usado quando não há um valor único pra somar (vencimento, lista/detalhe, laudo, renovação sem prazo): mostra total avaliado, total emprestado e total de renovação por prazo.',
+      placeholders: ['{qtd}', '{total_avaliacao}', '{total_emprestimo}', '{renovacoes}']
     },
     {
       key: 'msg_fallback_sem_resposta',

@@ -8,6 +8,7 @@ bate na Evolution API real nem no Gemini.
 """
 import json
 from datetime import timedelta
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 from django.test import TestCase, override_settings
@@ -35,14 +36,18 @@ from ia.schemas import (
     TipoPagamento,
 )
 from whatsapp.respostas_contrato import (
+    _limpar_peso_do_laudo,
+    _montar_totalizador_geral,
     formatar_data,
     formatar_moeda,
+    formatar_peso,
     render_template,
     renderizar_infos_contrato,
 )
 from whatsapp.tasks import (
     MAX_MENSAGENS_TURNO,
     PAUSA_FANOUT,
+    _contratos_ativos_values,
     _enviar_fila,
     _mensagens_pendentes,
     process_lote_conversa,
@@ -408,9 +413,11 @@ class InfoContratoRendererIntegrationTests(WhatsappTasksTestCase):
         self.assertEqual(outs[0], "oi")
         self.assertIn("C10", outs[2])
         self.assertIn("C11", outs[3])
-        self.assertTrue(outs[4].startswith(
-            render_template(self.msgs.tpl_totalizador_sem_valor, qtd=2)
-        ))
+        ativos_map = {c["contrato"]: c for c in _contratos_ativos_values(cliente)}
+        self.assertEqual(
+            outs[4],
+            _montar_totalizador_geral(["C10", "C11"], ativos_map, self.msgs),
+        )
         # 4 mensagens no fan-out (intro + 2 linhas + totalizador) -> 3 pausas
         self.assertEqual(self.mock_sleep.call_count, 3)
 
@@ -820,12 +827,55 @@ class RespostasContratoUnitTests(TestCase):
     def test_render_template_vazio(self):
         self.assertEqual(render_template("", nome="Ana"), "")
 
+    def test_formatar_peso(self):
+        self.assertEqual(formatar_peso(Decimal("16.30")), "16,30 g")
+        self.assertEqual(formatar_peso(None), "(peso não informado)")
+
+    def test_limpar_peso_do_laudo_remove_trecho_redundante(self):
+        laudo = (
+            "UM COLAR, DE: OURO; CONSTAM: amolgada(s), PESO LOTE: 16,30G "
+            "(DEZESSEIS GRAMAS E TRINTA CENTIGRAMAS)"
+        )
+        resultado = _limpar_peso_do_laudo(laudo)
+        self.assertNotIn("PESO LOTE", resultado)
+        self.assertNotIn("CENTIGRAMAS", resultado)
+        self.assertIn("UM COLAR, DE: OURO; CONSTAM: amolgada(s)", resultado)
+
+    def test_limpar_peso_do_laudo_tolerante_sem_padrao(self):
+        # Sem o padrão "PESO LOTE: ...G (...)" -> devolve o texto original.
+        self.assertEqual(_limpar_peso_do_laudo("Anel de ouro simples"), "Anel de ouro simples")
+        self.assertEqual(_limpar_peso_do_laudo(""), "")
+        self.assertIsNone(_limpar_peso_do_laudo(None))
+
+
+class MontarTotalizadorGeralTests(TestCase):
+    def setUp(self):
+        self.msgs = MensagensConfig.get_solo()
+
+    def test_soma_avaliacao_emprestimo_e_renovacao_por_prazo_disponivel(self):
+        ativos_map = {
+            "C1": {"vlr_avaliacao": Decimal("1000"), "vlr_emprestimo": Decimal("500"), "vlr_renovacao_30": Decimal("100")},
+            "C2": {"vlr_avaliacao": Decimal("2000"), "vlr_emprestimo": Decimal("800"), "vlr_renovacao_30": Decimal("150"), "vlr_renovacao_60": Decimal("300")},
+        }
+        resultado = _montar_totalizador_geral(["C1", "C2"], ativos_map, self.msgs)
+        self.assertIn("R$ 3.000,00", resultado)  # avaliação
+        self.assertIn("R$ 1.300,00", resultado)  # empréstimo
+        self.assertIn("30 dias: R$ 250,00", resultado)
+        self.assertIn("60 dias: R$ 300,00", resultado)
+        self.assertNotIn("90 dias", resultado)
+
+    def test_sem_nenhum_valor_de_renovacao_nao_mostra_secao_de_prazos(self):
+        ativos_map = {"C1": {"vlr_avaliacao": None, "vlr_emprestimo": None}}
+        resultado = _montar_totalizador_geral(["C1"], ativos_map, self.msgs)
+        self.assertNotIn("Renovação total por prazo", resultado)
+        self.assertIn("R$ 0,00", resultado)
+
 
 class RenderizarInfosContratoTests(TestCase):
     """`renderizar_infos_contrato` retorna `list[str]` (fan-out): 1 contrato
     reportado -> lista de 1 item (sem intro/totalizador); 2+ -> intro
     (`tpl_lista_header`) + 1 linha por contrato + totalizador
-    (`tpl_totalizador`/`tpl_totalizador_sem_valor`)."""
+    (`tpl_totalizador`/`tpl_totalizador_geral`)."""
 
     def setUp(self):
         self.msgs = MensagensConfig.get_solo()
@@ -935,7 +985,8 @@ class RenderizarInfosContratoTests(TestCase):
         )
         self.assertIn("C1", resultado[1])
         self.assertIn("C2", resultado[2])
-        self.assertEqual(resultado[3], render_template(self.msgs.tpl_totalizador_sem_valor, qtd=2))
+        ativos_map = {c["contrato"]: c for c in _contratos_ativos_values(self.cliente)}
+        self.assertEqual(resultado[3], _montar_totalizador_geral(["C1", "C2"], ativos_map, self.msgs))
 
     def test_um_unico_contrato_retorna_lista_de_um_item_sem_intro_totalizador(self):
         self._contrato(contrato="C1")
@@ -957,6 +1008,102 @@ class RenderizarInfosContratoTests(TestCase):
         self.assertEqual(len(resultado), 1)
         self.assertIn("C1", resultado[0])
         self.assertIn("Anel de ouro com diamante de 18k", resultado[0])
+
+    def test_laudo_inclui_peso_e_valor_avaliacao_e_remove_peso_duplicado_do_texto(self):
+        laudo_erp = (
+            "UM COLAR, DE: OURO; CONSTAM: amolgada(s), PESO LOTE: 16,30G "
+            "(DEZESSEIS GRAMAS E TRINTA CENTIGRAMAS)"
+        )
+        self._contrato(contrato="C1", laudo=laudo_erp, peso=Decimal("16.30"), vlr_avaliacao=Decimal("5000.00"))
+        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.LAUDO)], self.msgs)
+        self.assertEqual(len(resultado), 1)
+        texto = resultado[0]
+        self.assertIn("16,30 g", texto)
+        self.assertIn("R$ 5.000,00", texto)
+        self.assertIn("UM COLAR, DE: OURO; CONSTAM: amolgada(s)", texto)
+        self.assertNotIn("PESO LOTE", texto)
+
+    def test_laudo_com_peso_e_avaliacao_nulos_nao_levanta(self):
+        self._contrato(contrato="C1", laudo="Anel de ouro", peso=None, vlr_avaliacao=None)
+        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.LAUDO)], self.msgs)
+        texto = resultado[0]
+        self.assertIn("(peso não informado)", texto)
+        self.assertIn("(valor não informado)", texto)
+
+    # --- Mesclagem por contrato: pedidos múltiplos viram 1 msg/contrato -----
+
+    def test_dois_pedidos_nao_numericos_mesclam_por_contrato(self):
+        self._contrato(contrato="C1", laudo="Colar de ouro")
+        self._contrato(contrato="C2", laudo="Anel de prata")
+        self._contrato(contrato="C3", laudo="Pulseira de ouro")
+        pedidos = [
+            InfoContratoPedido(info=InfoContrato.LISTA_CONTRATOS),
+            InfoContratoPedido(info=InfoContrato.LAUDO),
+        ]
+        resultado = renderizar_infos_contrato(self.cliente, pedidos, self.msgs)
+        # intro + 3 mensagens mescladas (resumo + laudo juntos) + 1 totalizador geral só
+        self.assertEqual(len(resultado), 5)
+        self.assertEqual(resultado[0], render_template(self.msgs.tpl_lista_header, nome="Beatriz", qtd=3))
+        self.assertIn("C1", resultado[1])
+        self.assertIn("Colar de ouro", resultado[1])
+        self.assertIn("C2", resultado[2])
+        self.assertIn("Anel de prata", resultado[2])
+        self.assertIn("C3", resultado[3])
+        self.assertIn("Pulseira de ouro", resultado[3])
+        ativos_map = {c["contrato"]: c for c in _contratos_ativos_values(self.cliente)}
+        self.assertEqual(resultado[4], _montar_totalizador_geral(["C1", "C2", "C3"], ativos_map, self.msgs))
+
+    def test_pedido_numerico_mais_nao_numerico_nao_empilha_totalizador_geral(self):
+        self._contrato(contrato="C1", liquidacao="R$ 1.000,00", laudo="Colar de ouro")
+        self._contrato(contrato="C2", liquidacao="R$ 2.000,00", laudo="Anel de prata")
+        pedidos = [
+            InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO),
+            InfoContratoPedido(info=InfoContrato.LAUDO),
+        ]
+        resultado = renderizar_infos_contrato(self.cliente, pedidos, self.msgs)
+        # intro + 2 mensagens mescladas + só o totalizador de quitação (sem o geral)
+        self.assertEqual(len(resultado), 4)
+        self.assertIn("Colar de ouro", resultado[1])
+        self.assertIn("R$ 3.000,00", resultado[3])
+        self.assertNotIn("Total avaliado", resultado[3])
+
+    def test_dois_pedidos_numericos_geram_dois_totalizadores(self):
+        self._contrato(contrato="C1", liquidacao="R$ 1.000,00", parcelado=True, vlr_parcela=100)
+        self._contrato(contrato="C2", liquidacao="R$ 2.000,00", parcelado=True, vlr_parcela=200)
+        pedidos = [
+            InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO),
+            InfoContratoPedido(info=InfoContrato.VALOR_PARCELA),
+        ]
+        resultado = renderizar_infos_contrato(self.cliente, pedidos, self.msgs)
+        # intro + 2 mensagens mescladas + totalizador de quitação + totalizador de parcela
+        self.assertEqual(len(resultado), 5)
+        self.assertIn("R$ 3.000,00", resultado[3])
+        self.assertIn("R$ 300,00", resultado[4])
+
+    def test_um_unico_contrato_com_dois_pedidos_retorna_uma_mensagem_so(self):
+        self._contrato(contrato="C1", laudo="Colar de ouro")
+        pedidos = [
+            InfoContratoPedido(info=InfoContrato.LISTA_CONTRATOS),
+            InfoContratoPedido(info=InfoContrato.LAUDO),
+        ]
+        resultado = renderizar_infos_contrato(self.cliente, pedidos, self.msgs)
+        self.assertEqual(len(resultado), 1)
+        self.assertIn("C1", resultado[0])
+        self.assertIn("Colar de ouro", resultado[0])
+
+    def test_pedido_com_filtro_parcial_so_soma_ao_contrato_alvo(self):
+        self._contrato(contrato="C1", laudo="Colar de ouro")
+        self._contrato(contrato="C2", laudo="Anel de prata")
+        pedidos = [
+            InfoContratoPedido(info=InfoContrato.LAUDO, contratos=["C1"]),
+            InfoContratoPedido(info=InfoContrato.VENCIMENTO),
+        ]
+        resultado = renderizar_infos_contrato(self.cliente, pedidos, self.msgs)
+        texto_c1 = next(m for m in resultado if "C1" in m)
+        texto_c2 = next(m for m in resultado if "C2" in m)
+        self.assertIn("Colar de ouro", texto_c1)
+        self.assertNotIn("Anel de prata", texto_c2)
+        self.assertNotIn("Colar de ouro", texto_c2)
 
     # --- Totalizador: soma dos valores + quantidade -------------------------
 
@@ -999,12 +1146,13 @@ class RenderizarInfosContratoTests(TestCase):
         self.assertIn("R$ 1.813,70", totalizador)
         self.assertIn("não somei 1 contrato(s) com valor de quitação indisponível", totalizador)
 
-    def test_totalizador_quitacao_todos_indisponiveis_usa_tpl_sem_valor(self):
+    def test_totalizador_quitacao_todos_indisponiveis_usa_totalizador_geral(self):
         self._contrato(contrato="C1", liquidacao="")
         self._contrato(contrato="C2", liquidacao="")
         resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO)], self.msgs)
         totalizador = resultado[-1]
-        base_esperada = render_template(self.msgs.tpl_totalizador_sem_valor, qtd=2)
+        ativos_map = {c["contrato"]: c for c in _contratos_ativos_values(self.cliente)}
+        base_esperada = _montar_totalizador_geral(["C1", "C2"], ativos_map, self.msgs)
         self.assertTrue(totalizador.startswith(base_esperada))
         self.assertIn("não somei 2 contrato(s) com valor de quitação indisponível", totalizador)
 

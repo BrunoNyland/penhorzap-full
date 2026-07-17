@@ -278,6 +278,8 @@ def _contratos_ativos_values(cliente):
             "parcelado",
             "vlr_parcela",
             "laudo",
+            "peso",
+            "vlr_avaliacao",
         )
     )
 
