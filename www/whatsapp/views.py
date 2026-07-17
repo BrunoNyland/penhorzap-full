@@ -12,10 +12,43 @@ from core.models import Conversa, Mensagem
 logger = logging.getLogger(__name__)
 
 
+# Nós que o WhatsApp usa para embrulhar o conteúdo real (mensagem efêmera/
+# "apagar após visualizar" e mídia de "visualização única") -- sem
+# desembrulhar, nenhum parser encontra imageMessage/audioMessage/... direto
+# e a mensagem vira "vazia" (sem texto, sem mídia) tanto no webhook quanto
+# no download de mídia do painel.
+_NOS_EMBRULHO_MENSAGEM = (
+    "ephemeralMessage",
+    "viewOnceMessage",
+    "viewOnceMessageV2",
+    "viewOnceMessageV2Extension",
+)
+
+
+def desembrulhar_no_mensagem(message: dict) -> dict:
+    """Desembrulha recursivamente (até 5 níveis, contra payload malformado
+    ou recursivo) os nós de mensagem efêmera/visualização única do WhatsApp
+    até achar o nó de conteúdo real (texto ou mídia). Devolve `message`
+    inalterado se não houver embrulho conhecido."""
+    if not message:
+        return message or {}
+    for _ in range(5):
+        proximo = None
+        for chave in _NOS_EMBRULHO_MENSAGEM:
+            if chave in message:
+                proximo = (message.get(chave) or {}).get("message") or {}
+                break
+        if proximo is None:
+            break
+        message = proximo
+    return message
+
+
 def _extrair_conteudo(message: dict) -> tuple[str, str]:
     """Extrai (texto, tipo_midia) do nó `message` do payload da Evolution.
     texto = corpo/legenda a persistir em `Mensagem.texto`; tipo_midia = um
     dos valores de `Mensagem.TipoMidia` ou "" quando é mensagem de texto puro."""
+    message = desembrulhar_no_mensagem(message)
     if not message:
         return "", ""
     if "conversation" in message:
@@ -45,6 +78,11 @@ def whatsapp_webhook(request):
         body = json.loads(request.body or b"{}")
     except json.JSONDecodeError:
         return JsonResponse({"detail": "invalid json"}, status=400)
+
+    # Filter out non-message events from the Evolution API
+    event = str(body.get("event") or "").strip().lower()
+    if event and event not in ("messages.upsert", "send.message"):
+        return JsonResponse({"status": "ignored", "reason": f"unhandled event: {event}"}, status=200)
 
     try:
         data = body.get("data") or {}

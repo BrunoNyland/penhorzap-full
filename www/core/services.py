@@ -72,6 +72,7 @@ def _import_agencias(conn):
             objs,
             batch_size=BATCH_SIZE,
             update_conflicts=True,
+            unique_fields=["codigo"],
             update_fields=[
                 "dv", "nome", "uf", "situacao", "tipo", "porte", "penhor",
                 "logradouro", "bairro", "cidade", "cep",
@@ -104,6 +105,7 @@ def _import_licitacoes(conn):
             objs,
             batch_size=BATCH_SIZE,
             update_conflicts=True,
+            unique_fields=["numero"],
             update_fields=[
                 "situacao", "centralizadora", "data", "uf", "local_retirada",
                 "periodo_retirada", "periodo_lances", "periodo_exposicao",
@@ -148,6 +150,7 @@ def _import_clientes(conn):
             objs,
             batch_size=BATCH_SIZE,
             update_conflicts=True,
+            unique_fields=["cpf"],
             update_fields=[
                 "nome", "situacao_cpf", "situacao_cadastro", "logradouro", "bairro",
                 "cidade", "cep", "aniversario", "data_da_captura_das_renovacoes",
@@ -258,6 +261,7 @@ def _import_contratos(conn):
             objs,
             batch_size=BATCH_SIZE,
             update_conflicts=True,
+            unique_fields=["contrato"],
             update_fields=update_fields,
         )
     return len(objs)

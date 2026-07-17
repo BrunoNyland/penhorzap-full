@@ -257,9 +257,11 @@ class MensagemSerializer(serializers.ModelSerializer):
         ]
 
     def _get_media_message_node(self, obj):
+        from whatsapp.views import desembrulhar_no_mensagem
+
         payload = obj.payload_bruto or {}
         data = payload.get("data", {})
-        message = data.get("message", {})
+        message = desembrulhar_no_mensagem(data.get("message", {}))
         if not message:
             return None, None
         for key in ["imageMessage", "audioMessage", "documentMessage", "videoMessage"]:
@@ -318,9 +320,11 @@ class MensagemPainelSerializer(serializers.ModelSerializer):
         ]
 
     def _get_media_message_node(self, obj):
+        from whatsapp.views import desembrulhar_no_mensagem
+
         payload = obj.payload_bruto or {}
         data = payload.get("data", {})
-        message = data.get("message", {})
+        message = desembrulhar_no_mensagem(data.get("message", {}))
         if not message:
             return None, None
         for key in ["imageMessage", "audioMessage", "documentMessage", "videoMessage"]:

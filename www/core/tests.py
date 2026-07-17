@@ -249,3 +249,110 @@ class ParseBrDecimalTests(TestCase):
         self.assertIsNone(parse_br_decimal("abc"))
         self.assertIsNone(parse_br_decimal(""))
         self.assertIsNone(parse_br_decimal(None))
+
+
+class ImportarSqliteArquivoTests(TestCase):
+    def setUp(self):
+        import sqlite3
+        import tempfile
+        self.temp_file = tempfile.NamedTemporaryFile(delete=False)
+        self.temp_path = self.temp_file.name
+        self.temp_file.close()
+
+        # Connect and create tables
+        conn = sqlite3.connect(self.temp_path)
+        
+        conn.execute("""
+            CREATE TABLE agencias_penhor (
+                codigo TEXT PRIMARY KEY, dv TEXT, nome TEXT, uf TEXT, situacao TEXT,
+                tipo TEXT, porte TEXT, penhor TEXT, logradouro TEXT, bairro TEXT,
+                cidade TEXT, cep TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE licitacoes (
+                numero TEXT PRIMARY KEY, situacao TEXT, centralizadora TEXT, data TEXT,
+                uf TEXT, local_retirada TEXT, periodo_retirada TEXT, periodo_lances TEXT,
+                periodo_exposicao TEXT, participantes TEXT, urls_arquivos TEXT, data_limite_pagamento TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE clientes (
+                cpf TEXT PRIMARY KEY, nome TEXT, situacao_do_cpf TEXT, situacao_do_cadastro TEXT,
+                logradouro TEXT, bairro TEXT, cidade TEXT, cep TEXT, aniversario TEXT,
+                data_da_captura_das_renovacoes TEXT, documento TEXT, boleto_emitido TEXT,
+                conta_nsgd TEXT, codigo_de_barras TEXT, codigo_sipen TEXT, cocli TEXT,
+                limite_especial TEXT, emails TEXT, telefones TEXT, contratos_parcelados TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE contratos (
+                contrato TEXT PRIMARY KEY, cpf TEXT, nome TEXT, data_emissao TEXT, data_vencimento TEXT,
+                data_situacao TEXT, data_tva TEXT, data_entrega_garantia TEXT, data_dos_dados TEXT,
+                data_do_laudo TEXT, prazo TEXT, atraso TEXT, situacao TEXT, situacao_codigo TEXT,
+                modalidade TEXT, acerto_de_valores TEXT, avaliador TEXT, matricula_avaliador TEXT,
+                depesas_vinculadas TEXT, faixa TEXT, liquidacao TEXT, qt_parcelas TEXT,
+                qt_parcelas_pagas TEXT, qt_renovacoes TEXT, vlr_avaliacao TEXT, vlr_emprestimo TEXT,
+                vlr_atualizacao_monetaria TEXT, vlr_desconto TEXT, vlr_iof TEXT, vlr_juros TEXT,
+                vlr_liquido TEXT, vlr_maximo_emprestimo TEXT, vlr_mora TEXT, vlr_multa TEXT,
+                vlr_rem_atraso TEXT, vlr_renovacao_30 TEXT, vlr_renovacao_60 TEXT, vlr_renovacao_90 TEXT,
+                vlr_renovacao_120 TEXT, vlr_renovacao_150 TEXT, vlr_renovacao_180 TEXT, vlr_tar TEXT,
+                vlr_troco TEXT, vlr_parcela TEXT, vlr_parcela_atualizada TEXT, tarifa_custodia TEXT,
+                fator_de_atualizacao_avaliacao TEXT, margem TEXT, peso TEXT, valor_p_grama TEXT, laudo TEXT
+            )
+        """)
+        
+        # Insert one mock row per table
+        conn.execute("""
+            INSERT INTO agencias_penhor VALUES ('0886', '0', 'Agencia Centro', 'MS', 'ATIVA', 'AGENCIA', 'MEDIO', 'SIM', 'Rua 14', 'Centro', 'Campo Grande', '79000-000')
+        """)
+        conn.execute("""
+            INSERT INTO licitacoes VALUES ('2026/001', 'ABERTA', 'CENTRAL', '10/10/2026', 'MS', 'Agencia', '10-12', '12-14', '14-16', 'Participantes', 'url', '15/10/2026')
+        """)
+        conn.execute("""
+            INSERT INTO clientes VALUES (
+                '52998224725', 'JOAO SILVA', 'REGULAR', 'COMPLETO', 'Rua A', 'Bairro B', 'Campo Grande', '79000-001',
+                '01/01/1980', '15/07/2026', 'RG 123', 'S', '123', 'bar', 'sip', 'coc', '1.000,00', "['joao@test.com']", "['67999755980']", "['9999']"
+            )
+        """)
+        conn.execute("""
+            INSERT INTO contratos VALUES (
+                '9999', '52998224725', 'JOAO SILVA', '01/01/2026', '01/05/2026', '01/05/2026', '01/05/2026', '01/05/2026',
+                '01/05/2026', '01/05/2026', '120', '10', 'EM ABERTO', 'EMAB', 'MOD', '0', 'AVAL', '1234', '0', 'FAIXA',
+                '2.000,00', '1', '0', '0', '5.000,00', '1.500,00', '0', '0', '30,00', '50,00', '1.400,00', '2.000,00',
+                '0', '0', '0', '100,00', '200,00', '300,00', '400,00', '500,00', '600,00', '10,00', '0', '0', '0', '0',
+                '1,0', '0', '10,5', '150,00', 'Joia de ouro'
+            )
+        """)
+        conn.commit()
+        conn.close()
+
+    def tearDown(self):
+        import os
+        if os.path.exists(self.temp_path):
+            os.unlink(self.temp_path)
+
+    def test_importar_sqlite_sucesso(self):
+        from core.models import Conversa, AgenciaPenhor, Licitacao, Telefone, ContratoPenhor
+        from core.services import importar_sqlite_arquivo
+        
+        # Create a conversation to test reassociation
+        conversa = Conversa.objects.create(remote_jid="5567999755980@s.whatsapp.net")
+
+        counts = importar_sqlite_arquivo(self.temp_path)
+        self.assertEqual(counts["agencias_penhor"], 1)
+        self.assertEqual(counts["licitacoes"], 1)
+        self.assertEqual(counts["clientes"], 1)
+        self.assertEqual(counts["telefones"], 1)
+        self.assertEqual(counts["contratos"], 1)
+
+        # Assert data was imported correctly
+        self.assertEqual(Cliente.objects.count(), 1)
+        self.assertEqual(ContratoPenhor.objects.count(), 1)
+        self.assertEqual(AgenciaPenhor.objects.count(), 1)
+        self.assertEqual(Licitacao.objects.count(), 1)
+        self.assertEqual(Telefone.objects.count(), 1)
+
+        # Assert conversation was reassociated to client
+        conversa.refresh_from_db()
+        self.assertEqual(conversa.cliente_id, "52998224725")

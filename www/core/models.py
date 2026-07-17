@@ -42,6 +42,10 @@ from .mensagens_defaults import (
 )
 
 
+# Situações (código) que representam contrato liquidado -> não ativo.
+SITUACOES_LIQUIDADAS_COD = {"AVAL", "AVCL", "LQ", "LQDE", "LQSD", "LQVL", "OBJA", "SJLQ", "ER", ""}
+
+
 class Cliente(models.Model):
     """Mirrors the legacy `clientes` table (0886.sqlite3)."""
 
@@ -300,7 +304,7 @@ class Conversa(models.Model):
     cliente = models.ForeignKey(
         Cliente, related_name="conversas", on_delete=models.SET_NULL, null=True, blank=True
     )
-    remote_jid = models.CharField(max_length=40, db_index=True, help_text="Número bruto do WhatsApp")
+    remote_jid = models.CharField(max_length=40, unique=True, help_text="Número bruto do WhatsApp")
     estado = models.CharField(max_length=30, choices=Estado.choices, default=Estado.NOVA)
     tipo_contato = models.CharField(max_length=15, choices=TipoContato.choices, default=TipoContato.DESCONHECIDO)
     nome_salvo = models.CharField(max_length=255, blank=True, help_text="Nome salvo na agenda do dono (PHN_CPF_NOME) quando disponível")
@@ -528,6 +532,16 @@ class MensagensConfig(models.Model):
     def get_solo(cls):
         obj, _ = cls.objects.get_or_create(pk=1)
         return obj
+
+    @classmethod
+    def get_defaults_map(cls) -> dict:
+        from django.db.models.fields import NOT_PROVIDED
+        defaults = {}
+        for field in cls._meta.get_fields():
+            if field.concrete and not field.primary_key and field.name != "atualizado_em":
+                if field.default is not NOT_PROVIDED:
+                    defaults[field.name] = field.default
+        return defaults
 
 
 class FAQ(models.Model):

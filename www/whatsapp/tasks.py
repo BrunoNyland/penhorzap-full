@@ -61,6 +61,7 @@ from core.models import (
     MensagensConfig,
     Solicitacao,
     Telefone,
+    SITUACOES_LIQUIDADAS_COD,
 )
 from core.utils import normalizar_cpf, normalize_phone_br, parse_nome_salvo, validar_cpf
 from ia.schemas import TipoPagamento
@@ -83,9 +84,6 @@ PRAZOS_RENOVACAO = (30, 60, 90, 120, 150, 180)
 # contra o timeout do worker do qcluster e contra inundar o cliente).
 PAUSA_FANOUT = 1.2
 MAX_MENSAGENS_TURNO = 12
-
-# Situações (código) que representam contrato liquidado -> não ativo.
-SITUACOES_LIQUIDADAS_COD = {"AVAL", "AVCL", "LQ", "LQDE", "LQSD", "LQVL", "OBJA", "SJLQ", "ER", ""}
 
 TIPO_PAGAMENTO_TO_SOLICITACAO = {
     TipoPagamento.RENOVAR: Solicitacao.Tipo.RENOVAR,

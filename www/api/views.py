@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import tempfile
 from datetime import timedelta
@@ -36,7 +37,10 @@ from core.models import (
     FAQResposta,
     FAQSugerida,
     Conversa,
+    SITUACOES_LIQUIDADAS_COD,
 )
+
+logger = logging.getLogger(__name__)
 
 from .serializers import (
     BoletoSerializer,
@@ -425,66 +429,7 @@ class MensagensConfigAPIView(GenericAPIView):
     def post(self, request):
         config = MensagensConfig.get_solo()
         campo = request.data.get("campo", "").strip()
-
-        from core.mensagens_defaults import (
-            DEFAULT_MSG_BOLETO_INTRO,
-            DEFAULT_MSG_CADASTRO_NAO_LOCALIZADO,
-            DEFAULT_MSG_CPF_INVALIDO,
-            DEFAULT_MSG_CPF_NAO_BATE,
-            DEFAULT_MSG_DB_DESATUALIZADA,
-            DEFAULT_MSG_DUVIDA_ANOTADA,
-            DEFAULT_MSG_NEUTRA_PADRAO,
-            DEFAULT_MSG_PEDIR_CAMPO_VALOR_FILTRO,
-            DEFAULT_MSG_PEDIR_CPF,
-            DEFAULT_MSG_QUITACAO_GARANTIA,
-            DEFAULT_MSG_RENOVACAO_PROXIMO_VENCIMENTO,
-            DEFAULT_MSG_SAUDACAO,
-            DEFAULT_MSG_SAUDACAO_COM_PEDIDO,
-            DEFAULT_MSG_SEM_CONTRATOS_ATIVOS,
-            DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
-            DEFAULT_MSG_SOLICITACAO_CRIADA,
-            DEFAULT_SYSTEM_PROMPT,
-            DEFAULT_TPL_CONTRATO_LAUDO,
-            DEFAULT_TPL_INTRO_LAUDO,
-            DEFAULT_TPL_INTRO_LISTA,
-            DEFAULT_TPL_INTRO_PARCELA,
-            DEFAULT_TPL_INTRO_QUITACAO,
-            DEFAULT_TPL_INTRO_RENOVACAO,
-            DEFAULT_TPL_INTRO_VENCIMENTO,
-            DEFAULT_TPL_SAUDACAO_CLIENTE_COM_PEDIDO,
-            DEFAULT_TPL_TOTALIZADOR,
-            DEFAULT_TPL_TOTALIZADOR_GERAL,
-        )
-
-        defaults = {
-            "system_prompt": DEFAULT_SYSTEM_PROMPT,
-            "msg_saudacao": DEFAULT_MSG_SAUDACAO,
-            "msg_saudacao_com_pedido": DEFAULT_MSG_SAUDACAO_COM_PEDIDO,
-            "msg_cadastro_nao_localizado": DEFAULT_MSG_CADASTRO_NAO_LOCALIZADO,
-            "msg_pedir_cpf": DEFAULT_MSG_PEDIR_CPF,
-            "msg_cpf_invalido": DEFAULT_MSG_CPF_INVALIDO,
-            "msg_cpf_nao_bate": DEFAULT_MSG_CPF_NAO_BATE,
-            "msg_db_desatualizada": DEFAULT_MSG_DB_DESATUALIZADA,
-            "msg_sem_contratos_ativos": DEFAULT_MSG_SEM_CONTRATOS_ATIVOS,
-            "msg_solicitacao_criada": DEFAULT_MSG_SOLICITACAO_CRIADA,
-            "msg_boleto_intro": DEFAULT_MSG_BOLETO_INTRO,
-            "msg_renovacao_proximo_vencimento": DEFAULT_MSG_RENOVACAO_PROXIMO_VENCIMENTO,
-            "msg_quitacao_garantia": DEFAULT_MSG_QUITACAO_GARANTIA,
-            "msg_segunda_via_confirma": DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
-            "msg_duvida_anotada": DEFAULT_MSG_DUVIDA_ANOTADA,
-            "msg_neutra_padrao": DEFAULT_MSG_NEUTRA_PADRAO,
-            "msg_pedir_campo_valor_filtro": DEFAULT_MSG_PEDIR_CAMPO_VALOR_FILTRO,
-            "tpl_contrato_laudo": DEFAULT_TPL_CONTRATO_LAUDO,
-            "tpl_intro_vencimento": DEFAULT_TPL_INTRO_VENCIMENTO,
-            "tpl_intro_renovacao": DEFAULT_TPL_INTRO_RENOVACAO,
-            "tpl_intro_quitacao": DEFAULT_TPL_INTRO_QUITACAO,
-            "tpl_intro_parcela": DEFAULT_TPL_INTRO_PARCELA,
-            "tpl_intro_lista": DEFAULT_TPL_INTRO_LISTA,
-            "tpl_intro_laudo": DEFAULT_TPL_INTRO_LAUDO,
-            "tpl_saudacao_cliente_com_pedido": DEFAULT_TPL_SAUDACAO_CLIENTE_COM_PEDIDO,
-            "tpl_totalizador": DEFAULT_TPL_TOTALIZADOR,
-            "tpl_totalizador_geral": DEFAULT_TPL_TOTALIZADOR_GERAL,
-        }
+        defaults = MensagensConfig.get_defaults_map()
 
         if campo in defaults:
             setattr(config, campo, defaults[campo])
@@ -509,66 +454,7 @@ class MensagensConfigRestoreAPIView(GenericAPIView):
     def post(self, request):
         config = MensagensConfig.get_solo()
         campo = request.data.get("campo", "").strip()
-
-        from core.mensagens_defaults import (
-            DEFAULT_MSG_BOLETO_INTRO,
-            DEFAULT_MSG_CADASTRO_NAO_LOCALIZADO,
-            DEFAULT_MSG_CPF_INVALIDO,
-            DEFAULT_MSG_CPF_NAO_BATE,
-            DEFAULT_MSG_DB_DESATUALIZADA,
-            DEFAULT_MSG_DUVIDA_ANOTADA,
-            DEFAULT_MSG_NEUTRA_PADRAO,
-            DEFAULT_MSG_PEDIR_CAMPO_VALOR_FILTRO,
-            DEFAULT_MSG_PEDIR_CPF,
-            DEFAULT_MSG_QUITACAO_GARANTIA,
-            DEFAULT_MSG_RENOVACAO_PROXIMO_VENCIMENTO,
-            DEFAULT_MSG_SAUDACAO,
-            DEFAULT_MSG_SAUDACAO_COM_PEDIDO,
-            DEFAULT_MSG_SEM_CONTRATOS_ATIVOS,
-            DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
-            DEFAULT_MSG_SOLICITACAO_CRIADA,
-            DEFAULT_SYSTEM_PROMPT,
-            DEFAULT_TPL_CONTRATO_LAUDO,
-            DEFAULT_TPL_INTRO_LAUDO,
-            DEFAULT_TPL_INTRO_LISTA,
-            DEFAULT_TPL_INTRO_PARCELA,
-            DEFAULT_TPL_INTRO_QUITACAO,
-            DEFAULT_TPL_INTRO_RENOVACAO,
-            DEFAULT_TPL_INTRO_VENCIMENTO,
-            DEFAULT_TPL_SAUDACAO_CLIENTE_COM_PEDIDO,
-            DEFAULT_TPL_TOTALIZADOR,
-            DEFAULT_TPL_TOTALIZADOR_GERAL,
-        )
-
-        defaults = {
-            "system_prompt": DEFAULT_SYSTEM_PROMPT,
-            "msg_saudacao": DEFAULT_MSG_SAUDACAO,
-            "msg_saudacao_com_pedido": DEFAULT_MSG_SAUDACAO_COM_PEDIDO,
-            "msg_cadastro_nao_localizado": DEFAULT_MSG_CADASTRO_NAO_LOCALIZADO,
-            "msg_pedir_cpf": DEFAULT_MSG_PEDIR_CPF,
-            "msg_cpf_invalido": DEFAULT_MSG_CPF_INVALIDO,
-            "msg_cpf_nao_bate": DEFAULT_MSG_CPF_NAO_BATE,
-            "msg_db_desatualizada": DEFAULT_MSG_DB_DESATUALIZADA,
-            "msg_sem_contratos_ativos": DEFAULT_MSG_SEM_CONTRATOS_ATIVOS,
-            "msg_solicitacao_criada": DEFAULT_MSG_SOLICITACAO_CRIADA,
-            "msg_boleto_intro": DEFAULT_MSG_BOLETO_INTRO,
-            "msg_renovacao_proximo_vencimento": DEFAULT_MSG_RENOVACAO_PROXIMO_VENCIMENTO,
-            "msg_quitacao_garantia": DEFAULT_MSG_QUITACAO_GARANTIA,
-            "msg_segunda_via_confirma": DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
-            "msg_duvida_anotada": DEFAULT_MSG_DUVIDA_ANOTADA,
-            "msg_neutra_padrao": DEFAULT_MSG_NEUTRA_PADRAO,
-            "msg_pedir_campo_valor_filtro": DEFAULT_MSG_PEDIR_CAMPO_VALOR_FILTRO,
-            "tpl_contrato_laudo": DEFAULT_TPL_CONTRATO_LAUDO,
-            "tpl_intro_vencimento": DEFAULT_TPL_INTRO_VENCIMENTO,
-            "tpl_intro_renovacao": DEFAULT_TPL_INTRO_RENOVACAO,
-            "tpl_intro_quitacao": DEFAULT_TPL_INTRO_QUITACAO,
-            "tpl_intro_parcela": DEFAULT_TPL_INTRO_PARCELA,
-            "tpl_intro_lista": DEFAULT_TPL_INTRO_LISTA,
-            "tpl_intro_laudo": DEFAULT_TPL_INTRO_LAUDO,
-            "tpl_saudacao_cliente_com_pedido": DEFAULT_TPL_SAUDACAO_CLIENTE_COM_PEDIDO,
-            "tpl_totalizador": DEFAULT_TPL_TOTALIZADOR,
-            "tpl_totalizador_geral": DEFAULT_TPL_TOTALIZADOR_GERAL,
-        }
+        defaults = MensagensConfig.get_defaults_map()
 
         if campo in defaults:
             setattr(config, campo, defaults[campo])
@@ -717,6 +603,18 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
             raise Http404("Cliente não encontrado.")
             
         self.check_object_permissions(self.request, obj)
+
+        from django.db.models import prefetch_related_objects
+        prefetch_related_objects(
+            [obj],
+            "telefones",
+            "contratos_penhor",
+            "conversas",
+            "solicitacoes",
+            "solicitacoes__contratos",
+            "solicitacoes__boletos",
+            "solicitacoes__conversa__mensagens",
+        )
         return obj
 
     def get_serializer_class(self):
@@ -733,7 +631,6 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
         # Filtrar apenas clientes com pelo menos um contrato ativo se solicitado
         ativos_somente = self.request.query_params.get("ativos_somente")
         if ativos_somente == "1":
-            SITUACOES_LIQUIDADAS_COD = ["AVAL", "AVCL", "LQ", "LQDE", "LQSD", "LQVL", "OBJA", "SJLQ", "ER", ""]
             qs = qs.filter(
                 contratos_penhor__isnull=False
             ).filter(
@@ -742,7 +639,6 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
             ).distinct()
 
         if self.action == "list":
-            SITUACOES_LIQUIDADAS_COD = ["AVAL", "AVCL", "LQ", "LQDE", "LQSD", "LQVL", "OBJA", "SJLQ", "ER", ""]
             qs = qs.annotate(
                 num_telefones=Count("telefones", distinct=True),
                 num_conversas=Count("conversas", distinct=True),
@@ -801,12 +697,9 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Conversa.objects.select_related("cliente").prefetch_related("mensagens")
+    queryset = Conversa.objects.all()
     permission_classes = [permissions.IsAdminUser]
     pagination_class = None
-
-    # Códigos de contrato liquidado (espelha whatsapp.tasks.SITUACOES_LIQUIDADAS_COD)
-    _SITUACOES_LIQUIDADAS_COD = ["AVAL", "AVCL", "LQ", "LQDE", "LQSD", "LQVL", "OBJA", "SJLQ", "ER", ""]
 
     # Extensões aceitas no envio manual de arquivo pelo operador (WS-B item 3).
     _EXTENSOES_ANEXO_PERMITIDAS = {
@@ -824,6 +717,17 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        if self.action == "retrieve":
+            qs = qs.select_related("cliente").prefetch_related(
+                "mensagens",
+                "solicitacoes",
+                "solicitacoes__contratos",
+                "solicitacoes__boletos",
+                "solicitacoes__conversa__mensagens",
+            )
+        else:
+            qs = qs.select_related("cliente")
+
         estado = self.request.query_params.get("estado")
         revisao = self.request.query_params.get("revisao")
         tipo_contato = self.request.query_params.get("tipo_contato")
@@ -849,7 +753,7 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
             num_contratos_ativos=Count(
                 "cliente__contratos_penhor",
                 filter=(
-                    ~Q(cliente__contratos_penhor__situacao_codigo__in=self._SITUACOES_LIQUIDADAS_COD)
+                    ~Q(cliente__contratos_penhor__situacao_codigo__in=SITUACOES_LIQUIDADAS_COD)
                     & ~Q(cliente__contratos_penhor__situacao__icontains="Liquidado")
                 ),
                 distinct=True,
@@ -866,6 +770,17 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=["post"], url_path="limpar-todas")
     def limpar_todas(self, request):
+        if not request.user.is_superuser:
+            return Response(
+                {"detail": "Apenas superusuários podem limpar todas as conversas."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        confirmacao = request.data.get("confirmacao")
+        if confirmacao != "DELETAR_TUDO":
+            return Response(
+                {"detail": "Confirmação inválida para limpar todas as conversas."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         Conversa.objects.all().delete()
         return Response({"message": "Todas as conversas foram limpas com sucesso!"})
 
@@ -892,17 +807,21 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         client = get_client()
+        enviado = client.send_text(numero, texto)
 
         Mensagem.objects.create(
             conversa=conversa,
             direcao=Mensagem.Direcao.OUT,
             texto=texto,
+            enviado_ok=enviado,
         )
 
-        enviado = client.send_text(numero, texto)
-
+        update_fields = ["ultima_interacao"]
+        if not enviado:
+            conversa.precisa_revisao_humana = True
+            update_fields.append("precisa_revisao_humana")
         conversa.ultima_interacao = timezone.now()
-        conversa.save(update_fields=["ultima_interacao"])
+        conversa.save(update_fields=update_fields)
 
         return Response(
             {
@@ -998,19 +917,28 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
         if not mensagem:
             raise Http404("Mensagem não encontrada nesta conversa.")
 
+        from whatsapp.views import desembrulhar_no_mensagem
+
         payload = mensagem.payload_bruto or {}
         data_node = payload.get("data", {})
         message_node = data_node.get("message", {})
         if not message_node:
             raise Http404("Mensagem não possui payload de mídia.")
 
+        # Mídia efêmera/"visualização única" vem embrulhada num nó extra
+        # (ephemeralMessage/viewOnceMessage*) -- desembrulha só para
+        # DETECTAR o tipo/mimetype/filename. A chamada à Evolution API
+        # abaixo continua usando `data_node` original (com o embrulho, se
+        # houver): é a própria Evolution que desembrulha ao descriptografar.
+        message_node_interno = desembrulhar_no_mensagem(message_node)
+
         # Verifica se possui algum nó de mídia
         media_type = None
         media_node = None
         for key in ["imageMessage", "audioMessage", "documentMessage", "videoMessage"]:
-            if key in message_node:
+            if key in message_node_interno:
                 media_type = key
-                media_node = message_node[key]
+                media_node = message_node_interno[key]
                 break
 
         if not media_type or not media_node:

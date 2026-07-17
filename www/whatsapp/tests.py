@@ -54,7 +54,7 @@ from whatsapp.tasks import (
     process_lote_conversa,
     process_mensagem,
 )
-from whatsapp.views import _extrair_conteudo
+from whatsapp.views import _extrair_conteudo, desembrulhar_no_mensagem
 
 from django_q.models import Schedule
 
@@ -893,6 +893,51 @@ class WebhookExtrairConteudoTests(TestCase):
     def test_message_vazia(self):
         self.assertEqual(_extrair_conteudo({}), ("", ""))
         self.assertEqual(_extrair_conteudo(None), ("", ""))
+
+    def test_imagem_dentro_de_ephemeral_message_e_desembrulhada(self):
+        # Mídia enviada com "mensagens temporárias" ativado no chat do
+        # WhatsApp vem embrulhada -- sem desembrulhar, o parser não
+        # encontrava imageMessage/audioMessage e a mensagem virava "vazia".
+        texto, tipo = _extrair_conteudo({
+            "ephemeralMessage": {"message": {"imageMessage": {"caption": "colar de ouro"}}}
+        })
+        self.assertEqual((texto, tipo), ("colar de ouro", "image"))
+
+    def test_audio_dentro_de_view_once_message_v2_e_desembrulhado(self):
+        # Áudio/foto "de visualização única" usa outro nó de embrulho.
+        texto, tipo = _extrair_conteudo({
+            "viewOnceMessageV2": {"message": {"audioMessage": {}}}
+        })
+        self.assertEqual((texto, tipo), ("", "audio"))
+
+    def test_embrulhos_aninhados_sao_desembrulhados_ate_o_conteudo_real(self):
+        texto, tipo = _extrair_conteudo({
+            "ephemeralMessage": {"message": {
+                "viewOnceMessage": {"message": {"imageMessage": {"caption": "aneis"}}}
+            }}
+        })
+        self.assertEqual((texto, tipo), ("aneis", "image"))
+
+
+class DesembrulharNoMensagemTests(TestCase):
+    def test_sem_embrulho_devolve_inalterado(self):
+        message = {"imageMessage": {"caption": "x"}}
+        self.assertEqual(desembrulhar_no_mensagem(message), message)
+
+    def test_vazio_nao_levanta(self):
+        self.assertEqual(desembrulhar_no_mensagem({}), {})
+        self.assertEqual(desembrulhar_no_mensagem(None), {})
+
+    def test_view_once_message_v2_extension(self):
+        resultado = desembrulhar_no_mensagem({
+            "viewOnceMessageV2Extension": {"message": {"videoMessage": {"caption": "v"}}}
+        })
+        self.assertEqual(resultado, {"videoMessage": {"caption": "v"}})
+
+    def test_embrulho_sem_message_interno_nao_quebra(self):
+        # Payload malformado/incompleto: embrulho presente mas sem "message"
+        # dentro -- não deve levantar, só devolve vazio.
+        self.assertEqual(desembrulhar_no_mensagem({"ephemeralMessage": {}}), {})
 
 
 @override_settings(WEBHOOK_TOKEN="test-token-123")
