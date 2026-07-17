@@ -204,6 +204,7 @@ class MensagensConfigGetSoloTests(TestCase):
         config = MensagensConfig.get_solo()
         campos_tpl = [
             "tpl_saudacao_cliente",
+            "tpl_saudacao_cliente_com_pedido",
             "tpl_contrato_vencimento",
             "tpl_contrato_renovacao",
             "tpl_contrato_quitacao",
@@ -217,6 +218,7 @@ class MensagensConfigGetSoloTests(TestCase):
             "msg_info_negada_desconhecido",
             "msg_midia_nao_suportada",
             "msg_duvida_anotada",
+            "msg_saudacao_com_pedido",
         ]
         for campo in campos_tpl:
             valor = getattr(config, campo)

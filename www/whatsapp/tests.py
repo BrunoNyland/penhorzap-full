@@ -610,8 +610,37 @@ class MultiAcaoLoteTests(WhatsappTasksTestCase):
         # "oi" (setup) + saudação + faq + quitação (1 contrato = 1 linha)
         self.assertEqual(len(outs), 4)
         self.assertIn("Paula", outs[1])
+        # Bug relatado: a mesma leva já traz pedido (FAQ + quitação) -> a
+        # saudação não deve perguntar "como posso ajudar" à toa.
+        self.assertNotIn("posso", outs[1].lower())
         self.assertEqual(outs[2], "Sim, sábado até meio-dia!")
         self.assertIn("C1", outs[3])
+
+    def test_saudacao_sozinha_ainda_pergunta_como_posso_ajudar(self):
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mock_ia.return_value = _classificacao(saudacao=True)
+            mensagem = self._in(self.conv, "boa tarde")
+            process_mensagem(mensagem.id)
+
+        resposta = self._last_out_texto(self.conv)
+        self.assertIn("Paula", resposta)
+        self.assertIn("Como posso te ajudar", resposta)
+
+    def test_saudacao_com_info_contrato_nao_pergunta_como_posso_ajudar(self):
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mock_ia.return_value = _classificacao(
+                saudacao=True,
+                infos_contrato=[InfoContratoPedido(info=InfoContrato.LISTA_CONTRATOS)],
+            )
+            mensagem = self._in(self.conv, "boa noite, quantos contratos eu tenho?")
+            process_mensagem(mensagem.id)
+
+        outs = list(
+            self.conv.mensagens.filter(direcao=Mensagem.Direcao.OUT).order_by("criado_em").values_list("texto", flat=True)
+        )
+        self.assertIn("Paula", outs[1])
+        self.assertNotIn("posso", outs[1].lower())
+        self.assertIn("C1", outs[2])
 
     def test_faq_mais_pagamento_sem_identificacao_faq_sai_e_pede_cpf_uma_vez(self):
         # PHN_<cpf>_<nome> na agenda mas o CPF não existe no cadastro de

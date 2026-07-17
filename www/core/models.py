@@ -16,6 +16,7 @@ from .mensagens_defaults import (
     DEFAULT_MSG_QUITACAO_GARANTIA,
     DEFAULT_MSG_RENOVACAO_PROXIMO_VENCIMENTO,
     DEFAULT_MSG_SAUDACAO,
+    DEFAULT_MSG_SAUDACAO_COM_PEDIDO,
     DEFAULT_MSG_SEM_CONTRATOS_ATIVOS,
     DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
     DEFAULT_MSG_SOLICITACAO_CRIADA,
@@ -28,6 +29,7 @@ from .mensagens_defaults import (
     DEFAULT_TPL_CONTRATO_VENCIMENTO,
     DEFAULT_TPL_LISTA_HEADER,
     DEFAULT_TPL_SAUDACAO_CLIENTE,
+    DEFAULT_TPL_SAUDACAO_CLIENTE_COM_PEDIDO,
     DEFAULT_TPL_TOTALIZADOR,
     DEFAULT_TPL_TOTALIZADOR_GERAL,
 )
@@ -456,6 +458,10 @@ class MensagensConfig(models.Model):
 
     system_prompt = models.TextField(default=DEFAULT_SYSTEM_PROMPT)
     msg_saudacao = models.TextField(default=DEFAULT_MSG_SAUDACAO)
+    msg_saudacao_com_pedido = models.TextField(
+        default=DEFAULT_MSG_SAUDACAO_COM_PEDIDO,
+        help_text="Saudação quando a mesma mensagem já traz um pedido (não pergunta 'como posso ajudar' de novo).",
+    )
     msg_cadastro_nao_localizado = models.TextField(default=DEFAULT_MSG_CADASTRO_NAO_LOCALIZADO)
     msg_pedir_cpf = models.TextField(default=DEFAULT_MSG_PEDIR_CPF)
     msg_cpf_invalido = models.TextField(default=DEFAULT_MSG_CPF_INVALIDO)
@@ -469,6 +475,10 @@ class MensagensConfig(models.Model):
     msg_segunda_via_confirma = models.TextField(default=DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA)
     msg_neutra_padrao = models.TextField(default=DEFAULT_MSG_NEUTRA_PADRAO)
     tpl_saudacao_cliente = models.TextField(default=DEFAULT_TPL_SAUDACAO_CLIENTE)
+    tpl_saudacao_cliente_com_pedido = models.TextField(
+        default=DEFAULT_TPL_SAUDACAO_CLIENTE_COM_PEDIDO,
+        help_text="Saudação quando a mesma mensagem já traz um pedido (não pergunta 'como posso te ajudar' de novo).",
+    )
     tpl_contrato_vencimento = models.TextField(default=DEFAULT_TPL_CONTRATO_VENCIMENTO)
     tpl_contrato_renovacao = models.TextField(default=DEFAULT_TPL_CONTRATO_RENOVACAO)
     tpl_contrato_quitacao = models.TextField(default=DEFAULT_TPL_CONTRATO_QUITACAO)

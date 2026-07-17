@@ -438,11 +438,13 @@ class MensagensConfigAPIView(GenericAPIView):
             DEFAULT_MSG_QUITACAO_GARANTIA,
             DEFAULT_MSG_RENOVACAO_PROXIMO_VENCIMENTO,
             DEFAULT_MSG_SAUDACAO,
+            DEFAULT_MSG_SAUDACAO_COM_PEDIDO,
             DEFAULT_MSG_SEM_CONTRATOS_ATIVOS,
             DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
             DEFAULT_MSG_SOLICITACAO_CRIADA,
             DEFAULT_SYSTEM_PROMPT,
             DEFAULT_TPL_CONTRATO_LAUDO,
+            DEFAULT_TPL_SAUDACAO_CLIENTE_COM_PEDIDO,
             DEFAULT_TPL_TOTALIZADOR,
             DEFAULT_TPL_TOTALIZADOR_GERAL,
         )
@@ -450,6 +452,7 @@ class MensagensConfigAPIView(GenericAPIView):
         defaults = {
             "system_prompt": DEFAULT_SYSTEM_PROMPT,
             "msg_saudacao": DEFAULT_MSG_SAUDACAO,
+            "msg_saudacao_com_pedido": DEFAULT_MSG_SAUDACAO_COM_PEDIDO,
             "msg_cadastro_nao_localizado": DEFAULT_MSG_CADASTRO_NAO_LOCALIZADO,
             "msg_pedir_cpf": DEFAULT_MSG_PEDIR_CPF,
             "msg_cpf_invalido": DEFAULT_MSG_CPF_INVALIDO,
@@ -464,6 +467,7 @@ class MensagensConfigAPIView(GenericAPIView):
             "msg_duvida_anotada": DEFAULT_MSG_DUVIDA_ANOTADA,
             "msg_neutra_padrao": DEFAULT_MSG_NEUTRA_PADRAO,
             "tpl_contrato_laudo": DEFAULT_TPL_CONTRATO_LAUDO,
+            "tpl_saudacao_cliente_com_pedido": DEFAULT_TPL_SAUDACAO_CLIENTE_COM_PEDIDO,
             "tpl_totalizador": DEFAULT_TPL_TOTALIZADOR,
             "tpl_totalizador_geral": DEFAULT_TPL_TOTALIZADOR_GERAL,
         }
@@ -504,11 +508,13 @@ class MensagensConfigRestoreAPIView(GenericAPIView):
             DEFAULT_MSG_QUITACAO_GARANTIA,
             DEFAULT_MSG_RENOVACAO_PROXIMO_VENCIMENTO,
             DEFAULT_MSG_SAUDACAO,
+            DEFAULT_MSG_SAUDACAO_COM_PEDIDO,
             DEFAULT_MSG_SEM_CONTRATOS_ATIVOS,
             DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
             DEFAULT_MSG_SOLICITACAO_CRIADA,
             DEFAULT_SYSTEM_PROMPT,
             DEFAULT_TPL_CONTRATO_LAUDO,
+            DEFAULT_TPL_SAUDACAO_CLIENTE_COM_PEDIDO,
             DEFAULT_TPL_TOTALIZADOR,
             DEFAULT_TPL_TOTALIZADOR_GERAL,
         )
@@ -516,6 +522,7 @@ class MensagensConfigRestoreAPIView(GenericAPIView):
         defaults = {
             "system_prompt": DEFAULT_SYSTEM_PROMPT,
             "msg_saudacao": DEFAULT_MSG_SAUDACAO,
+            "msg_saudacao_com_pedido": DEFAULT_MSG_SAUDACAO_COM_PEDIDO,
             "msg_cadastro_nao_localizado": DEFAULT_MSG_CADASTRO_NAO_LOCALIZADO,
             "msg_pedir_cpf": DEFAULT_MSG_PEDIR_CPF,
             "msg_cpf_invalido": DEFAULT_MSG_CPF_INVALIDO,
@@ -530,6 +537,7 @@ class MensagensConfigRestoreAPIView(GenericAPIView):
             "msg_duvida_anotada": DEFAULT_MSG_DUVIDA_ANOTADA,
             "msg_neutra_padrao": DEFAULT_MSG_NEUTRA_PADRAO,
             "tpl_contrato_laudo": DEFAULT_TPL_CONTRATO_LAUDO,
+            "tpl_saudacao_cliente_com_pedido": DEFAULT_TPL_SAUDACAO_CLIENTE_COM_PEDIDO,
             "tpl_totalizador": DEFAULT_TPL_TOTALIZADOR,
             "tpl_totalizador_geral": DEFAULT_TPL_TOTALIZADOR_GERAL,
         }
@@ -1061,11 +1069,20 @@ def _montar_resposta_simulador(resultado, cliente, msgs) -> list:
     fila: list = []
 
     if resultado.saudacao:
+        tem_pedido_junto = bool(
+            resultado.faq_ids
+            or resultado.infos_contrato
+            or resultado.solicitacoes
+            or resultado.segunda_via
+            or resultado.duvidas_sem_faq
+        )
         if cliente:
             primeiro_nome = (cliente.nome or "").split()[0] if cliente.nome else ""
-            fila.append(render_template(msgs.tpl_saudacao_cliente, saudacao=_saudacao(), nome=primeiro_nome))
+            tpl = msgs.tpl_saudacao_cliente_com_pedido if tem_pedido_junto else msgs.tpl_saudacao_cliente
+            fila.append(render_template(tpl, saudacao=_saudacao(), nome=primeiro_nome))
         else:
-            fila.append(render_template(msgs.msg_saudacao, saudacao=_saudacao()))
+            tpl = msgs.msg_saudacao_com_pedido if tem_pedido_junto else msgs.msg_saudacao
+            fila.append(render_template(tpl, saudacao=_saudacao()))
 
     for faq_id in resultado.faq_ids:
         try:

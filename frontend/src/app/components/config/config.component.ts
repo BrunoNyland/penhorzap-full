@@ -428,6 +428,7 @@ export class ConfigComponent implements OnInit {
 
   camposMensagens = [
     { key: 'msg_saudacao', label: 'Saudação (Desconhecido)', help: 'Saudação inicial p/ contatos não salvos na agenda. Use a tag {saudacao}.' },
+    { key: 'msg_saudacao_com_pedido', label: 'Saudação com pedido junto (Desconhecido)', help: 'Usada quando a mesma mensagem já traz um pedido -- não pergunta "como posso ajudar" de novo. Use a tag {saudacao}.' },
     { key: 'msg_cadastro_nao_localizado', label: 'Cadastro não localizado', help: 'Retorno enviado quando o CPF fornecido não está na base de dados.' },
     { key: 'msg_pedir_cpf', label: 'Pedir CPF', help: 'Mensagem solicitando que o usuário digite seu CPF.' },
     { key: 'msg_cpf_invalido', label: 'CPF Inválido', help: 'Erro retornado se o CPF falhar na validação do dígito verificador.' },
@@ -448,6 +449,12 @@ export class ConfigComponent implements OnInit {
       key: 'tpl_saudacao_cliente',
       label: 'Saudação (Telefone Identificado)',
       help: 'Primeira mensagem para quem já é cliente reconhecido pelo telefone (sem pedir CPF).',
+      placeholders: ['{saudacao}', '{nome}']
+    },
+    {
+      key: 'tpl_saudacao_cliente_com_pedido',
+      label: 'Saudação com pedido junto (Telefone Identificado)',
+      help: 'Usada quando a mesma mensagem já traz um pedido -- não pergunta "como posso te ajudar" de novo, a resposta ao pedido já vem em seguida.',
       placeholders: ['{saudacao}', '{nome}']
     },
     {

@@ -916,13 +916,23 @@ def _processar_lote(conv: Conversa, bot: BotConfig, msgs, client, numero_destino
         nonlocal marcar_revisao
         marcar_revisao = True
 
-    # 1) Saudação
+    # 1) Saudação -- se a mesma leva já traz um pedido, não pergunta "como
+    # posso ajudar" à toa (a resposta ao pedido já vem em seguida na fila).
     if resultado.saudacao:
+        tem_pedido_junto = bool(
+            resultado.faq_ids
+            or resultado.infos_contrato
+            or resultado.solicitacoes
+            or resultado.segunda_via
+            or resultado.duvidas_sem_faq
+        )
         if identificado and cliente:
             primeiro_nome = (cliente.nome or "").split()[0] if cliente.nome else ""
-            fila.append(render_template(msgs.tpl_saudacao_cliente, saudacao=_saudacao(), nome=primeiro_nome))
+            tpl = msgs.tpl_saudacao_cliente_com_pedido if tem_pedido_junto else msgs.tpl_saudacao_cliente
+            fila.append(render_template(tpl, saudacao=_saudacao(), nome=primeiro_nome))
         else:
-            fila.append(render_template(msgs.msg_saudacao, saudacao=_saudacao()))
+            tpl = msgs.msg_saudacao_com_pedido if tem_pedido_junto else msgs.msg_saudacao
+            fila.append(render_template(tpl, saudacao=_saudacao()))
         acoes_log.append("saudacao")
 
     # 2) FAQs -- todas as classificadas, cada FAQResposta vira 1 item da fila

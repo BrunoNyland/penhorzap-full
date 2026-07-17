@@ -58,6 +58,7 @@ class MensagensConfigSerializer(serializers.ModelSerializer):
         fields = [
             "system_prompt",
             "msg_saudacao",
+            "msg_saudacao_com_pedido",
             "msg_cadastro_nao_localizado",
             "msg_pedir_cpf",
             "msg_cpf_invalido",
@@ -71,6 +72,7 @@ class MensagensConfigSerializer(serializers.ModelSerializer):
             "msg_segunda_via_confirma",
             "msg_neutra_padrao",
             "tpl_saudacao_cliente",
+            "tpl_saudacao_cliente_com_pedido",
             "tpl_contrato_vencimento",
             "tpl_contrato_renovacao",
             "tpl_contrato_quitacao",

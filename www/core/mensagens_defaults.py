@@ -8,6 +8,7 @@ padrão" de cada campo.
 # --- Saudação / triagem de contato -----------------------------------------
 
 DEFAULT_MSG_SAUDACAO = "{saudacao}! Como posso ajudar?"
+DEFAULT_MSG_SAUDACAO_COM_PEDIDO = "{saudacao}!"
 DEFAULT_MSG_CADASTRO_NAO_LOCALIZADO = (
     "Oi! Não achei seu número aqui no meu cadastro. Assim que eu tiver um "
     "tempinho eu verifico pra você e já te retorno."
@@ -66,6 +67,7 @@ DEFAULT_MSG_NEUTRA_PADRAO = (
 DEFAULT_TPL_SAUDACAO_CLIENTE = (
     "{saudacao}, {nome}! 😊 Como posso te ajudar?"
 )
+DEFAULT_TPL_SAUDACAO_CLIENTE_COM_PEDIDO = "{saudacao}, {nome}! 😊"
 DEFAULT_TPL_CONTRATO_VENCIMENTO = "📄 *Contrato* {contrato}\n🗓️ *Vencimento*: {vencimento}."
 DEFAULT_TPL_CONTRATO_RENOVACAO = "🔹Renovação {prazo_dias} dias: {valor_renovacao}"
 DEFAULT_TPL_CONTRATO_QUITACAO = "🔸Liquidação: {valor_quitacao}"
