@@ -422,6 +422,10 @@ class BotConfig(models.Model):
         null=True, blank=True,
         help_text="Data do último encerramento automático; evita desligar mais de uma vez por dia.",
     )
+    enviar_respostas_faq_ia = models.BooleanField(
+        default=False,
+        help_text="Se True, envia as respostas das FAQs ativas para a IA ter mais contexto do negócio antes de classificar a intenção.",
+    )
     atualizado_em = models.DateTimeField(auto_now=True)
 
     class Meta:

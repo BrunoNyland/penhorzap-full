@@ -842,7 +842,15 @@ def _processar_lote(conv: Conversa, bot: BotConfig, msgs, client, numero_destino
     if cliente and identificado and db_atualizada:
         contratos_para_ia = _contratos_ativos_values(cliente)
 
-    faqs = list(FAQ.objects.filter(ativo=True).values("id", "pergunta"))
+    faqs = []
+    enviar_respostas = getattr(bot, "enviar_respostas_faq_ia", False)
+    for faq in FAQ.objects.filter(ativo=True):
+        faq_dict = {"id": faq.id, "pergunta": faq.pergunta}
+        if enviar_respostas:
+            faq_dict["respostas"] = [
+                resp.texto for resp in faq.respostas.all() if resp.texto
+            ]
+        faqs.append(faq_dict)
     primeira_do_lote = lote[0]
     historico = list(
         conv.mensagens.filter(criado_em__lt=primeira_do_lote.criado_em)

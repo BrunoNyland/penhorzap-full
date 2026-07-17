@@ -135,6 +135,18 @@ class PrivacidadeDoPromptTests(TestCase):
         self.assertIn("2", texto)
         self.assertNotIn("SEGREDO_RESPOSTA_NAO_DEVE_VAZAR", texto)
 
+    def test_formatar_faqs_com_respostas_incluidas(self):
+        faqs = [
+            {
+                "id": 1,
+                "pergunta": "Vocês aceitam relógio?",
+                "respostas": ["Aceitamos relógios de ouro.", "Outros sob consulta."],
+            }
+        ]
+        texto = _formatar_faqs(faqs)
+        self.assertIn("Vocês aceitam relógio?", texto)
+        self.assertIn("Aceitamos relógios de ouro. | Outros sob consulta.", texto)
+
     def test_formatar_contratos_sem_contratos(self):
         self.assertIn("sem contratos ativos", _formatar_contratos([]))
 

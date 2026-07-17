@@ -42,6 +42,7 @@ class BotConfigSerializer(serializers.ModelSerializer):
             "horario_encerramento",
             "responder_desconhecidos",
             "dias_resgate_garantia",
+            "enviar_respostas_faq_ia",
             "database_atualizada",
             "atualizado_em",
         ]

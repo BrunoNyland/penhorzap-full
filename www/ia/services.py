@@ -65,7 +65,14 @@ def _formatar_historico(historico_mensagens):
 def _formatar_faqs(faqs):
     if not faqs:
         return "(sem FAQ cadastrado)"
-    return "\n".join(f"- ID: {f.get('id')}\n  P: {f.get('pergunta')}" for f in faqs) or "(sem FAQ cadastrado)"
+    linhas = []
+    for f in faqs:
+        item = f"- ID: {f.get('id')}\n  P: {f.get('pergunta')}"
+        if "respostas" in f and f["respostas"]:
+            respostas_txt = " | ".join(f["respostas"])
+            item += f"\n  R: {respostas_txt}"
+        linhas.append(item)
+    return "\n".join(linhas) or "(sem FAQ cadastrado)"
 
 
 def _formatar_mensagens_lote(mensagens_lote) -> str:

@@ -77,6 +77,14 @@ import { ApiService } from '../../services/api.service';
               </label>
             </div>
 
+            <div class="form-group margin-bottom">
+              <label class="checkbox-container">
+                <input type="checkbox" name="enviar_respostas_faq_ia" [(ngModel)]="botConfig.enviar_respostas_faq_ia" />
+                <span class="custom-checkbox"></span>
+                <span><strong>Enviar Respostas das FAQs para a IA</strong> (Fornece o texto das respostas ativas da FAQ no prompt para dar mais contexto antes da classificação)</span>
+              </label>
+            </div>
+
             <div class="grid-2">
               <div class="form-group">
                 <label for="horario_encerramento">Horário de Encerramento Automático</label>
