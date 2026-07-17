@@ -1,6 +1,9 @@
 import { Component, inject, signal, OnInit, ChangeDetectionStrategy } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { DatePipe, CurrencyPipe, NgClass } from '@angular/common';
+import { Subject } from 'rxjs';
+import { debounceTime } from 'rxjs/operators';
 import { ApiService } from '../../services/api.service';
 import { IconComponent } from '../../shared/icon/icon.component';
 
@@ -20,9 +23,9 @@ import { IconComponent } from '../../shared/icon/icon.component';
         <div class="form-group flex-1">
           <input 
             type="text" 
-            placeholder="Buscar por Nome ou CPF..." 
-            [(ngModel)]="searchQuery" 
-            (ngModelChange)="loadClientes()"
+            placeholder="Buscar por Nome ou CPF..."
+            [(ngModel)]="searchQuery"
+            (ngModelChange)="onSearchInput()"
           />
         </div>
         <div class="form-group filter-select-group">
@@ -34,7 +37,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
       </div>
 
       <!-- Customer Grid -->
-      @if (loading() && Clientes().length === 0) {
+      @if (loading() && clientes().length === 0) {
         <div class="loading-container">
           <div class="spinner"></div>
           <p>Carregando registros de clientes...</p>
@@ -55,7 +58,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
               </tr>
             </thead>
             <tbody>
-              @for (c of Clientes(); track c.cpf) {
+              @for (c of clientes(); track c.cpf) {
                 <tr>
                   <td><code>{{ c.cpf }}</code></td>
                   <td><strong>{{ c.nome }}</strong></td>
@@ -322,17 +325,27 @@ import { IconComponent } from '../../shared/icon/icon.component';
 export class CustomersComponent implements OnInit {
   private apiService = inject(ApiService);
 
-  Clientes = signal<any[]>([]);
+  clientes = signal<any[]>([]);
   loading = signal(false);
 
   // Search/Filters
   searchQuery = '';
   filterBloqueado = '';
+  private searchInput$ = new Subject<void>();
 
   // Detail Modal State
   showDetailModal = signal(false);
   selectedCliente = signal<any | null>(null);
   blockMotivo = '';
+
+  constructor() {
+    // Evita 1 requisição por tecla digitada e respostas fora de ordem.
+    this.searchInput$.pipe(debounceTime(300), takeUntilDestroyed()).subscribe(() => this.loadClientes());
+  }
+
+  onSearchInput(): void {
+    this.searchInput$.next();
+  }
 
   ngOnInit(): void {
     this.loadClientes();
@@ -346,7 +359,7 @@ export class CustomersComponent implements OnInit {
       ativos_somente: '1'
     }).subscribe({
       next: (data) => {
-        this.Clientes.set(data);
+        this.clientes.set(data);
         this.loading.set(false);
       },
       error: () => this.loading.set(false)

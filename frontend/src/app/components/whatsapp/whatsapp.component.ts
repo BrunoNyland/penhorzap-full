@@ -199,9 +199,12 @@ export class WhatsappComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.fetchState();
-    // Poll the status every 5 seconds
+    // Poll the status every 5 seconds, mas só com a aba visível -- evita
+    // bater na Evolution API à toa com o painel minimizado/em background.
     this.pollInterval = setInterval(() => {
-      this.fetchState(true);
+      if (!document.hidden) {
+        this.fetchState(true);
+      }
     }, 5000);
   }
 

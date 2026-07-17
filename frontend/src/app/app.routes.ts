@@ -1,29 +1,49 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './guards/auth.guard';
-import { LoginComponent } from './components/login/login.component';
-import { DashboardComponent } from './components/dashboard/dashboard.component';
-import { FAQComponent } from './components/faq/faq.component';
-import { ConversationsComponent } from './components/conversations/conversations.component';
-import { CustomersComponent } from './components/customers/customers.component';
-import { ConfigComponent } from './components/config/config.component';
-import { WhatsappComponent } from './components/whatsapp/whatsapp.component';
-import { ImportDataComponent } from './components/import-data/import-data.component';
-import { SimulatorComponent } from './components/simulator/simulator.component';
+import { unsavedChangesGuard } from './guards/unsaved-changes.guard';
 
 export const routes: Routes = [
-  { path: 'login', component: LoginComponent },
+  {
+    path: 'login',
+    loadComponent: () => import('./components/login/login.component').then(m => m.LoginComponent)
+  },
   {
     path: '',
     canActivate: [authGuard],
     children: [
-      { path: 'dashboard', component: DashboardComponent },
-      { path: 'faqs', component: FAQComponent },
-      { path: 'conversations', component: ConversationsComponent },
-      { path: 'customers', component: CustomersComponent },
-      { path: 'config', component: ConfigComponent },
-      { path: 'whatsapp', component: WhatsappComponent },
-      { path: 'importar-dados', component: ImportDataComponent },
-      { path: 'simulator', component: SimulatorComponent },
+      {
+        path: 'dashboard',
+        loadComponent: () => import('./components/dashboard/dashboard.component').then(m => m.DashboardComponent)
+      },
+      {
+        path: 'faqs',
+        loadComponent: () => import('./components/faq/faq.component').then(m => m.FAQComponent)
+      },
+      {
+        path: 'conversations',
+        loadComponent: () => import('./components/conversations/conversations.component').then(m => m.ConversationsComponent)
+      },
+      {
+        path: 'customers',
+        loadComponent: () => import('./components/customers/customers.component').then(m => m.CustomersComponent)
+      },
+      {
+        path: 'config',
+        loadComponent: () => import('./components/config/config.component').then(m => m.ConfigComponent),
+        canDeactivate: [unsavedChangesGuard]
+      },
+      {
+        path: 'whatsapp',
+        loadComponent: () => import('./components/whatsapp/whatsapp.component').then(m => m.WhatsappComponent)
+      },
+      {
+        path: 'importar-dados',
+        loadComponent: () => import('./components/import-data/import-data.component').then(m => m.ImportDataComponent)
+      },
+      {
+        path: 'simulator',
+        loadComponent: () => import('./components/simulator/simulator.component').then(m => m.SimulatorComponent)
+      },
       { path: '', redirectTo: 'dashboard', pathMatch: 'full' }
     ]
   },

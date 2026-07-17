@@ -1,6 +1,9 @@
 import { Component, inject, signal, computed, OnInit, AfterViewChecked, ViewChild, ElementRef, ChangeDetectionStrategy } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { NgClass, JsonPipe } from '@angular/common';
+import { Subject } from 'rxjs';
+import { debounceTime } from 'rxjs/operators';
 import { ApiService } from '../../services/api.service';
 import { IconComponent } from '../../shared/icon/icon.component';
 
@@ -38,7 +41,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
                 type="text" 
                 placeholder="Buscar cliente por CPF ou Nome..." 
                 [(ngModel)]="searchQuery"
-                (ngModelChange)="buscarClientes()"
+                (ngModelChange)="onSearchInput()"
               />
               
               @if (searchResults().length > 0) {
@@ -477,12 +480,22 @@ export class SimulatorComponent implements OnInit, AfterViewChecked {
 
   searchQuery = '';
   searchResults = signal<any[]>([]);
-  
+  private searchInput$ = new Subject<void>();
+
   msgInput = '';
   sending = signal(false);
 
   modalPromptAberto = signal(false);
   activeDebugData = signal<any | null>(null);
+
+  constructor() {
+    // Evita 1 requisição por tecla digitada e respostas fora de ordem.
+    this.searchInput$.pipe(debounceTime(300), takeUntilDestroyed()).subscribe(() => this.buscarClientes());
+  }
+
+  onSearchInput(): void {
+    this.searchInput$.next();
+  }
 
   abrirModalPrompt(debugData: any): void {
     this.activeDebugData.set(debugData);

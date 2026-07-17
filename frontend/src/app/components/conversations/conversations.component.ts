@@ -1,6 +1,9 @@
 import { Component, inject, signal, computed, OnInit, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { DatePipe, NgClass } from '@angular/common';
+import { Subject } from 'rxjs';
+import { debounceTime } from 'rxjs/operators';
 import { ApiService } from '../../services/api.service';
 import { IconComponent } from '../../shared/icon/icon.component';
 
@@ -29,9 +32,9 @@ import { IconComponent } from '../../shared/icon/icon.component';
           <div class="filter-controls margin-top-sm">
             <input 
               type="text" 
-              placeholder="Buscar por JID, CPF ou Nome..." 
-              [(ngModel)]="searchQuery" 
-              (ngModelChange)="loadConversas()"
+              placeholder="Buscar por JID, CPF ou Nome..."
+              [(ngModel)]="searchQuery"
+              (ngModelChange)="onSearchInput()"
             />
             
             <div class="filter-row margin-top-sm" style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -807,6 +810,18 @@ export class ConversationsComponent implements OnInit, OnDestroy {
 
   selectedChatId = signal<number | null>(null);
   private pollingInterval: any;
+  private searchInput$ = new Subject<void>();
+
+  constructor() {
+    // Evita 1 requisição por tecla digitada e as respostas fora de ordem
+    // que isso causava (resposta lenta de uma busca antiga sobrescrevendo
+    // o resultado de uma busca mais recente).
+    this.searchInput$.pipe(debounceTime(300), takeUntilDestroyed()).subscribe(() => this.loadConversas());
+  }
+
+  onSearchInput(): void {
+    this.searchInput$.next();
+  }
 
   ngOnInit(): void {
     this.loadConversas();

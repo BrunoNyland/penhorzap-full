@@ -438,7 +438,6 @@ export class DashboardComponent implements OnInit {
   receivedPath = computed(() => {
     const data = this.serie();
     if (data.length === 0) return '';
-    const max = this.maxVal();
     return data.map((d: any, i: number) => {
       const x = this.getNodeX(i);
       const y = this.getNodeY(d.recebidas);
@@ -449,7 +448,6 @@ export class DashboardComponent implements OnInit {
   sentPath = computed(() => {
     const data = this.serie();
     if (data.length === 0) return '';
-    const max = this.maxVal();
     return data.map((d: any, i: number) => {
       const x = this.getNodeX(i);
       const y = this.getNodeY(d.enviadas);
@@ -475,7 +473,8 @@ export class DashboardComponent implements OnInit {
   }
 
   getNodeX(index: number): number {
-    const dataLength = this.serie().length || 1;
+    const dataLength = this.serie().length;
+    if (dataLength <= 1) return 45;
     return (index / (dataLength - 1)) * (this.svgWidth - 60) + 45;
   }
 

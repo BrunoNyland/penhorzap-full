@@ -44,6 +44,9 @@ export class ImportDataComponent implements OnInit, OnDestroy {
 
   onUpload(): void {
     if (!this.selectedFile || this.loading() || this.polling()) return;
+    if (!confirm(`Importar "${this.selectedFile.name}" agora vai sobrescrever os dados atuais de clientes, contratos, agências e licitações. Continuar?`)) {
+      return;
+    }
 
     const formData = new FormData();
     formData.append('arquivo', this.selectedFile, this.selectedFile.name);

@@ -1,6 +1,7 @@
-import { Component, inject, signal, OnInit, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, signal, HostListener, OnInit, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
+import { ComponentCanDeactivate } from '../../guards/unsaved-changes.guard';
 
 @Component({
   selector: 'app-config',
@@ -413,7 +414,7 @@ import { ApiService } from '../../services/api.service';
     }
   `]
 })
-export class ConfigComponent implements OnInit {
+export class ConfigComponent implements OnInit, ComponentCanDeactivate {
   private apiService = inject(ApiService);
 
   activeTab = signal<'bot' | 'prompt' | 'mensagens' | 'contrato'>('bot');
@@ -425,6 +426,11 @@ export class ConfigComponent implements OnInit {
 
   botConfig: any = {};
   mensagensConfig: any = {};
+
+  // Snapshot do último estado salvo/carregado, pra detectar edição não
+  // salva (aviso ao trocar de tela ou fechar a aba -- ver hasUnsavedChanges).
+  private savedBotConfigJson = '{}';
+  private savedMensagensConfigJson = '{}';
 
   camposMensagens = [
     { key: 'msg_saudacao', label: 'Saudação (Desconhecido)', help: 'Saudação inicial p/ contatos não salvos na agenda. Use a tag {saudacao}.' },
@@ -576,12 +582,28 @@ export class ConfigComponent implements OnInit {
     this.loading.set(true);
     this.apiService.getBotConfig().subscribe(res => {
       this.botConfig = res;
+      this.savedBotConfigJson = JSON.stringify(res);
     });
 
     this.apiService.getMensagensConfig().subscribe(res => {
       this.mensagensConfig = res;
+      this.savedMensagensConfigJson = JSON.stringify(res);
       this.loading.set(false);
     });
+  }
+
+  hasUnsavedChanges(): boolean {
+    return (
+      JSON.stringify(this.botConfig) !== this.savedBotConfigJson ||
+      JSON.stringify(this.mensagensConfig) !== this.savedMensagensConfigJson
+    );
+  }
+
+  @HostListener('window:beforeunload', ['$event'])
+  onBeforeUnload(event: BeforeUnloadEvent): void {
+    if (this.hasUnsavedChanges()) {
+      event.preventDefault();
+    }
   }
 
   saveBotConfig(): void {
@@ -589,6 +611,7 @@ export class ConfigComponent implements OnInit {
     this.apiService.updateBotConfig(this.botConfig).subscribe({
       next: (res) => {
         this.botConfig = res;
+        this.savedBotConfigJson = JSON.stringify(res);
         this.showToast('Configuração do bot atualizada com sucesso!', 'success');
         this.saving.set(false);
       },
@@ -604,6 +627,7 @@ export class ConfigComponent implements OnInit {
     this.apiService.updateMensagensConfig(this.mensagensConfig).subscribe({
       next: (res) => {
         this.mensagensConfig = res;
+        this.savedMensagensConfigJson = JSON.stringify(res);
         this.showToast('Prompts & Mensagens salvos com sucesso!', 'success');
         this.saving.set(false);
       },
@@ -619,6 +643,7 @@ export class ConfigComponent implements OnInit {
       this.apiService.restaurarMensagemCampo(campo).subscribe({
         next: (res) => {
           this.mensagensConfig = res;
+          this.savedMensagensConfigJson = JSON.stringify(res);
           this.showToast(`Campo ${campo} restaurado ao padrão de fábrica!`, 'success');
         },
         error: () => {
