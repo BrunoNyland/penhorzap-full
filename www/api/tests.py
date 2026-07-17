@@ -769,6 +769,93 @@ class ConversaDetailMidiaTestCase(APITestCase):
         self.assertNotIn("segredo_evolution", json.dumps(msg_data))
 
 
+class BaixarMediaMensagemTestCase(APITestCase):
+    """Regressão: `baixar_media_mensagem` usava `settings.EVOLUTION_API_URL`
+    sem importar `settings` -- NameError em produção (500) toda vez que o
+    operador tentava abrir uma imagem/áudio recebido, sem nenhum teste
+    cobrindo o caminho feliz até a chamada à Evolution API."""
+
+    def setUp(self):
+        self.staff_user = User.objects.create_user(username="staffmedia", password="password", is_staff=True)
+        self.conversa = Conversa.objects.create(
+            remote_jid="5567988776655@s.whatsapp.net",
+            estado=Conversa.Estado.NOVA,
+            tipo_contato=Conversa.TipoContato.DESCONHECIDO,
+        )
+        self.mensagem = Mensagem.objects.create(
+            conversa=self.conversa,
+            direcao=Mensagem.Direcao.IN,
+            texto="",
+            tipo_midia=Mensagem.TipoMidia.IMAGE,
+            payload_bruto={
+                "data": {
+                    "key": {"id": "WA123"},
+                    "message": {"imageMessage": {"mimetype": "image/jpeg"}},
+                }
+            },
+        )
+
+    def _url(self):
+        return f"/api/conversas/{self.conversa.id}/mensagens/{self.mensagem.id}/media/"
+
+    @patch("requests.post")
+    def test_baixa_midia_com_sucesso(self, mock_post):
+        import base64
+        mock_post.return_value = MagicMock(
+            status_code=201,
+            json=lambda: {"base64": base64.b64encode(b"fake-jpeg-bytes").decode(), "mimetype": "image/jpeg"},
+        )
+        self.client.force_authenticate(user=self.staff_user)
+        response = self.client.get(self._url())
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.content, b"fake-jpeg-bytes")
+        self.assertEqual(response["Content-Type"], "image/jpeg")
+
+    @patch("requests.post")
+    def test_erro_da_evolution_api_retorna_502_sem_quebrar(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=500)
+        self.client.force_authenticate(user=self.staff_user)
+        response = self.client.get(self._url())
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
+
+    def test_mensagem_sem_midia_retorna_404(self):
+        mensagem_texto = Mensagem.objects.create(
+            conversa=self.conversa,
+            direcao=Mensagem.Direcao.IN,
+            texto="oi",
+            payload_bruto={"data": {"message": {"conversation": "oi"}}},
+        )
+        self.client.force_authenticate(user=self.staff_user)
+        url = f"/api/conversas/{self.conversa.id}/mensagens/{mensagem_texto.id}/media/"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    @patch("requests.post")
+    def test_midia_embrulhada_em_ephemeral_message_e_baixada(self, mock_post):
+        import base64
+        mensagem_efemera = Mensagem.objects.create(
+            conversa=self.conversa,
+            direcao=Mensagem.Direcao.IN,
+            texto="",
+            tipo_midia=Mensagem.TipoMidia.AUDIO,
+            payload_bruto={
+                "data": {
+                    "key": {"id": "WA124"},
+                    "message": {"ephemeralMessage": {"message": {"audioMessage": {"mimetype": "audio/ogg"}}}},
+                }
+            },
+        )
+        mock_post.return_value = MagicMock(
+            status_code=201,
+            json=lambda: {"base64": base64.b64encode(b"fake-audio-bytes").decode(), "mimetype": "audio/ogg"},
+        )
+        self.client.force_authenticate(user=self.staff_user)
+        url = f"/api/conversas/{self.conversa.id}/mensagens/{mensagem_efemera.id}/media/"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.content, b"fake-audio-bytes")
+
+
 class ConversaEnviarArquivoTestCase(APITestCase):
     def setUp(self):
         self.staff_user = User.objects.create_user(username="staffarq", password="password", is_staff=True)

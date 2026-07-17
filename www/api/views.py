@@ -910,6 +910,7 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
     def baixar_media_mensagem(self, request, pk=None, mensagem_id=None):
         import base64
         import requests
+        from django.conf import settings
         from django.http import HttpResponse, Http404
 
         conversa = self.get_object()
