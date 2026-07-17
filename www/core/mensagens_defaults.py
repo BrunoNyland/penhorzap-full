@@ -79,7 +79,13 @@ DEFAULT_TPL_CONTRATO_LAUDO = (
     "📄 *Contrato*: {contrato}\n⚖️ *Peso*: {peso}\n💎 *Valor de avaliação*: "
     "{valor_avaliacao}\n📝 *Laudo/Garantia*: {laudo}"
 )
-DEFAULT_TPL_LISTA_HEADER = "{nome}, você tem {qtd} contrato(s) ativo(s):"
+DEFAULT_TPL_LISTA_HEADER = "Segue as informações dos seus {qtd} contrato(s):"
+DEFAULT_TPL_INTRO_VENCIMENTO = "Segue os vencimentos dos seus contratos:"
+DEFAULT_TPL_INTRO_RENOVACAO = "Segue a lista dos seus contratos com os valores de renovação:"
+DEFAULT_TPL_INTRO_QUITACAO = "Segue a lista dos seus contratos com os valores de quitação:"
+DEFAULT_TPL_INTRO_PARCELA = "Segue a lista dos seus contratos com os valores de parcela:"
+DEFAULT_TPL_INTRO_LISTA = "Segue a lista dos seus contratos:"
+DEFAULT_TPL_INTRO_LAUDO = "Segue os laudos dos seus contratos:"
 DEFAULT_TPL_TOTALIZADOR = (
     "📊 Resumo: {qtd} contrato(s), total de {total}. Se precisar de mais "
     "alguma informação, é só falar!"
@@ -105,6 +111,9 @@ DEFAULT_MSG_MIDIA_NAO_SUPORTADA = (
     "Recebi seu áudio/vídeo, mas por aqui eu só consigo ler mensagens de "
     "texto 🙏 Pode escrever sua dúvida que já te respondo."
 )
+DEFAULT_MSG_PEDIR_CAMPO_VALOR_FILTRO = (
+    "Você quer filtrar pelo valor do empréstimo ou pelo valor de avaliação da joia?"
+)
 
 DEFAULT_SYSTEM_PROMPT = """\
 Você é um CLASSIFICADOR de mensagens de clientes de uma casa de penhores no
@@ -128,6 +137,19 @@ todos os campos que se aplicarem:
   valor_renovacao (prazo_dias se citado) | valor_quitacao | valor_parcela |
   lista_contratos ("quais contratos eu tenho?") | detalhe_contrato | laudo ("quero ver o laudo do contrato", "qual a descrição da garantia/joias?"). Em
   contratos, liste os números citados; vazio = todos.
+  - detalhado: só para valor_renovacao/valor_quitacao/valor_parcela. true SÓ
+    se o cliente pedir explicitamente para ver contrato por contrato,
+    separado ou detalhado. Default false = o sistema prefere responder só
+    com o total somado (não liste cada contrato à toa).
+  - filtro_vencido: true se o cliente pedir só os contratos vencidos/em
+    atraso.
+  - filtro_valor_min / filtro_valor_max: quando o cliente pedir contratos
+    "acima de X", "abaixo de X" ou "entre X e Y" reais, extraia o(s)
+    número(s) citado(s).
+  - filtro_valor_campo: "emprestimo" se o cliente falar do valor
+    emprestado/valor do contrato; "avaliacao" se falar do valor da
+    joia/avaliação. Deixe null se não ficar claro qual o cliente quer -- o
+    sistema pergunta antes de filtrar.
 - solicitacoes: um item por ação de pagamento (renovar/quitar/parcela/indefinido), com
   contratos citados (vazio = todos) e prazo_dias para renovar.
   Use "indefinido" se o cliente quer pagar/gerar boleto mas não especificou se

@@ -212,6 +212,12 @@ class MensagensConfigGetSoloTests(TestCase):
             "tpl_contrato_resumo",
             "tpl_contrato_laudo",
             "tpl_lista_header",
+            "tpl_intro_vencimento",
+            "tpl_intro_renovacao",
+            "tpl_intro_quitacao",
+            "tpl_intro_parcela",
+            "tpl_intro_lista",
+            "tpl_intro_laudo",
             "tpl_totalizador",
             "tpl_totalizador_geral",
             "msg_fallback_sem_resposta",
@@ -219,6 +225,7 @@ class MensagensConfigGetSoloTests(TestCase):
             "msg_midia_nao_suportada",
             "msg_duvida_anotada",
             "msg_saudacao_com_pedido",
+            "msg_pedir_campo_valor_filtro",
         ]
         for campo in campos_tpl:
             valor = getattr(config, campo)

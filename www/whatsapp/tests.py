@@ -29,6 +29,7 @@ from core.models import (
     Telefone,
 )
 from ia.schemas import (
+    CampoValor,
     ClassificacaoLote,
     InfoContrato,
     InfoContratoPedido,
@@ -735,6 +736,37 @@ class MultiAcaoLoteTests(WhatsappTasksTestCase):
         self.conv.refresh_from_db()
         self.assertTrue(self.conv.precisa_revisao_humana)
 
+    def test_filtro_valor_sem_campo_pergunta_1x_e_suprime_o_pedido(self):
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mock_ia.return_value = _classificacao(
+                infos_contrato=[
+                    InfoContratoPedido(info=InfoContrato.LISTA_CONTRATOS, filtro_valor_min=10000, filtro_valor_campo=None)
+                ],
+            )
+            mensagem = self._in(self.conv, "me manda os contratos acima de 10 mil")
+            process_mensagem(mensagem.id)
+
+        self.assertEqual(self._last_out_texto(self.conv), self.msgs.msg_pedir_campo_valor_filtro)
+
+    def test_filtro_valor_com_campo_definido_nao_pergunta(self):
+        self.contrato.vlr_emprestimo = 15000
+        self.contrato.save(update_fields=["vlr_emprestimo"])
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            mock_ia.return_value = _classificacao(
+                infos_contrato=[
+                    InfoContratoPedido(
+                        info=InfoContrato.LISTA_CONTRATOS,
+                        filtro_valor_min=10000,
+                        filtro_valor_campo=CampoValor.EMPRESTIMO,
+                    )
+                ],
+            )
+            mensagem = self._in(self.conv, "me manda os contratos acima de 10 mil de empréstimo")
+            process_mensagem(mensagem.id)
+
+        self.assertNotEqual(self._last_out_texto(self.conv), self.msgs.msg_pedir_campo_valor_filtro)
+        self.assertIn("C1", self._last_out_texto(self.conv))
+
 
 class FalsoPositivoCpfTests(WhatsappTasksTestCase):
     def setUp(self):
@@ -1098,9 +1130,7 @@ class RenderizarInfosContratoTests(TestCase):
         resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VENCIMENTO)], self.msgs)
         # sequência: intro -> 1 linha por contrato -> totalizador
         self.assertEqual(len(resultado), 4)
-        self.assertEqual(
-            resultado[0], render_template(self.msgs.tpl_lista_header, nome="Beatriz", qtd=2)
-        )
+        self.assertEqual(resultado[0], self.msgs.tpl_intro_vencimento)
         self.assertIn("C1", resultado[1])
         self.assertIn("C2", resultado[2])
         ativos_map = {c["contrato"]: c for c in _contratos_ativos_values(self.cliente)}
@@ -1161,7 +1191,7 @@ class RenderizarInfosContratoTests(TestCase):
         resultado = renderizar_infos_contrato(self.cliente, pedidos, self.msgs)
         # intro + 3 mensagens mescladas (resumo + laudo juntos) + 1 totalizador geral só
         self.assertEqual(len(resultado), 5)
-        self.assertEqual(resultado[0], render_template(self.msgs.tpl_lista_header, nome="Beatriz", qtd=3))
+        self.assertEqual(resultado[0], render_template(self.msgs.tpl_lista_header, qtd=3))
         self.assertIn("C1", resultado[1])
         self.assertIn("Colar de ouro", resultado[1])
         self.assertIn("C2", resultado[2])
@@ -1185,12 +1215,26 @@ class RenderizarInfosContratoTests(TestCase):
         self.assertIn("R$ 3.000,00", resultado[3])
         self.assertNotIn("Total avaliado", resultado[3])
 
-    def test_dois_pedidos_numericos_geram_dois_totalizadores(self):
+    def test_dois_pedidos_numericos_sem_detalhado_geram_so_dois_totalizadores(self):
+        # Padrão (detalhado=False): sem listar contrato por contrato, só o
+        # resumo de cada tipo pedido.
         self._contrato(contrato="C1", liquidacao="R$ 1.000,00", parcelado=True, vlr_parcela=100)
         self._contrato(contrato="C2", liquidacao="R$ 2.000,00", parcelado=True, vlr_parcela=200)
         pedidos = [
             InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO),
             InfoContratoPedido(info=InfoContrato.VALOR_PARCELA),
+        ]
+        resultado = renderizar_infos_contrato(self.cliente, pedidos, self.msgs)
+        self.assertEqual(len(resultado), 2)
+        self.assertIn("R$ 3.000,00", resultado[0])
+        self.assertIn("R$ 300,00", resultado[1])
+
+    def test_dois_pedidos_numericos_detalhado_geram_intro_linhas_e_totalizadores(self):
+        self._contrato(contrato="C1", liquidacao="R$ 1.000,00", parcelado=True, vlr_parcela=100)
+        self._contrato(contrato="C2", liquidacao="R$ 2.000,00", parcelado=True, vlr_parcela=200)
+        pedidos = [
+            InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO, detalhado=True),
+            InfoContratoPedido(info=InfoContrato.VALOR_PARCELA, detalhado=True),
         ]
         resultado = renderizar_infos_contrato(self.cliente, pedidos, self.msgs)
         # intro + 2 mensagens mescladas + totalizador de quitação + totalizador de parcela
@@ -1223,6 +1267,65 @@ class RenderizarInfosContratoTests(TestCase):
         self.assertNotIn("Anel de prata", texto_c2)
         self.assertNotIn("Colar de ouro", texto_c2)
 
+    # --- Filtros: vencido / valor -------------------------------------------
+
+    def test_filtro_vencido_so_inclui_contratos_com_data_passada(self):
+        self._contrato(contrato="C1", data_vencimento=timezone.localdate() - timedelta(days=5))
+        self._contrato(contrato="C2", data_vencimento=timezone.localdate() + timedelta(days=20))
+        pedido = InfoContratoPedido(info=InfoContrato.VENCIMENTO, filtro_vencido=True)
+        resultado = renderizar_infos_contrato(self.cliente, [pedido], self.msgs)
+        texto = "\n".join(resultado)
+        self.assertIn("C1", texto)
+        self.assertNotIn("C2", texto)
+
+    def test_filtro_vencido_sem_nenhum_vencido_retorna_sem_contratos(self):
+        self._contrato(contrato="C1", data_vencimento=timezone.localdate() + timedelta(days=20))
+        pedido = InfoContratoPedido(info=InfoContrato.VENCIMENTO, filtro_vencido=True)
+        resultado = renderizar_infos_contrato(self.cliente, [pedido], self.msgs)
+        self.assertEqual(resultado, [self.msgs.msg_sem_contratos_ativos])
+
+    def test_filtro_valor_min_emprestimo_filtra_contratos_abaixo(self):
+        self._contrato(contrato="C1", vlr_emprestimo=Decimal("15000"))
+        self._contrato(contrato="C2", vlr_emprestimo=Decimal("5000"))
+        pedido = InfoContratoPedido(
+            info=InfoContrato.LISTA_CONTRATOS, filtro_valor_min=10000, filtro_valor_campo=CampoValor.EMPRESTIMO
+        )
+        resultado = renderizar_infos_contrato(self.cliente, [pedido], self.msgs)
+        texto = "\n".join(resultado)
+        self.assertIn("C1", texto)
+        self.assertNotIn("C2", texto)
+
+    def test_filtro_valor_campo_avaliacao_usa_vlr_avaliacao(self):
+        self._contrato(contrato="C1", vlr_emprestimo=Decimal("5000"), vlr_avaliacao=Decimal("15000"))
+        self._contrato(contrato="C2", vlr_emprestimo=Decimal("15000"), vlr_avaliacao=Decimal("5000"))
+        pedido = InfoContratoPedido(
+            info=InfoContrato.LISTA_CONTRATOS, filtro_valor_min=10000, filtro_valor_campo=CampoValor.AVALIACAO
+        )
+        resultado = renderizar_infos_contrato(self.cliente, [pedido], self.msgs)
+        texto = "\n".join(resultado)
+        self.assertIn("C1", texto)
+        self.assertNotIn("C2", texto)
+
+    def test_filtro_valor_max_filtra_contratos_acima(self):
+        self._contrato(contrato="C1", vlr_emprestimo=Decimal("15000"))
+        self._contrato(contrato="C2", vlr_emprestimo=Decimal("5000"))
+        pedido = InfoContratoPedido(
+            info=InfoContrato.LISTA_CONTRATOS, filtro_valor_max=10000, filtro_valor_campo=CampoValor.EMPRESTIMO
+        )
+        resultado = renderizar_infos_contrato(self.cliente, [pedido], self.msgs)
+        texto = "\n".join(resultado)
+        self.assertIn("C2", texto)
+        self.assertNotIn("C1", texto)
+
+    def test_filtro_valor_sem_campo_definido_ignora_filtro_no_renderer(self):
+        # Ambiguidade de campo já deveria ter sido resolvida pelo dispatch
+        # (whatsapp.tasks) antes de chegar aqui; o renderer nunca quebra --
+        # se chegar sem campo definido, simplesmente não filtra por valor.
+        self._contrato(contrato="C1", vlr_emprestimo=Decimal("5000"))
+        pedido = InfoContratoPedido(info=InfoContrato.LISTA_CONTRATOS, filtro_valor_min=10000, filtro_valor_campo=None)
+        resultado = renderizar_infos_contrato(self.cliente, [pedido], self.msgs)
+        self.assertIn("C1", "\n".join(resultado))
+
     # --- Totalizador: soma dos valores + quantidade -------------------------
 
     def test_totalizador_renovacao_soma_valores(self):
@@ -1238,7 +1341,9 @@ class RenderizarInfosContratoTests(TestCase):
         self._contrato(contrato="C1", parcelado=True, vlr_parcela=100)
         self._contrato(contrato="C2", parcelado=True, vlr_parcela=250)
         self._contrato(contrato="C3", parcelado=False, vlr_parcela=999)
-        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_PARCELA)], self.msgs)
+        resultado = renderizar_infos_contrato(
+            self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_PARCELA, detalhado=True)], self.msgs
+        )
         totalizador = resultado[-1]
         self.assertIn("R$ 350,00", totalizador)
         self.assertNotIn("999", "\n".join(resultado))

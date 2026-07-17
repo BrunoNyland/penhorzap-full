@@ -12,6 +12,7 @@ from .mensagens_defaults import (
     DEFAULT_MSG_INFO_NEGADA_DESCONHECIDO,
     DEFAULT_MSG_MIDIA_NAO_SUPORTADA,
     DEFAULT_MSG_NEUTRA_PADRAO,
+    DEFAULT_MSG_PEDIR_CAMPO_VALOR_FILTRO,
     DEFAULT_MSG_PEDIR_CPF,
     DEFAULT_MSG_QUITACAO_GARANTIA,
     DEFAULT_MSG_RENOVACAO_PROXIMO_VENCIMENTO,
@@ -27,6 +28,12 @@ from .mensagens_defaults import (
     DEFAULT_TPL_CONTRATO_RESUMO,
     DEFAULT_TPL_CONTRATO_LAUDO,
     DEFAULT_TPL_CONTRATO_VENCIMENTO,
+    DEFAULT_TPL_INTRO_LAUDO,
+    DEFAULT_TPL_INTRO_LISTA,
+    DEFAULT_TPL_INTRO_PARCELA,
+    DEFAULT_TPL_INTRO_QUITACAO,
+    DEFAULT_TPL_INTRO_RENOVACAO,
+    DEFAULT_TPL_INTRO_VENCIMENTO,
     DEFAULT_TPL_LISTA_HEADER,
     DEFAULT_TPL_SAUDACAO_CLIENTE,
     DEFAULT_TPL_SAUDACAO_CLIENTE_COM_PEDIDO,
@@ -485,7 +492,16 @@ class MensagensConfig(models.Model):
     tpl_contrato_parcela = models.TextField(default=DEFAULT_TPL_CONTRATO_PARCELA)
     tpl_contrato_resumo = models.TextField(default=DEFAULT_TPL_CONTRATO_RESUMO)
     tpl_contrato_laudo = models.TextField(default=DEFAULT_TPL_CONTRATO_LAUDO)
-    tpl_lista_header = models.TextField(default=DEFAULT_TPL_LISTA_HEADER)
+    tpl_lista_header = models.TextField(
+        default=DEFAULT_TPL_LISTA_HEADER,
+        help_text="Usado só quando o cliente pede 2+ tipos de dado diferentes juntos (ex.: laudo + lista) -- cada tipo sozinho usa seu próprio intro (tpl_intro_*).",
+    )
+    tpl_intro_vencimento = models.TextField(default=DEFAULT_TPL_INTRO_VENCIMENTO)
+    tpl_intro_renovacao = models.TextField(default=DEFAULT_TPL_INTRO_RENOVACAO)
+    tpl_intro_quitacao = models.TextField(default=DEFAULT_TPL_INTRO_QUITACAO)
+    tpl_intro_parcela = models.TextField(default=DEFAULT_TPL_INTRO_PARCELA)
+    tpl_intro_lista = models.TextField(default=DEFAULT_TPL_INTRO_LISTA)
+    tpl_intro_laudo = models.TextField(default=DEFAULT_TPL_INTRO_LAUDO)
     tpl_totalizador = models.TextField(default=DEFAULT_TPL_TOTALIZADOR)
     tpl_totalizador_geral = models.TextField(default=DEFAULT_TPL_TOTALIZADOR_GERAL)
     msg_fallback_sem_resposta = models.TextField(default=DEFAULT_MSG_FALLBACK_SEM_RESPOSTA)
@@ -495,6 +511,10 @@ class MensagensConfig(models.Model):
     )
     msg_info_negada_desconhecido = models.TextField(default=DEFAULT_MSG_INFO_NEGADA_DESCONHECIDO)
     msg_midia_nao_suportada = models.TextField(default=DEFAULT_MSG_MIDIA_NAO_SUPORTADA)
+    msg_pedir_campo_valor_filtro = models.TextField(
+        default=DEFAULT_MSG_PEDIR_CAMPO_VALOR_FILTRO,
+        help_text="Pergunta quando o cliente pede um filtro de valor (ex.: 'acima de 10 mil') sem deixar claro se é valor do empréstimo ou de avaliação.",
+    )
     atualizado_em = models.DateTimeField(auto_now=True)
 
     class Meta:

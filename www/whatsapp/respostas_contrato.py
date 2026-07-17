@@ -11,8 +11,10 @@ import re
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
+from django.utils import timezone
+
 from core.utils import parse_br_decimal
-from ia.schemas import InfoContrato
+from ia.schemas import CampoValor, InfoContrato
 
 logger = logging.getLogger(__name__)
 
@@ -243,23 +245,79 @@ def _montar_totalizador(info, contratos: list, ativos_map: dict, msgs, prazo=Non
 
 _INFOS_NUMERICOS = (InfoContrato.VALOR_RENOVACAO, InfoContrato.VALOR_QUITACAO, InfoContrato.VALOR_PARCELA)
 
+_CAMPO_VALOR_DB = {
+    CampoValor.EMPRESTIMO: "vlr_emprestimo",
+    CampoValor.AVALIACAO: "vlr_avaliacao",
+}
+
+_INTRO_TPL_ATTR = {
+    InfoContrato.VENCIMENTO: "tpl_intro_vencimento",
+    InfoContrato.VALOR_RENOVACAO: "tpl_intro_renovacao",
+    InfoContrato.VALOR_QUITACAO: "tpl_intro_quitacao",
+    InfoContrato.VALOR_PARCELA: "tpl_intro_parcela",
+    InfoContrato.LISTA_CONTRATOS: "tpl_intro_lista",
+    InfoContrato.DETALHE_CONTRATO: "tpl_intro_lista",
+    InfoContrato.LAUDO: "tpl_intro_laudo",
+}
+
+
+def _resolver_alvo(pedido, ativos_map: dict) -> list[str]:
+    """Contratos-alvo do pedido: os citados (ou todos, se nenhum citado),
+    com `filtro_vencido`/`filtro_valor_min`/`filtro_valor_max` aplicados.
+    `filtro_valor_campo` ambíguo (min/max setados sem campo definido) não é
+    resolvido aqui -- o dispatch (`whatsapp.tasks`) já deve suprimir esse
+    pedido e perguntar ao cliente antes de chegar neste ponto; se algo
+    escapar até aqui, o filtro de valor é ignorado (nunca levanta)."""
+    if pedido.contratos:
+        alvo = [n for n in pedido.contratos if n in ativos_map]
+    else:
+        alvo = list(ativos_map.keys())
+
+    if pedido.filtro_vencido:
+        hoje = timezone.localdate()
+        alvo = [
+            n for n in alvo
+            if ativos_map[n].get("data_vencimento") and ativos_map[n]["data_vencimento"] < hoje
+        ]
+
+    tem_filtro_valor = pedido.filtro_valor_min is not None or pedido.filtro_valor_max is not None
+    if tem_filtro_valor and pedido.filtro_valor_campo is not None:
+        campo = _CAMPO_VALOR_DB[pedido.filtro_valor_campo]
+
+        def _dentro_da_faixa(num):
+            valor = ativos_map[num].get(campo)
+            if valor is None:
+                return False
+            if pedido.filtro_valor_min is not None and valor < Decimal(str(pedido.filtro_valor_min)):
+                return False
+            if pedido.filtro_valor_max is not None and valor > Decimal(str(pedido.filtro_valor_max)):
+                return False
+            return True
+
+        alvo = [n for n in alvo if _dentro_da_faixa(n)]
+
+    return alvo
+
 
 def renderizar_infos_contrato(cliente, pedidos, msgs) -> list[str]:
     """Renderiza a resposta para `infos_contrato` como uma LISTA de
     mensagens (fan-out): o chamador (`whatsapp.tasks._enviar_fila`) envia
     cada item como uma mensagem WhatsApp separada, com pausa entre elas.
 
-    Mescla POR CONTRATO em vez de por `InfoContratoPedido`: se o lote pediu
-    mais de um tipo de dado (ex.: `lista_contratos` + `laudo`), cada
-    contrato recebe UMA mensagem só com todas as linhas pedidas para ele,
-    em vez de um bloco intro+linhas+totalizador completo por tipo. 1
-    contrato reportado no total -> lista com só a mensagem mesclada; 2+ ->
-    intro (`tpl_lista_header`) + 1 mensagem mesclada por contrato +
-    totalizador(es): um por tipo numérico pedido (`valor_renovacao` com
-    prazo/`valor_quitacao`/`valor_parcela`), ou -- se nenhum tipo numérico
-    foi pedido -- um totalizador geral (`_montar_totalizador_geral`,
-    avaliação + empréstimo + renovação por prazo) no lugar da antiga
-    contagem simples.
+    Tipos financeiros (`valor_renovacao`/`valor_quitacao`/`valor_parcela`)
+    com 2+ contratos e `detalhado=False` (padrão) respondem SÓ com o
+    totalizador -- sem listar contrato por contrato -- a menos que o
+    cliente peça detalhado explicitamente. `filtro_vencido`/
+    `filtro_valor_min`/`filtro_valor_max` (via `_resolver_alvo`) restringem
+    quais contratos entram no pedido antes de tudo o mais.
+
+    Para os demais casos, mescla POR CONTRATO em vez de por
+    `InfoContratoPedido`: se o lote pediu mais de um tipo de dado (ex.:
+    `lista_contratos` + `laudo`), cada contrato recebe UMA mensagem só com
+    todas as linhas pedidas para ele. 1 contrato no total -> mensagem única
+    mesclada, sem intro/totalizador; 2+ -> intro (específico do tipo
+    pedido, ou `tpl_lista_header` genérico quando 2+ tipos diferentes estão
+    misturados) + 1 mensagem mesclada por contrato + totalizador(es).
 
     Todos os valores citados vêm do banco (nunca da IA): contratos ativos
     são relidos aqui via `_contratos_ativos_values`. Contratos citados que
@@ -275,19 +333,35 @@ def renderizar_infos_contrato(cliente, pedidos, msgs) -> list[str]:
         return [msgs.msg_sem_contratos_ativos]
 
     ativos_map = {c["contrato"]: c for c in ativos}
-    primeiro_nome = (cliente.nome or "").split()[0] if getattr(cliente, "nome", "") else ""
 
     linhas_por_contrato: dict[str, list[str]] = {}
     totalizadores_numericos: list[str] = []
+    tipos_com_linhas: set = set()
     existe_nao_numerico = False
 
     for pedido in pedidos:
-        if pedido.contratos:
-            alvo = [n for n in pedido.contratos if n in ativos_map]
-        else:
-            alvo = list(ativos_map.keys())
+        alvo = _resolver_alvo(pedido, ativos_map)
         if not alvo:
             continue
+
+        eh_numerico = pedido.info in _INFOS_NUMERICOS
+
+        if eh_numerico and not pedido.detalhado:
+            # Resumo (padrão): só o totalizador, sem listar cada contrato --
+            # mas só quando sobra mais de 1 contrato depois dos filtros
+            # (parcela já restrita aos parcelados); com 0 ou 1, cai pro
+            # caminho normal abaixo (linha direta, sem totalizer redundante).
+            prazo = None
+            contratos_resumo = alvo
+            if pedido.info == InfoContrato.VALOR_RENOVACAO and pedido.prazo_dias is not None:
+                prazo = _prazo_mais_proximo(pedido.prazo_dias)
+            elif pedido.info == InfoContrato.VALOR_PARCELA:
+                contratos_resumo = [n for n in alvo if ativos_map[n].get("parcelado")]
+            if len(contratos_resumo) > 1:
+                totalizadores_numericos.append(
+                    _montar_totalizador(pedido.info, contratos_resumo, ativos_map, msgs, prazo=prazo)
+                )
+                continue
 
         linha_por_num: dict[str, str] = {}
         contratos_incluidos = []
@@ -423,31 +497,39 @@ def renderizar_infos_contrato(cliente, pedidos, msgs) -> list[str]:
 
         for num, texto in linha_por_num.items():
             linhas_por_contrato.setdefault(num, []).append(texto)
+        tipos_com_linhas.add(pedido.info)
 
-        if pedido.info in _INFOS_NUMERICOS:
-            totalizadores_numericos.append(
-                _montar_totalizador(pedido.info, contratos_incluidos, ativos_map, msgs, prazo=prazo)
-            )
+        if eh_numerico:
+            if len(contratos_incluidos) > 1:
+                totalizadores_numericos.append(
+                    _montar_totalizador(pedido.info, contratos_incluidos, ativos_map, msgs, prazo=prazo)
+                )
         else:
             existe_nao_numerico = True
 
-    if not linhas_por_contrato:
+    if not linhas_por_contrato and not totalizadores_numericos:
         return [msgs.msg_sem_contratos_ativos]
+
+    mensagens: list[str] = []
 
     # Ordem canônica do banco (via `ativos_map`), não a ordem dos pedidos.
     contratos_finais = [num for num in ativos_map if num in linhas_por_contrato]
 
-    if len(contratos_finais) == 1:
-        unico = contratos_finais[0]
-        return ["\n".join(linhas_por_contrato[unico])]
-
-    mensagens = [render_template(msgs.tpl_lista_header, nome=primeiro_nome, qtd=len(contratos_finais))]
-    for num in contratos_finais:
-        mensagens.append("\n".join(linhas_por_contrato[num]))
+    if contratos_finais:
+        if len(contratos_finais) == 1:
+            mensagens.append("\n".join(linhas_por_contrato[contratos_finais[0]]))
+        else:
+            if len(tipos_com_linhas) == 1:
+                intro_tpl = getattr(msgs, _INTRO_TPL_ATTR[next(iter(tipos_com_linhas))])
+            else:
+                intro_tpl = msgs.tpl_lista_header
+            mensagens.append(render_template(intro_tpl, qtd=len(contratos_finais)))
+            for num in contratos_finais:
+                mensagens.append("\n".join(linhas_por_contrato[num]))
 
     if totalizadores_numericos:
         mensagens.extend(totalizadores_numericos)
-    elif existe_nao_numerico:
+    elif existe_nao_numerico and len(contratos_finais) > 1:
         mensagens.append(_montar_totalizador_geral(contratos_finais, ativos_map, msgs))
 
     return mensagens

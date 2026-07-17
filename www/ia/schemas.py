@@ -33,6 +33,11 @@ class InfoContrato(str, Enum):
     LAUDO = "laudo"
 
 
+class CampoValor(str, Enum):
+    EMPRESTIMO = "emprestimo"
+    AVALIACAO = "avaliacao"
+
+
 class InfoContratoPedido(BaseModel):
     info: InfoContrato
     contratos: List[str] = Field(
@@ -42,6 +47,34 @@ class InfoContratoPedido(BaseModel):
     prazo_dias: Optional[int] = Field(
         default=None,
         description="Só para valor_renovacao: 30/60/90/120/150/180. None = não informado.",
+    )
+    detalhado: bool = Field(
+        default=False,
+        description=(
+            "Só para valor_renovacao/valor_quitacao/valor_parcela: true SÓ se o "
+            "cliente pedir explicitamente contrato por contrato/separado/detalhado. "
+            "Default false = sistema prefere responder só com o total somado."
+        ),
+    )
+    filtro_vencido: bool = Field(
+        default=False,
+        description="True se o cliente pedir só os contratos vencidos/em atraso.",
+    )
+    filtro_valor_min: Optional[float] = Field(
+        default=None,
+        description="Valor citado em 'contratos acima de X'/'entre X e Y' (em reais).",
+    )
+    filtro_valor_max: Optional[float] = Field(
+        default=None,
+        description="Valor citado em 'contratos abaixo de X'/'entre X e Y' (em reais).",
+    )
+    filtro_valor_campo: Optional[CampoValor] = Field(
+        default=None,
+        description=(
+            "A qual valor o filtro_valor_min/max se refere: 'emprestimo' (valor "
+            "emprestado/do contrato) ou 'avaliacao' (valor da joia avaliada). "
+            "None se o cliente não deixou claro -- o sistema pergunta."
+        ),
     )
 
 

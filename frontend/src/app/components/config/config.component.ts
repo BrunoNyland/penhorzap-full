@@ -441,7 +441,8 @@ export class ConfigComponent implements OnInit {
     { key: 'msg_quitacao_garantia', label: 'Quitação: Resgate de Garantia', help: 'Instrução para retirada de bens. Usa a tag {data_resgate}.' },
     { key: 'msg_segunda_via_confirma', label: 'Confirmação de 2ª via', help: 'Usa as tags {contratos} e {tipo}.' },
     { key: 'msg_neutra_padrao', label: 'Mensagem Neutra Padrão', help: 'Conversa genérica sem intenção identificável.' },
-    { key: 'msg_duvida_anotada', label: 'Dúvida Anotada', help: 'Anexada ao final da fila quando há dúvida(s) sem FAQ junto de outras ações no mesmo lote. Use a tag {duvidas}.' }
+    { key: 'msg_duvida_anotada', label: 'Dúvida Anotada', help: 'Anexada ao final da fila quando há dúvida(s) sem FAQ junto de outras ações no mesmo lote. Use a tag {duvidas}.' },
+    { key: 'msg_pedir_campo_valor_filtro', label: 'Pedir Campo do Filtro de Valor', help: 'Pergunta quando o cliente pede um filtro de valor (ex.: "contratos acima de 10 mil") sem deixar claro se é valor do empréstimo ou de avaliação.' }
   ];
 
   camposContrato = [
@@ -495,9 +496,45 @@ export class ConfigComponent implements OnInit {
     },
     {
       key: 'tpl_lista_header',
-      label: 'Lista de Contratos: Cabeçalho',
-      help: 'mensagem de introdução antes do lote de contratos',
-      placeholders: ['{nome}', '{qtd}']
+      label: 'Lista de Contratos: Cabeçalho Genérico',
+      help: 'Usado só quando o cliente pede 2+ tipos de dado diferentes juntos (ex.: laudo + lista) -- cada tipo sozinho usa seu próprio intro abaixo.',
+      placeholders: ['{qtd}']
+    },
+    {
+      key: 'tpl_intro_vencimento',
+      label: 'Intro: Vencimento',
+      help: 'Introdução quando o cliente pede só vencimento de 2+ contratos.',
+      placeholders: ['{qtd}']
+    },
+    {
+      key: 'tpl_intro_renovacao',
+      label: 'Intro: Renovação (detalhado)',
+      help: 'Introdução quando o cliente pede renovação detalhada (contrato por contrato) de 2+ contratos.',
+      placeholders: ['{qtd}']
+    },
+    {
+      key: 'tpl_intro_quitacao',
+      label: 'Intro: Quitação (detalhado)',
+      help: 'Introdução quando o cliente pede quitação detalhada (contrato por contrato) de 2+ contratos.',
+      placeholders: ['{qtd}']
+    },
+    {
+      key: 'tpl_intro_parcela',
+      label: 'Intro: Parcela (detalhado)',
+      help: 'Introdução quando o cliente pede parcela detalhada (contrato por contrato) de 2+ contratos.',
+      placeholders: ['{qtd}']
+    },
+    {
+      key: 'tpl_intro_lista',
+      label: 'Intro: Lista/Detalhe de Contratos',
+      help: 'Introdução quando o cliente pede a lista/detalhe de 2+ contratos.',
+      placeholders: ['{qtd}']
+    },
+    {
+      key: 'tpl_intro_laudo',
+      label: 'Intro: Laudo',
+      help: 'Introdução quando o cliente pede o laudo de 2+ contratos.',
+      placeholders: ['{qtd}']
     },
     {
       key: 'tpl_totalizador',

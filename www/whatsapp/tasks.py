@@ -985,8 +985,21 @@ def _processar_lote(conv: Conversa, bot: BotConfig, msgs, client, numero_destino
 
     # 4) Info de contrato -> renderer determinístico (nunca texto da IA);
     # fan-out: intro + 1 mensagem por contrato + totalizador (2+ contratos).
+    # Pedido com filtro de valor (acima/abaixo de X) sem campo definido
+    # (empréstimo vs avaliação) é ambíguo -- pergunta 1x em vez de adivinhar.
     if tem_infos and not info_suprimido:
-        fila.extend(renderizar_infos_contrato(cliente, resultado.infos_contrato, msgs))
+        infos_para_render = []
+        pediu_campo_valor = False
+        for pedido in resultado.infos_contrato:
+            tem_filtro_valor = pedido.filtro_valor_min is not None or pedido.filtro_valor_max is not None
+            if tem_filtro_valor and pedido.filtro_valor_campo is None:
+                if not pediu_campo_valor:
+                    fila.append(msgs.msg_pedir_campo_valor_filtro)
+                    pediu_campo_valor = True
+                continue
+            infos_para_render.append(pedido)
+        if infos_para_render:
+            fila.extend(renderizar_infos_contrato(cliente, infos_para_render, msgs))
         acoes_log.append(f"info_contrato:{len(resultado.infos_contrato)}")
 
     # 5) Pagamento: cria solicitações quando pronto, senão pergunta de slot

@@ -434,6 +434,7 @@ class MensagensConfigAPIView(GenericAPIView):
             DEFAULT_MSG_DB_DESATUALIZADA,
             DEFAULT_MSG_DUVIDA_ANOTADA,
             DEFAULT_MSG_NEUTRA_PADRAO,
+            DEFAULT_MSG_PEDIR_CAMPO_VALOR_FILTRO,
             DEFAULT_MSG_PEDIR_CPF,
             DEFAULT_MSG_QUITACAO_GARANTIA,
             DEFAULT_MSG_RENOVACAO_PROXIMO_VENCIMENTO,
@@ -444,6 +445,12 @@ class MensagensConfigAPIView(GenericAPIView):
             DEFAULT_MSG_SOLICITACAO_CRIADA,
             DEFAULT_SYSTEM_PROMPT,
             DEFAULT_TPL_CONTRATO_LAUDO,
+            DEFAULT_TPL_INTRO_LAUDO,
+            DEFAULT_TPL_INTRO_LISTA,
+            DEFAULT_TPL_INTRO_PARCELA,
+            DEFAULT_TPL_INTRO_QUITACAO,
+            DEFAULT_TPL_INTRO_RENOVACAO,
+            DEFAULT_TPL_INTRO_VENCIMENTO,
             DEFAULT_TPL_SAUDACAO_CLIENTE_COM_PEDIDO,
             DEFAULT_TPL_TOTALIZADOR,
             DEFAULT_TPL_TOTALIZADOR_GERAL,
@@ -466,7 +473,14 @@ class MensagensConfigAPIView(GenericAPIView):
             "msg_segunda_via_confirma": DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
             "msg_duvida_anotada": DEFAULT_MSG_DUVIDA_ANOTADA,
             "msg_neutra_padrao": DEFAULT_MSG_NEUTRA_PADRAO,
+            "msg_pedir_campo_valor_filtro": DEFAULT_MSG_PEDIR_CAMPO_VALOR_FILTRO,
             "tpl_contrato_laudo": DEFAULT_TPL_CONTRATO_LAUDO,
+            "tpl_intro_vencimento": DEFAULT_TPL_INTRO_VENCIMENTO,
+            "tpl_intro_renovacao": DEFAULT_TPL_INTRO_RENOVACAO,
+            "tpl_intro_quitacao": DEFAULT_TPL_INTRO_QUITACAO,
+            "tpl_intro_parcela": DEFAULT_TPL_INTRO_PARCELA,
+            "tpl_intro_lista": DEFAULT_TPL_INTRO_LISTA,
+            "tpl_intro_laudo": DEFAULT_TPL_INTRO_LAUDO,
             "tpl_saudacao_cliente_com_pedido": DEFAULT_TPL_SAUDACAO_CLIENTE_COM_PEDIDO,
             "tpl_totalizador": DEFAULT_TPL_TOTALIZADOR,
             "tpl_totalizador_geral": DEFAULT_TPL_TOTALIZADOR_GERAL,
@@ -504,6 +518,7 @@ class MensagensConfigRestoreAPIView(GenericAPIView):
             DEFAULT_MSG_DB_DESATUALIZADA,
             DEFAULT_MSG_DUVIDA_ANOTADA,
             DEFAULT_MSG_NEUTRA_PADRAO,
+            DEFAULT_MSG_PEDIR_CAMPO_VALOR_FILTRO,
             DEFAULT_MSG_PEDIR_CPF,
             DEFAULT_MSG_QUITACAO_GARANTIA,
             DEFAULT_MSG_RENOVACAO_PROXIMO_VENCIMENTO,
@@ -514,6 +529,12 @@ class MensagensConfigRestoreAPIView(GenericAPIView):
             DEFAULT_MSG_SOLICITACAO_CRIADA,
             DEFAULT_SYSTEM_PROMPT,
             DEFAULT_TPL_CONTRATO_LAUDO,
+            DEFAULT_TPL_INTRO_LAUDO,
+            DEFAULT_TPL_INTRO_LISTA,
+            DEFAULT_TPL_INTRO_PARCELA,
+            DEFAULT_TPL_INTRO_QUITACAO,
+            DEFAULT_TPL_INTRO_RENOVACAO,
+            DEFAULT_TPL_INTRO_VENCIMENTO,
             DEFAULT_TPL_SAUDACAO_CLIENTE_COM_PEDIDO,
             DEFAULT_TPL_TOTALIZADOR,
             DEFAULT_TPL_TOTALIZADOR_GERAL,
@@ -536,7 +557,14 @@ class MensagensConfigRestoreAPIView(GenericAPIView):
             "msg_segunda_via_confirma": DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
             "msg_duvida_anotada": DEFAULT_MSG_DUVIDA_ANOTADA,
             "msg_neutra_padrao": DEFAULT_MSG_NEUTRA_PADRAO,
+            "msg_pedir_campo_valor_filtro": DEFAULT_MSG_PEDIR_CAMPO_VALOR_FILTRO,
             "tpl_contrato_laudo": DEFAULT_TPL_CONTRATO_LAUDO,
+            "tpl_intro_vencimento": DEFAULT_TPL_INTRO_VENCIMENTO,
+            "tpl_intro_renovacao": DEFAULT_TPL_INTRO_RENOVACAO,
+            "tpl_intro_quitacao": DEFAULT_TPL_INTRO_QUITACAO,
+            "tpl_intro_parcela": DEFAULT_TPL_INTRO_PARCELA,
+            "tpl_intro_lista": DEFAULT_TPL_INTRO_LISTA,
+            "tpl_intro_laudo": DEFAULT_TPL_INTRO_LAUDO,
             "tpl_saudacao_cliente_com_pedido": DEFAULT_TPL_SAUDACAO_CLIENTE_COM_PEDIDO,
             "tpl_totalizador": DEFAULT_TPL_TOTALIZADOR,
             "tpl_totalizador_geral": DEFAULT_TPL_TOTALIZADOR_GERAL,
@@ -1100,7 +1128,18 @@ def _montar_resposta_simulador(resultado, cliente, msgs) -> list:
                 fila.append(resp.texto)
 
     if resultado.infos_contrato:
-        fila.extend(renderizar_infos_contrato(cliente, resultado.infos_contrato, msgs))
+        infos_para_render = []
+        pediu_campo_valor = False
+        for pedido in resultado.infos_contrato:
+            tem_filtro_valor = pedido.filtro_valor_min is not None or pedido.filtro_valor_max is not None
+            if tem_filtro_valor and pedido.filtro_valor_campo is None:
+                if not pediu_campo_valor:
+                    fila.append(msgs.msg_pedir_campo_valor_filtro)
+                    pediu_campo_valor = True
+                continue
+            infos_para_render.append(pedido)
+        if infos_para_render:
+            fila.extend(renderizar_infos_contrato(cliente, infos_para_render, msgs))
 
     if resultado.solicitacoes:
         from ia.schemas import TipoPagamento
