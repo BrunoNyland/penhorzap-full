@@ -1129,7 +1129,7 @@ class SimulatorView(GenericAPIView):
     serializer_class = serializers.Serializer
 
     def _get_estado(self, request):
-        from painel.views import SIMULADOR_SESSION_KEY
+        from core.mensagens_defaults import SIMULADOR_SESSION_KEY
         estado = request.session.get(SIMULADOR_SESSION_KEY)
         if estado is None:
             estado = {"cliente_cpf": None, "turnos": []}
@@ -1188,7 +1188,7 @@ class SimulatorView(GenericAPIView):
         estado = self._get_estado(request)
         acao = request.data.get("acao")
 
-        from painel.views import SIMULADOR_SESSION_KEY
+        from core.mensagens_defaults import SIMULADOR_SESSION_KEY
 
         if acao == "selecionar_cliente":
             cpf = request.data.get("cpf", "").strip()

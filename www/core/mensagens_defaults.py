@@ -177,3 +177,35 @@ Regras:
    mas não deixou claro se quer renovar, quitar ou pagar uma parcela, você deve gerar a
    solicitacao com tipo="indefinido" e definir pronto_para_criar_solicitacao=false.
 """
+
+SIMULADOR_SESSION_KEY = "simulador_ia"
+
+MENSAGENS_DEFAULTS = {
+    "system_prompt": DEFAULT_SYSTEM_PROMPT,
+    "msg_saudacao": DEFAULT_MSG_SAUDACAO,
+    "msg_saudacao_com_pedido": DEFAULT_MSG_SAUDACAO_COM_PEDIDO,
+    "msg_cadastro_nao_localizado": DEFAULT_MSG_CADASTRO_NAO_LOCALIZADO,
+    "msg_pedir_cpf": DEFAULT_MSG_PEDIR_CPF,
+    "msg_cpf_invalido": DEFAULT_MSG_CPF_INVALIDO,
+    "msg_cpf_nao_bate": DEFAULT_MSG_CPF_NAO_BATE,
+    "msg_db_desatualizada": DEFAULT_MSG_DB_DESATUALIZADA,
+    "msg_sem_contratos_ativos": DEFAULT_MSG_SEM_CONTRATOS_ATIVOS,
+    "msg_solicitacao_criada": DEFAULT_MSG_SOLICITACAO_CRIADA,
+    "msg_boleto_intro": DEFAULT_MSG_BOLETO_INTRO,
+    "msg_renovacao_proximo_vencimento": DEFAULT_MSG_RENOVACAO_PROXIMO_VENCIMENTO,
+    "msg_quitacao_garantia": DEFAULT_MSG_QUITACAO_GARANTIA,
+    "msg_segunda_via_confirma": DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
+    "msg_neutra_padrao": DEFAULT_MSG_NEUTRA_PADRAO,
+    "msg_duvida_anotada": DEFAULT_MSG_DUVIDA_ANOTADA,
+    "msg_pedir_campo_valor_filtro": DEFAULT_MSG_PEDIR_CAMPO_VALOR_FILTRO,
+    "tpl_contrato_laudo": DEFAULT_TPL_CONTRATO_LAUDO,
+    "tpl_intro_vencimento": DEFAULT_TPL_INTRO_VENCIMENTO,
+    "tpl_intro_renovacao": DEFAULT_TPL_INTRO_RENOVACAO,
+    "tpl_intro_quitacao": DEFAULT_TPL_INTRO_QUITACAO,
+    "tpl_intro_parcela": DEFAULT_TPL_INTRO_PARCELA,
+    "tpl_intro_lista": DEFAULT_TPL_INTRO_LISTA,
+    "tpl_intro_laudo": DEFAULT_TPL_INTRO_LAUDO,
+    "tpl_saudacao_cliente_com_pedido": DEFAULT_TPL_SAUDACAO_CLIENTE_COM_PEDIDO,
+    "tpl_totalizador": DEFAULT_TPL_TOTALIZADOR,
+    "tpl_totalizador_geral": DEFAULT_TPL_TOTALIZADOR_GERAL,
+}

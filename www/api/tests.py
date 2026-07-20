@@ -23,7 +23,7 @@ from core.models import (
     Solicitacao,
 )
 from ia.schemas import ClassificacaoLote, InfoContrato, InfoContratoPedido
-from painel.views import MENSAGENS_DEFAULTS, SIMULADOR_SESSION_KEY
+from core.mensagens_defaults import MENSAGENS_DEFAULTS, SIMULADOR_SESSION_KEY
 
 
 class APIEndpointsTestCase(APITestCase):
