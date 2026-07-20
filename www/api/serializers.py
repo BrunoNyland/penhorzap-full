@@ -373,6 +373,23 @@ class BoletoSerializer(serializers.ModelSerializer):
         read_only_fields = ["enviado_em", "criado_em"]
 
 
+class BoletoDadosInputSerializer(serializers.Serializer):
+    """Campos que `core.boleto_pdf.make_html` precisa pra montar o PDF do
+    boleto — mesmos 8 campos que o brilhante já extrai do SIPEN via
+    `liquidacao_funcoes.py`/`renovacao_funcoes.py`. Usado quando o brilhante
+    manda os DADOS do boleto (em vez do PDF pronto) em
+    `SolicitacaoViewSet.boletos`."""
+
+    linha_digitavel = serializers.CharField(max_length=80)
+    numero_documento = serializers.CharField(max_length=40)
+    nosso_numero = serializers.CharField(max_length=40)
+    vencimento = serializers.CharField(max_length=20)
+    valor = serializers.CharField(max_length=30)
+    nome = serializers.CharField(max_length=200)
+    cpf = serializers.CharField(max_length=20)
+    endereco = serializers.CharField(max_length=300, allow_blank=True, required=False, default="")
+
+
 class SolicitacaoSerializer(serializers.ModelSerializer):
     cliente = ClienteMiniSerializer(read_only=True)
     contratos = ContratoPenhorMiniSerializer(many=True, read_only=True)
@@ -388,6 +405,7 @@ class SolicitacaoSerializer(serializers.ModelSerializer):
             "tipo",
             "escopo",
             "contratos",
+            "prazo_dias",
             "status",
             "resposta_ia",
             "precisa_humano",

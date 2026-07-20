@@ -5,6 +5,7 @@ import tempfile
 from datetime import timedelta
 
 from django.contrib.auth import authenticate, login, logout
+from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import ExtractDay, ExtractWeekDay, TruncDate
@@ -22,6 +23,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
 
+from core.boleto_pdf import gerar_boleto_pdf_bytes
 from core.models import (
     FAQ,
     SITUACOES_LIQUIDADAS_COD,
@@ -41,6 +43,7 @@ from ia.services import extrair_intencao
 from whatsapp.evolution_client import get_client
 
 from .serializers import (
+    BoletoDadosInputSerializer,
     BoletoSerializer,
     BotConfigSerializer,
     ClienteDetailSerializer,
@@ -1554,25 +1557,50 @@ class SolicitacaoViewSet(
 
     @action(detail=True, methods=["post"], url_path="boletos")
     def boletos(self, request, pk=None):
+        """Aceita dois formatos: multipart `arquivo`/`linha_digitavel` (PDF já
+        pronto, usado pelo upload manual do painel) ou JSON `{"boletos": [...]}`
+        com os dados do boleto (usado pelo brilhante — o PDF é gerado aqui,
+        ver core.boleto_pdf.gerar_boleto_pdf_bytes)."""
         solicitacao = self.get_object()
+
         arquivos = request.FILES.getlist("arquivo") or (
             [request.FILES["arquivo"]] if "arquivo" in request.FILES else []
         )
-        if not arquivos:
-            return Response(
-                {"detail": "Envie ao menos um PDF no campo 'arquivo'."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        linhas = request.POST.getlist("linha_digitavel")
-
-        criados = []
-        for i, arquivo in enumerate(arquivos):
-            linha_digitavel = linhas[i].strip() if i < len(linhas) else ""
-            boleto = Boleto.objects.create(
-                solicitacao=solicitacao, arquivo=arquivo, linha_digitavel=linha_digitavel
-            )
-            criados.append(boleto)
+        if arquivos:
+            linhas = request.POST.getlist("linha_digitavel")
+            criados = [
+                Boleto.objects.create(
+                    solicitacao=solicitacao,
+                    arquivo=arquivo,
+                    linha_digitavel=linhas[i].strip() if i < len(linhas) else "",
+                )
+                for i, arquivo in enumerate(arquivos)
+            ]
+        else:
+            dados_lista = request.data.get("boletos") if hasattr(request.data, "get") else None
+            if not dados_lista:
+                return Response(
+                    {
+                        "detail": "Envie 'arquivo' (multipart, um PDF pronto) ou "
+                        "'boletos' (JSON com os dados do boleto)."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            criados = []
+            for item in dados_lista:
+                item_serializer = BoletoDadosInputSerializer(data=item)
+                item_serializer.is_valid(raise_exception=True)
+                dados = item_serializer.validated_data
+                pdf_bytes = gerar_boleto_pdf_bytes(dados)
+                nome_arquivo = f"boleto_{dados['numero_documento']}.pdf"
+                criados.append(
+                    Boleto.objects.create(
+                        solicitacao=solicitacao,
+                        arquivo=ContentFile(pdf_bytes, name=nome_arquivo),
+                        linha_digitavel=dados["linha_digitavel"],
+                        dados_recebidos=dict(dados),
+                    )
+                )
 
         async_task("api.tasks.enviar_boletos", solicitacao.id)
 

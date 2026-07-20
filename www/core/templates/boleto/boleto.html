@@ -1,0 +1,310 @@
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>SIPEN</title>
+
+	<style type="text/css">
+		body {
+			font-weight: normal;
+			font-size: 13px;
+			color: #000000;
+			font-style: normal;
+			font-family: Verdana;
+			text-align: left;
+			position: relative;
+		}
+		/* Célula de campo padrão (a maioria da grade do boleto): tamanho de
+		fonte e borda em um só lugar em vez de repetidos em cada <td>. */
+		.cel {
+			font-size: 13px;
+			border: 1px solid #000000;
+		}
+		.cel-top { vertical-align: top; }
+		.cel-center { text-align: center; }
+		.cel-destaque { background-color: #C0C0C0; }
+		/* Campos curtos (datas, números, CPF/CNPJ, valores) não podem quebrar
+		no meio do valor — sem isso o rótulo some numa linha e o valor vira
+		outra, ilegível numa coluna estreita. */
+		.cel-nowrap { white-space: nowrap; }
+		.logo-cel {
+			width: 130px;
+			border: 1px solid #000000;
+		}
+		.codigo-banco {
+			width: 60px;
+			font-size: 22px;
+			border: 1px solid #000000;
+			text-align: center;
+		}
+		.linha-digitavel {
+			font-size: 17px;
+			border: 1px solid #000000;
+			text-align: center;
+		}
+		/* Preenche a célula em vez de um px fixo: um valor fixo que parecia
+		bom testando fora do pipeline real (pdfkit/wkhtmltopdf com A4 + zoom
+		1.16 + margens) ficava pequeno demais no PDF de verdade. height:auto
+		preserva a proporção do ITF (não pode distorcer, senão não escaneia). */
+		.barcode-img {
+			display: block;
+			margin: 0 auto;
+			width: 100%;
+			height: auto;
+		}
+	</style>
+
+</head>
+
+<body topmargin="0" leftmargin="1" onLoad="">
+	<table align="center" width="90%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
+		<tr>
+			<td colspan="4" align="center">
+			</td>
+		</tr>
+		<tr>
+			<td align="center">
+				<br>
+				<div id="divBoleto">
+					<table cellpadding="4" cellspacing="0" width="780px" height="1080px" align="center"
+						style="border-collapse: collapse;">
+						<tr>
+							<td colspan="1" class="logo-cel">
+								<img src="{{ logo_caixa_src }}"
+									border="0">
+							</td>
+							<td colspan="1" class="codigo-banco">
+								<strong>104-0</strong>
+							</td>
+							<td colspan="6" class="cel linha-digitavel">
+								<strong>{{ linha_digitavel }}</strong>
+							</td>
+						</tr>
+						<tr>
+							<td colspan="4" class="cel">
+								Beneficiário<br>&nbsp;Caixa Econômica Federal - Penhor
+							</td>
+							<td colspan="2" class="cel cel-nowrap">
+								CPF/CNPJ<br>&nbsp;00.360.305/0001-04
+							</td>
+							<td colspan="2" class="cel cel-nowrap">
+								Agência / Código do Beneficiário<br>&nbsp;0647/0727375
+							</td>
+						</tr>
+						<tr>
+							<td colspan="5" class="cel">
+								Endereço Beneficiário<br>&nbsp;SBS QUADRA 4 BLOCO A LOTES 3/4 - BRASÍLIA
+							</td>
+							<td colspan="1" class="cel cel-nowrap" style="width:60px;">
+								UF<br>&nbsp;DF
+							</td>
+							<td colspan="2" class="cel cel-nowrap">
+								CEP<br>&nbsp;70.092-900
+							</td>
+						</tr>
+						<tr>
+							<td colspan="2" class="cel cel-nowrap">
+								Data do Documento<br>&nbsp;{{ data }}
+							</td>
+							<td colspan="1" class="cel cel-nowrap">
+								Nr. do documento<br>&nbsp;{{ numero_documento }}
+							</td>
+							<td colspan="1" class="cel cel-nowrap">
+								Aceite<br>&nbsp;SIM
+							</td>
+							<td colspan="2" class="cel cel-nowrap">
+								Data do processamento<br>&nbsp;{{ data }}
+							</td>
+							<td colspan="2" class="cel cel-nowrap">
+								Nosso Número<br>&nbsp;{{ nosso_numero }}
+							</td>
+						</tr>
+						<tr>
+							<td colspan="8" class="cel cel-top">
+								<strong>Instruções (Texto de responsabilidade do Beneficiário):</strong>
+								<br>
+								Não receber este documento após a data de vencimento. Após o vencimento, solicitar um
+								novo boleto junto à CAIXA por meio dos canais: Agência, Internet banking, Canais
+								Digitais. Para a sua comodidade ligue para 4004 0104 ou fale pelo Whatsapp CAIXA 0800
+								104 0104
+								<br>
+							</td>
+						</tr>
+						<tr>
+							<td colspan="6" class="cel">
+								Pagador<br>{{ nome }}
+							</td>
+							<td colspan="2" class="cel cel-nowrap">
+								CPF/CNPJ:<br><strong>{{ cpf }}</strong>
+							</td>
+						</tr>
+						<tr>
+							<td colspan="2" class="cel cel-nowrap">
+								Carteira<br>&nbsp;RG
+							</td>
+							<td colspan="1" class="cel cel-nowrap">
+								Espécie<br>&nbsp;OUT
+							</td>
+							<td colspan="1" class="cel cel-nowrap cel-destaque">
+								<strong>Vencimento<br>&nbsp;{{ data }}</strong>
+							</td>
+							<td colspan="2" class="cel cel-nowrap cel-destaque">
+								<strong>Valor do Documento<br>&nbsp;{{ valor }}</strong>
+							</td>
+							<td colspan="2" class="cel cel-nowrap">
+								Valor Cobrado<br>&nbsp;{{ valor }}
+							</td>
+						</tr>
+						<tr>
+							<td colspan="4" class="cel">
+								<p style="text-align: center;"><strong>SAC CAIXA:</strong> 0800 726 0101(informações,
+									reclamações, sugestões e elogios)
+								<p style="text-align: center;"><strong>Para pessoas com deficiência auditiva ou de
+										fala:</strong> 0800 726 2492
+								<p style="text-align: center;"><strong>Ouvidoria:</strong> 0800 725 7474
+								<p style="text-align: center;">caixa.gov.br
+							</td>
+							<td colspan="4" class="cel cel-top">
+								Autenticação Mecânica - <strong>Recibo do Pagador</strong>
+							</td>
+						</tr>
+						<tr>
+							<td colspan="8">
+								<hr style="border-top:2px dashed; border-bottom:0px;">
+							</td>
+						</tr>
+						<tr>
+							<td colspan="1" class="logo-cel">
+								<img src="{{ logo_caixa_src }}"
+									border="0">
+							</td>
+							<td colspan="1" class="codigo-banco">
+								<strong>104-0</strong>
+							</td>
+							<td colspan="5" class="cel linha-digitavel">
+								<strong>{{ linha_digitavel }}</strong>
+							</td>
+						</tr>
+						<tr>
+							<td colspan="5" class="cel">
+								Local de Pagamento<br>
+								<strong> PREFERENCIALMENTE NAS CASAS LOTÉRICAS ATÉ O VALOR LIMITE</strong>
+							</td>
+							<td colspan="2" class="cel cel-nowrap cel-destaque">
+								<strong>Vencimento<br>&nbsp;{{ data }}</strong>
+							</td>
+						</tr>
+						<tr>
+							<td colspan="5" class="cel">
+								Beneficiário:&nbsp;Caixa Econômica Federal - Penhor&nbsp;00.360.305/0001-04<br>
+								SBS QUADRA 4 BLOCO A LOTES 3/4 - BRASÍLIA
+							</td>
+							<td colspan="2" class="cel cel-nowrap">
+								Agência / Código do Beneficiário<br>&nbsp;0647/0727375
+							</td>
+						</tr>
+						<tr>
+							<td colspan="1" class="cel cel-nowrap">
+								Data do Documento<br>&nbsp;{{ data }}
+							</td>
+							<td colspan="1" class="cel cel-nowrap">
+								Nr. do Documento<br>&nbsp;{{ numero_documento }}
+							</td>
+							<td colspan="1" class="cel cel-nowrap">
+								Espécie<br>&nbsp;OUT
+							</td>
+							<td colspan="1" class="cel cel-nowrap">
+								Aceite<br>&nbsp;SIM
+							</td>
+							<td colspan="1" class="cel cel-nowrap">
+								Data do Processamento<br>&nbsp;{{ data }}
+							</td>
+							<td colspan="2" class="cel cel-nowrap">
+								Nosso Número<br>&nbsp;{{ nosso_numero }}
+							</td>
+						</tr>
+						<tr>
+							<td colspan="1" class="cel cel-nowrap">
+								Uso do Banco<br>&nbsp;
+							</td>
+							<td colspan="1" class="cel cel-nowrap">
+								Carteira<br>&nbsp;RG
+							</td>
+							<td colspan="1" class="cel cel-nowrap">
+								Espécie Moeda<br>&nbsp;R$
+							</td>
+							<td colspan="1" class="cel cel-nowrap">
+								Qtde Moeda<br>&nbsp;
+							</td>
+							<td colspan="1" class="cel cel-nowrap">
+								xValor<br>&nbsp;
+							</td>
+							<td colspan="2" class="cel cel-nowrap cel-destaque">
+								<strong>(=)Valor do documento<br>&nbsp;{{ valor }}</strong>
+							</td>
+						</tr>
+						<tr>
+							<td colspan="5" rowspan="6" class="cel cel-top">
+								<strong>Instruções (Texto de responsabilidade do Beneficiário):</strong>
+								<br>
+								Não receber este documento após a data de vencimento. Após o vencimento, solicitar um
+								novo boleto junto à CAIXA por meio dos canais: Agência, Internet banking, Canais
+								Digitais. Para a sua comodidade ligue para 4004 0104 ou fale pelo Whatsapp CAIXA 0800
+								104 0104
+								<br>
+							</td>
+						</tr>
+						<tr>
+							<td colspan="2" class="cel">
+								(-)Desconto<br>&nbsp;
+							</td>
+						</tr>
+						<tr>
+							<td colspan="2" class="cel">
+								(-)Outras Deduções/Abatimento<br>&nbsp;
+							</td>
+						</tr>
+						<tr>
+							<td colspan="2" class="cel">
+								(+)Mora/Multa/Juros<br>&nbsp;
+							</td>
+						</tr>
+						<tr>
+							<td colspan="2" class="cel">
+								(+)Outros Acréscimos<br>&nbsp;
+							</td>
+						</tr>
+						<tr>
+							<td colspan="2" class="cel cel-nowrap">
+								(=)Valor Cobrado<br>&nbsp;{{ valor }}
+							</td>
+						</tr>
+						<tr>
+							<td colspan="5" style="font-size: 13px; border-left:1px solid #000000; vertical-align:top;">
+								Pagador:<br>{{ nome }}<br>
+								&nbsp;{{ endereco }}<br><br>
+								Sacador/Avalista:&nbsp;<br>
+							</td>
+							<td colspan="2" class="cel-top cel-nowrap" style="font-size: 13px;">
+								CPF/CNPJ:<br>{{ cpf }}<br><br><br>
+								CPF/CNPJ:&nbsp;
+							</td>
+						</tr>
+						<tr>
+							<td colspan="4" class="cel cel-center">
+								<img alt="barcode" class="barcode-img"
+										src="{{ codigo_barras_src }}">
+							</td>
+							<td colspan="3" class="cel cel-top">
+								Autenticação Mecânica - <strong>Ficha de Compensação</strong>
+							</td>
+						</tr>
+					</table>
+				</div>
+				<br>
+			</td>
+		</tr>
+	</table>
+	<br>
+</body>
+
+</html>

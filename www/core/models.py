@@ -734,6 +734,10 @@ class Boleto(models.Model):
     solicitacao = models.ForeignKey(Solicitacao, related_name="boletos", on_delete=models.CASCADE)
     arquivo = models.FileField(upload_to="boletos/")
     linha_digitavel = models.CharField(max_length=80, blank=True, default="")
+    # Campos recebidos do brilhante quando o PDF é gerado aqui a partir de
+    # dados (em vez de vir pronto por upload multipart) — auditoria/debug de
+    # como o PDF em `arquivo` foi montado (ver core.boleto_pdf.make_html).
+    dados_recebidos = models.JSONField(default=dict, blank=True)
     enviado_em = models.DateTimeField(null=True, blank=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 

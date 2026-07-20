@@ -259,7 +259,47 @@ class APIEndpointsTestCase(APITestCase):
         url = reverse("api:solicitacao-boletos", kwargs={"pk": self.solicitacao.id})
         response = self.client.post(url, {}, format="multipart")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("Envie ao menos um PDF", response.data["detail"])
+        self.assertIn("arquivo", response.data["detail"])
+
+    @patch("api.views.async_task")
+    @patch("api.views.gerar_boleto_pdf_bytes")
+    def test_solicitacao_boletos_com_dados_json(self, mock_gerar_pdf, mock_async_task):
+        """Formato novo: brilhante manda os DADOS do boleto (JSON) em vez do
+        PDF pronto — o servidor gera o PDF (aqui mockado) a partir deles."""
+        mock_gerar_pdf.return_value = b"%PDF-1.4 conteudo gerado no servidor"
+        self.client.force_authenticate(user=self.staff_user)
+        url = reverse("api:solicitacao-boletos", kwargs={"pk": self.solicitacao.id})
+
+        payload = {
+            "boletos": [
+                {
+                    "linha_digitavel": "34191.79001 01043.513184 1 91230000015000",
+                    "numero_documento": "123456",
+                    "nosso_numero": "654321",
+                    "vencimento": "20/08/2026",
+                    "valor": "1.500,00",
+                    "nome": "Fulano de Tal",
+                    "cpf": "123.456.789-00",
+                    "endereco": "Rua Teste, 123",
+                }
+            ]
+        }
+        response = self.client.post(url, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Boleto.objects.filter(solicitacao=self.solicitacao).count(), 1)
+        boleto = Boleto.objects.get(solicitacao=self.solicitacao)
+        self.assertEqual(boleto.linha_digitavel, payload["boletos"][0]["linha_digitavel"])
+        self.assertEqual(boleto.dados_recebidos["cpf"], "123.456.789-00")
+        self.assertTrue(boleto.arquivo.name.endswith(".pdf"))
+        mock_gerar_pdf.assert_called_once()
+        mock_async_task.assert_called_once_with("api.tasks.enviar_boletos", self.solicitacao.id)
+
+    def test_solicitacao_boletos_dados_invalidos(self):
+        self.client.force_authenticate(user=self.staff_user)
+        url = reverse("api:solicitacao-boletos", kwargs={"pk": self.solicitacao.id})
+        response = self.client.post(url, {"boletos": [{"cpf": "123"}]}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     # --- Dashboard API Tests ---
 
