@@ -61,7 +61,7 @@ make all           # test + build + deploy
 
 ## Frontend (Angular)
 
-`frontend/` é um projeto Angular CLI 19 autônomo (não é o root `package.json`, que só tem `impeccable`). Dev server: `cd frontend && npx ng serve` com `proxy.conf.json` roteando `/api` e `/media` para `127.0.0.1:8000`. Build produção: `make build` (define `--base-href /painel/`). Saída em `frontend/dist/frontend/browser/`, servida por nginx em `/painel/`.
+`frontend/` é um projeto Angular CLI 22 autônomo. Dev server: `cd frontend && npx ng serve` com `proxy.conf.json` roteando `/api` e `/media` para `127.0.0.1:8000`. Build produção: `make build` (define `--base-href /painel/`). Saída em `frontend/dist/frontend/browser/`, servida por nginx em `/painel/`.
 
 ## Evolution API (WhatsApp)
 

@@ -1,5 +1,5 @@
 # PenhorZap — Global .gitignore for Monorepo (Django Backend + Angular Frontend)
-
+node_modules/
 # Virtual Environment
 venv/
 .venv/
