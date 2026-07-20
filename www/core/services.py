@@ -1,12 +1,16 @@
 import sqlite3
 
-from django.db import transaction
+from django.db import connection, transaction
 from django.utils import timezone
 
 from core.models import AgenciaPenhor, BotConfig, Cliente, ContratoPenhor, Licitacao, Telefone
 from core.utils import normalize_phone_br, parse_br_date, parse_br_decimal, parse_int, parse_py_list
 
 BATCH_SIZE = 500
+
+
+def _unique_target(fields: list[str]) -> list[str] | None:
+    return fields if connection.features.supports_update_conflicts_with_target else None
 
 
 def importar_sqlite_arquivo(path: str) -> dict[str, int]:
@@ -72,7 +76,7 @@ def _import_agencias(conn):
             objs,
             batch_size=BATCH_SIZE,
             update_conflicts=True,
-            unique_fields=["codigo"],
+            unique_fields=_unique_target(["codigo"]),
             update_fields=[
                 "dv", "nome", "uf", "situacao", "tipo", "porte", "penhor",
                 "logradouro", "bairro", "cidade", "cep",
@@ -105,7 +109,7 @@ def _import_licitacoes(conn):
             objs,
             batch_size=BATCH_SIZE,
             update_conflicts=True,
-            unique_fields=["numero"],
+            unique_fields=_unique_target(["numero"]),
             update_fields=[
                 "situacao", "centralizadora", "data", "uf", "local_retirada",
                 "periodo_retirada", "periodo_lances", "periodo_exposicao",
@@ -150,7 +154,7 @@ def _import_clientes(conn):
             objs,
             batch_size=BATCH_SIZE,
             update_conflicts=True,
-            unique_fields=["cpf"],
+            unique_fields=_unique_target(["cpf"]),
             update_fields=[
                 "nome", "situacao_cpf", "situacao_cadastro", "logradouro", "bairro",
                 "cidade", "cep", "aniversario", "data_da_captura_das_renovacoes",
@@ -261,7 +265,7 @@ def _import_contratos(conn):
             objs,
             batch_size=BATCH_SIZE,
             update_conflicts=True,
-            unique_fields=["contrato"],
+            unique_fields=_unique_target(["contrato"]),
             update_fields=update_fields,
         )
     return len(objs)

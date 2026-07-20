@@ -956,7 +956,7 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             resp = requests.post(url, json={"message": data_node}, headers=headers, timeout=20)
             if resp.status_code != 201:
-                logger.error("Evolution API retornou status %s ao obter mídia", resp.status_code)
+                logger.warning("Evolution API retornou status %s ao obter mídia", resp.status_code)
                 return Response(
                     {"detail": "Não foi possível obter a mídia com o gateway do WhatsApp."},
                     status=status.HTTP_502_BAD_GATEWAY

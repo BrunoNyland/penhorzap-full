@@ -29,6 +29,8 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:8080:8080"
+    env_file:
+      - ../.env
     environment:
       # Banco de dados (Postgres dedicado deste compose)
       DATABASE_PROVIDER: postgresql
@@ -50,6 +52,7 @@ services:
       WEBHOOK_GLOBAL_URL: https://pwa.brunonyland.com/webhook/whatsapp/
       WEBHOOK_GLOBAL_ENABLED: "true"
       WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS: "false"
+      WEBHOOK_GLOBAL_HEADERS: '{"X-Webhook-Token": "${WEBHOOK_TOKEN}"}'
       WEBHOOK_EVENTS_MESSAGES_UPSERT: "true"
       WEBHOOK_EVENTS_CONNECTION_UPDATE: "true"
 

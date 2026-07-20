@@ -778,6 +778,7 @@ export class ConversationsComponent implements OnInit, OnDestroy {
 
   conversas = signal<any[]>([]);
   activeChat = signal<any | null>(null);
+  failedMediaIds = signal<Set<number>>(new Set());
 
   loadingChats = signal(false);
   loadingDetails = signal(false);
@@ -976,6 +977,18 @@ export class ConversationsComponent implements OnInit, OnDestroy {
     // busca/descriptografa via Evolution API.
     if (msg.arquivo) return msg.arquivo;
     return `/api/conversas/${chatId}/mensagens/${msg.id}/media/`;
+  }
+
+  onMediaError(msgId: number): void {
+    this.failedMediaIds.update(set => {
+      const next = new Set(set);
+      next.add(msgId);
+      return next;
+    });
+  }
+
+  isMediaFailed(msgId: number): boolean {
+    return this.failedMediaIds().has(msgId);
   }
 
   onAnexoSelected(event: any): void {
