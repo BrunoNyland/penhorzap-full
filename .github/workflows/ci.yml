@@ -18,6 +18,8 @@ jobs:
             - name: Install system deps for mysqlclient
               run: sudo apt-get update && sudo apt-get install -y default-libmysqlclient-dev build-essential pkg-config
             - run: pip install -r requirements.txt
+            - name: Run Ruff linter
+              run: ruff check .
             - run: python manage.py makemigrations --check --dry-run
             - run: python manage.py test api core whatsapp ia -v2
             - name: Deploy checks (informational only)

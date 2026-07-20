@@ -1,5 +1,4 @@
 from enum import Enum
-from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -13,11 +12,11 @@ class TipoPagamento(str, Enum):
 
 class SolicitacaoDraft(BaseModel):
     tipo: TipoPagamento
-    contratos: List[str] = Field(
+    contratos: list[str] = Field(
         default_factory=list,
         description="Números de contrato citados/escolhidos. Lista VAZIA = todos os contratos ativos do cliente.",
     )
-    prazo_dias: Optional[int] = Field(
+    prazo_dias: int | None = Field(
         default=None,
         description="Para tipo=renovar: 30/60/90/120/150/180. None se o cliente não informou (sistema presume 30 e confirma).",
     )
@@ -40,11 +39,11 @@ class CampoValor(str, Enum):
 
 class InfoContratoPedido(BaseModel):
     info: InfoContrato
-    contratos: List[str] = Field(
+    contratos: list[str] = Field(
         default_factory=list,
         description="Números de contrato citados pelo cliente. Vazio = todos os ativos.",
     )
-    prazo_dias: Optional[int] = Field(
+    prazo_dias: int | None = Field(
         default=None,
         description="Só para valor_renovacao: 30/60/90/120/150/180. None = não informado.",
     )
@@ -60,15 +59,15 @@ class InfoContratoPedido(BaseModel):
         default=False,
         description="True se o cliente pedir só os contratos vencidos/em atraso.",
     )
-    filtro_valor_min: Optional[float] = Field(
+    filtro_valor_min: float | None = Field(
         default=None,
         description="Valor citado em 'contratos acima de X'/'entre X e Y' (em reais).",
     )
-    filtro_valor_max: Optional[float] = Field(
+    filtro_valor_max: float | None = Field(
         default=None,
         description="Valor citado em 'contratos abaixo de X'/'entre X e Y' (em reais).",
     )
-    filtro_valor_campo: Optional[CampoValor] = Field(
+    filtro_valor_campo: CampoValor | None = Field(
         default=None,
         description=(
             "A qual valor o filtro_valor_min/max se refere: 'emprestimo' (valor "
@@ -89,11 +88,11 @@ class ClassificacaoLote(BaseModel):
     saudacao: bool = Field(
         default=False, description="True se o cliente cumprimentou neste lote."
     )
-    faq_ids: List[int] = Field(
+    faq_ids: list[int] = Field(
         default_factory=list,
         description="IDs de TODAS as FAQs cadastradas que respondem alguma pergunta do lote.",
     )
-    infos_contrato: List[InfoContratoPedido] = Field(
+    infos_contrato: list[InfoContratoPedido] = Field(
         default_factory=list,
         description=(
             "Um item por dado de contrato pedido: vencimento | valor_renovacao "
@@ -101,7 +100,7 @@ class ClassificacaoLote(BaseModel):
             "lista_contratos | detalhe_contrato."
         ),
     )
-    solicitacoes: List[SolicitacaoDraft] = Field(
+    solicitacoes: list[SolicitacaoDraft] = Field(
         default_factory=list,
         description="Um item por ação de pagamento distinta (renovar/quitar/parcela) presente no lote.",
     )
@@ -116,7 +115,7 @@ class ClassificacaoLote(BaseModel):
         default=False,
         description="True se o cliente pediu reenvio de um boleto já solicitado antes.",
     )
-    duvidas_sem_faq: List[str] = Field(
+    duvidas_sem_faq: list[str] = Field(
         default_factory=list,
         description="Perguntas do lote sem FAQ correspondente, cada uma reescrita curta e genérica.",
     )

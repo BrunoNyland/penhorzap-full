@@ -44,6 +44,9 @@ test-all: test test-int ## Roda todos os testes
 
 # ── Lint / Checks ──────────────────────────────────────────────────────────────
 lint: ## Verificações básicas de integridade
+	@echo "🔍 Verificando linting Python (Ruff)..."
+	$(VENV)/ruff check www
+	@echo ""
 	@echo "🔍 Verificando importações Django..."
 	cd www && $(TEST_ENV) $(PYTHON) manage.py check --deploy 2>&1 | grep -v "^$$" || true
 	@echo ""

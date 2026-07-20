@@ -3,67 +3,62 @@ import logging
 import os
 import tempfile
 from datetime import timedelta
-from django.utils import timezone
+
+from django.contrib.auth import authenticate, login, logout
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import ExtractDay, ExtractWeekDay, TruncDate
-from django.contrib.auth import login, logout, authenticate
-from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
-
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.utils import timezone
 from django.utils.decorators import method_decorator
-
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django_q.tasks import async_task
-from rest_framework import mixins, status, viewsets, permissions, serializers
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.generics import GenericAPIView
-from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
-from rest_framework.authtoken.models import Token
-from rest_framework.views import exception_handler
 from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import mixins, permissions, serializers, status, viewsets
+from rest_framework.authtoken.models import Token
+from rest_framework.decorators import action
+from rest_framework.generics import GenericAPIView
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.response import Response
+from rest_framework.views import exception_handler
 
 from core.models import (
-    Boleto,
-    Cliente,
-    ContratoPenhor,
-    ImportDataJob,
-    Mensagem,
-    Solicitacao,
-    BotConfig,
-    MensagensConfig,
     FAQ,
+    SITUACOES_LIQUIDADAS_COD,
+    Boleto,
+    BotConfig,
+    Cliente,
+    Conversa,
     FAQResposta,
     FAQSugerida,
-    Conversa,
-    SITUACOES_LIQUIDADAS_COD,
+    ImportDataJob,
+    Mensagem,
+    MensagensConfig,
+    Solicitacao,
 )
-
-logger = logging.getLogger(__name__)
-
-from .serializers import (
-    BoletoSerializer,
-    SolicitacaoSerializer,
-    SolicitacaoUpdateSerializer,
-    UserSerializer,
-    LoginSerializer,
-    BotConfigSerializer,
-    MensagensConfigSerializer,
-    FAQSerializer,
-    FAQRespostaSerializer,
-    FAQSugeridaSerializer,
-    FAQSugeridaAprovarSerializer,
-    ClienteListSerializer,
-    ClienteDetailSerializer,
-    ConversaListSerializer,
-    ConversaDetailSerializer,
-    MensagemPainelSerializer,
-)
-
 from core.services import importar_sqlite_arquivo
 from ia.services import extrair_intencao
 from whatsapp.evolution_client import get_client
+
+from .serializers import (
+    BoletoSerializer,
+    BotConfigSerializer,
+    ClienteDetailSerializer,
+    ClienteListSerializer,
+    ConversaDetailSerializer,
+    ConversaListSerializer,
+    FAQSerializer,
+    FAQSugeridaAprovarSerializer,
+    FAQSugeridaSerializer,
+    LoginSerializer,
+    MensagemPainelSerializer,
+    MensagensConfigSerializer,
+    SolicitacaoSerializer,
+    SolicitacaoUpdateSerializer,
+    UserSerializer,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def custom_exception_handler(exc, context):
@@ -590,10 +585,9 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_object(self):
         from django.http import Http404
-        queryset = self.filter_queryset(self.get_queryset())
         lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
         cpf_raw = self.kwargs[lookup_url_kwarg]
-        
+
         cpf_digits = "".join(filter(str.isdigit, cpf_raw))
         if cpf_digits == "00000000000":
             raise Http404("Cliente não encontrado.")
@@ -601,7 +595,7 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
         obj = Cliente.buscar_por_cpf(cpf_raw)
         if not obj:
             raise Http404("Cliente não encontrado.")
-            
+
         self.check_object_permissions(self.request, obj)
 
         from django.db.models import prefetch_related_objects
@@ -624,10 +618,10 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        
+
         # Ocultar o cliente reservado/especial com CPF 000.000.000-00 ou 00000000000
         qs = qs.exclude(cpf__in=["000.000.000-00", "00000000000"])
-        
+
         # Filtrar apenas clientes com pelo menos um contrato ativo se solicitado
         ativos_somente = self.request.query_params.get("ativos_somente")
         if ativos_somente == "1":
@@ -797,7 +791,6 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         from whatsapp.tasks import _remote_jid_para_numero
-        from core.utils import normalize_phone_br
 
         numero = _remote_jid_para_numero(conversa.remote_jid)
         if not numero:
@@ -909,9 +902,10 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=["get"], url_path="mensagens/(?P<mensagem_id>[^/.]+)/media")
     def baixar_media_mensagem(self, request, pk=None, mensagem_id=None):
         import base64
+
         import requests
         from django.conf import settings
-        from django.http import HttpResponse, Http404
+        from django.http import Http404, HttpResponse
 
         conversa = self.get_object()
         mensagem = conversa.mensagens.filter(id=mensagem_id).first()
@@ -992,13 +986,13 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         mimetype = res_json.get("mimetype") or media_node.get("mimetype") or "application/octet-stream"
-        
+
         response = HttpResponse(file_data, content_type=mimetype)
         # Se for um documento/arquivo que o navegador não exibe em tela, adiciona Content-Disposition para download
         if media_type == "documentMessage":
             filename = res_json.get("fileName") or media_node.get("fileName") or "arquivo"
             response["Content-Disposition"] = f'attachment; filename="{filename}"'
-            
+
         return response
 
 
@@ -1140,7 +1134,7 @@ class SimulatorView(GenericAPIView):
         cliente = None
         if estado["cliente_cpf"]:
             cliente = Cliente.buscar_por_cpf(estado["cliente_cpf"])
-        
+
         cliente_data = None
         if cliente:
             cliente_data = ClienteDetailSerializer(cliente).data
@@ -1394,11 +1388,11 @@ class WhatsappConnectionView(GenericAPIView):
         bot_config = BotConfig.get_solo()
         bot_config.ativo = not bot_config.ativo
         bot_config.save(update_fields=["ativo", "atualizado_em"])
-        
+
         if bot_config.ativo:
             async_task("whatsapp.tasks.sincronizar_contatos")
             async_task("whatsapp.tasks.processar_nao_lidas")
-            
+
         client = get_client()
         state = client.get_connection_state()
         data = {

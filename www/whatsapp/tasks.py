@@ -49,26 +49,30 @@ from django.db import transaction
 from django.utils import timezone
 
 from core.models import (
+    FAQ,
+    SITUACOES_LIQUIDADAS_COD,
     BotConfig,
     Cliente,
+    ContatoSalvo,
     ContratoPenhor,
     Conversa,
-    ContatoSalvo,
-    FAQ,
-    FAQResposta,
     FAQSugerida,
     Mensagem,
     MensagensConfig,
     Solicitacao,
     Telefone,
-    SITUACOES_LIQUIDADAS_COD,
 )
 from core.utils import normalizar_cpf, normalize_phone_br, parse_nome_salvo, validar_cpf
 from ia.schemas import TipoPagamento
 from ia.services import extrair_intencao
 
 from .evolution_client import get_client
-from .respostas_contrato import formatar_data, formatar_moeda, render_template, renderizar_infos_contrato
+from .respostas_contrato import (
+    formatar_data,
+    formatar_moeda,
+    render_template,
+    renderizar_infos_contrato,
+)
 
 logger = logging.getLogger(__name__)
 

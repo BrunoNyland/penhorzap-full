@@ -1,0 +1,34 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["www"]
+exclude = [
+    ".git",
+    "venv",
+    ".venv",
+    "node_modules",
+    "staticfiles",
+    "media",
+    "frontend",
+    "graphify-out",
+    "*/migrations/*",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort (import sorting)
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # Line too long (handled by formatter or allowed for long prompt texts)
+    "UP042", # Enum inheritance pattern used for Pydantic schemas
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"www/*/tests.py" = ["F401", "F841"]
+"www/*/tests_*.py" = ["F401", "F841"]
+"www/penhorzap/settings.py" = ["F401"]

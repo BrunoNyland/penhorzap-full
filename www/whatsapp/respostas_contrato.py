@@ -323,7 +323,9 @@ def renderizar_infos_contrato(cliente, pedidos, msgs) -> list[str]:
     são relidos aqui via `_contratos_ativos_values`. Contratos citados que
     não estão entre os ativos do cliente são ignorados silenciosamente (a
     IA já é instruída a nunca inventar números fora da lista fornecida)."""
-    from .tasks import _contratos_ativos_values  # import local: evita import circular no carregamento do módulo
+    from .tasks import (
+        _contratos_ativos_values,  # import local: evita import circular no carregamento do módulo
+    )
 
     if not cliente:
         return [msgs.msg_sem_contratos_ativos]

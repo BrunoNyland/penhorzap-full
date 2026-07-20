@@ -14,13 +14,14 @@ from unittest.mock import MagicMock, patch
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from django_q.models import Schedule
 
 from core.models import (
+    FAQ,
     BotConfig,
     Cliente,
-    Conversa,
     ContratoPenhor,
-    FAQ,
+    Conversa,
     FAQResposta,
     FAQSugerida,
     Mensagem,
@@ -55,8 +56,6 @@ from whatsapp.tasks import (
     process_mensagem,
 )
 from whatsapp.views import _extrair_conteudo, desembrulhar_no_mensagem
-
-from django_q.models import Schedule
 
 
 def _classificacao(**kwargs):
@@ -295,8 +294,8 @@ class DesconhecidoTests(WhatsappTasksTestCase):
         )
         # Simula que o contrato já foi enviado nos últimos 10 minutos
         Mensagem.objects.create(
-            conversa=conv, 
-            direcao=Mensagem.Direcao.OUT, 
+            conversa=conv,
+            direcao=Mensagem.Direcao.OUT,
             texto="📄 Contrato C1 — vencimento 26/07/2026 — valor do empréstimo R$ 100,00."
         )
 
