@@ -18,15 +18,15 @@ from .mensagens_defaults import (
     DEFAULT_MSG_RENOVACAO_PROXIMO_VENCIMENTO,
     DEFAULT_MSG_SAUDACAO,
     DEFAULT_MSG_SAUDACAO_COM_PEDIDO,
-    DEFAULT_MSG_SEM_CONTRATOS_ATIVOS,
     DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
+    DEFAULT_MSG_SEM_CONTRATOS_ATIVOS,
     DEFAULT_MSG_SOLICITACAO_CRIADA,
     DEFAULT_SYSTEM_PROMPT,
+    DEFAULT_TPL_CONTRATO_LAUDO,
     DEFAULT_TPL_CONTRATO_PARCELA,
     DEFAULT_TPL_CONTRATO_QUITACAO,
     DEFAULT_TPL_CONTRATO_RENOVACAO,
     DEFAULT_TPL_CONTRATO_RESUMO,
-    DEFAULT_TPL_CONTRATO_LAUDO,
     DEFAULT_TPL_CONTRATO_VENCIMENTO,
     DEFAULT_TPL_INTRO_LAUDO,
     DEFAULT_TPL_INTRO_LISTA,
@@ -40,7 +40,6 @@ from .mensagens_defaults import (
     DEFAULT_TPL_TOTALIZADOR,
     DEFAULT_TPL_TOTALIZADOR_GERAL,
 )
-
 
 # Situações (código) que representam contrato liquidado -> não ativo.
 SITUACOES_LIQUIDADAS_COD = {"AVAL", "AVCL", "LQ", "LQDE", "LQSD", "LQVL", "OBJA", "SJLQ", "ER", ""}
@@ -104,7 +103,8 @@ class Cliente(models.Model):
         """
         if not cpf_raw:
             return None
-        from core.utils import normalizar_cpf, formatar_cpf_pontuado
+        from core.utils import formatar_cpf_pontuado, normalizar_cpf
+
         clean = normalizar_cpf(cpf_raw)
         if not clean:
             return None
@@ -119,7 +119,9 @@ class Telefone(models.Model):
 
     cliente = models.ForeignKey(Cliente, related_name="telefones", on_delete=models.CASCADE)
     numero = models.CharField(max_length=20, db_index=True, help_text="E.164, ex: +5567999755980")
-    numero_bruto = models.CharField(max_length=20, blank=True, help_text="Como veio do sistema legado")
+    numero_bruto = models.CharField(
+        max_length=20, blank=True, help_text="Como veio do sistema legado"
+    )
 
     class Meta:
         verbose_name = "Telefone"
@@ -237,12 +239,16 @@ class ContratoPenhor(models.Model):
 
     vlr_avaliacao = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     vlr_emprestimo = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
-    vlr_atualizacao_monetaria = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    vlr_atualizacao_monetaria = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True
+    )
     vlr_desconto = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     vlr_iof = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     vlr_juros = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     vlr_liquido = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
-    vlr_maximo_emprestimo = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    vlr_maximo_emprestimo = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True
+    )
     vlr_mora = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     vlr_multa = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     vlr_rem_atraso = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
@@ -255,14 +261,18 @@ class ContratoPenhor(models.Model):
     vlr_tar = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     vlr_troco = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     vlr_parcela = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
-    vlr_parcela_atualizada = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    vlr_parcela_atualizada = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True
+    )
     tarifa_custodia = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     fator_de_atualizacao_avaliacao = models.DecimalField(
         max_digits=14, decimal_places=6, null=True, blank=True
     )
     margem = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
 
-    peso = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="Gramas")
+    peso = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True, help_text="Gramas"
+    )
     valor_p_grama = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
 
     laudo = models.TextField(blank=True, help_text="Descrição da garantia/joia")
@@ -306,20 +316,36 @@ class Conversa(models.Model):
     )
     remote_jid = models.CharField(max_length=40, unique=True, help_text="Número bruto do WhatsApp")
     estado = models.CharField(max_length=30, choices=Estado.choices, default=Estado.NOVA)
-    tipo_contato = models.CharField(max_length=15, choices=TipoContato.choices, default=TipoContato.DESCONHECIDO)
-    nome_salvo = models.CharField(max_length=255, blank=True, help_text="Nome salvo na agenda do dono (PHN_CPF_NOME) quando disponível")
+    tipo_contato = models.CharField(
+        max_length=15, choices=TipoContato.choices, default=TipoContato.DESCONHECIDO
+    )
+    nome_salvo = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Nome salvo na agenda do dono (PHN_CPF_NOME) quando disponível",
+    )
     identificacao = models.CharField(
         max_length=10,
         choices=MetodoIdentificacao.choices,
         default=MetodoIdentificacao.NENHUM,
         help_text="Como o contato foi identificado nesta conversa: telefone cadastrado (não expira) ou CPF digitado (expira em 24h).",
     )
-    cpf_verificado = models.CharField(max_length=14, blank=True, default="", help_text="CPF confirmado pelo cliente nesta conversa")
-    slots = models.JSONField(default=dict, blank=True, help_text="Estado de slot-filling entre turnos (ex.: cpfs pendentes, contratos a confirmar)")
+    cpf_verificado = models.CharField(
+        max_length=14,
+        blank=True,
+        default="",
+        help_text="CPF confirmado pelo cliente nesta conversa",
+    )
+    slots = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Estado de slot-filling entre turnos (ex.: cpfs pendentes, contratos a confirmar)",
+    )
     precisa_revisao_humana = models.BooleanField(default=False)
     verified_at = models.DateTimeField(null=True, blank=True)
     processando_desde = models.DateTimeField(
-        null=True, blank=True,
+        null=True,
+        blank=True,
         help_text="Mutex leve: carimbado quando process_mensagem começa a processar esta conversa, limpo ao final.",
     )
     ultima_interacao = models.DateTimeField(auto_now=True)
@@ -348,22 +374,31 @@ class Mensagem(models.Model):
     direcao = models.CharField(max_length=3, choices=Direcao.choices)
     texto = models.TextField(blank=True)
     wa_message_id = models.CharField(max_length=120, unique=True, null=True, blank=True)
-    push_name = models.CharField(max_length=255, blank=True, help_text="Nome de perfil/salvo informado pelo webhook")
+    push_name = models.CharField(
+        max_length=255, blank=True, help_text="Nome de perfil/salvo informado pelo webhook"
+    )
     tipo_midia = models.CharField(
-        max_length=10, choices=TipoMidia.choices, blank=True, default="",
+        max_length=10,
+        choices=TipoMidia.choices,
+        blank=True,
+        default="",
         help_text="Vazio = sem mídia. Preenchido a partir do payload da Evolution (IN) ou pelo operador (OUT).",
     )
     arquivo = models.FileField(
-        upload_to="conversa_arquivos/%Y/%m/", blank=True, null=True,
+        upload_to="conversa_arquivos/%Y/%m/",
+        blank=True,
+        null=True,
         help_text="Anexo enviado pelo operador (mensagens OUT).",
     )
     enviado_ok = models.BooleanField(
-        null=True, blank=True,
+        null=True,
+        blank=True,
         help_text="OUT: resultado do envio via Evolution. None = mensagem IN ou registro legado.",
     )
     payload_bruto = models.JSONField(default=dict, blank=True)
     respondida_em = models.DateTimeField(
-        null=True, blank=True,
+        null=True,
+        blank=True,
         help_text="Quando o bot considerou esta mensagem IN respondida (controle do lote do debounce).",
     )
     criado_em = models.DateTimeField(auto_now_add=True)
@@ -386,10 +421,20 @@ class ContatoSalvo(models.Model):
         CLIENTE = "cliente", "Cliente (PHN_)"
         PESSOAL = "pessoal", "Contato pessoal"
 
-    remote_jid = models.CharField(max_length=40, unique=True, help_text="Jid bruto do WhatsApp (ex: 5567999755980@s.whatsapp.net)")
-    nome_salvo = models.CharField(max_length=255, blank=True, help_text="Nome como salvo na agenda do dono")
+    remote_jid = models.CharField(
+        max_length=40,
+        unique=True,
+        help_text="Jid bruto do WhatsApp (ex: 5567999755980@s.whatsapp.net)",
+    )
+    nome_salvo = models.CharField(
+        max_length=255, blank=True, help_text="Nome como salvo na agenda do dono"
+    )
     tipo = models.CharField(max_length=10, choices=Tipo.choices, default=Tipo.PESSOAL)
-    cpf = models.CharField(max_length=14, blank=True, help_text="CPF extraído do nome PHN_<cpf>_<nome>, quando aplicável")
+    cpf = models.CharField(
+        max_length=14,
+        blank=True,
+        help_text="CPF extraído do nome PHN_<cpf>_<nome>, quando aplicável",
+    )
     atualizado_em = models.DateTimeField(auto_now=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -408,7 +453,8 @@ class BotConfig(models.Model):
 
     ativo = models.BooleanField(default=False)
     ultima_atualizacao_dados = models.DateTimeField(
-        null=True, blank=True,
+        null=True,
+        blank=True,
         help_text="Carimbado pelo comando import_sqlite. Base para o freshness check.",
     )
     freshness_horas = models.PositiveIntegerField(
@@ -420,7 +466,8 @@ class BotConfig(models.Model):
         help_text="Segundos de silêncio do cliente antes de a IA responder. 0 = responder imediatamente. Respostas sem IA (CPF, saudação, mídia) continuam imediatas.",
     )
     horario_encerramento = models.TimeField(
-        null=True, blank=True,
+        null=True,
+        blank=True,
         help_text="Horário (America/Sao_Paulo) em que o bot desativa sozinho. Vazio = não desativa.",
     )
     responder_desconhecidos = models.BooleanField(
@@ -432,7 +479,8 @@ class BotConfig(models.Model):
         help_text="Dias após a quitação a partir de quando o cliente pode resgatar as garantias.",
     )
     ultimo_encerramento_auto = models.DateField(
-        null=True, blank=True,
+        null=True,
+        blank=True,
         help_text="Data do último encerramento automático; evita desligar mais de uma vez por dia.",
     )
     enviar_respostas_faq_ia = models.BooleanField(
@@ -458,6 +506,7 @@ class BotConfig(models.Model):
         if not self.ultima_atualizacao_dados:
             return False
         from django.utils import timezone
+
         ref = agora or timezone.now()
         return (ref - self.ultima_atualizacao_dados).total_seconds() <= self.freshness_horas * 3600
 
@@ -481,7 +530,9 @@ class MensagensConfig(models.Model):
     msg_sem_contratos_ativos = models.TextField(default=DEFAULT_MSG_SEM_CONTRATOS_ATIVOS)
     msg_solicitacao_criada = models.TextField(default=DEFAULT_MSG_SOLICITACAO_CRIADA)
     msg_boleto_intro = models.TextField(default=DEFAULT_MSG_BOLETO_INTRO)
-    msg_renovacao_proximo_vencimento = models.TextField(default=DEFAULT_MSG_RENOVACAO_PROXIMO_VENCIMENTO)
+    msg_renovacao_proximo_vencimento = models.TextField(
+        default=DEFAULT_MSG_RENOVACAO_PROXIMO_VENCIMENTO
+    )
     msg_quitacao_garantia = models.TextField(default=DEFAULT_MSG_QUITACAO_GARANTIA)
     msg_segunda_via_confirma = models.TextField(default=DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA)
     msg_neutra_padrao = models.TextField(default=DEFAULT_MSG_NEUTRA_PADRAO)
@@ -536,6 +587,7 @@ class MensagensConfig(models.Model):
     @classmethod
     def get_defaults_map(cls) -> dict:
         from django.db.models.fields import NOT_PROVIDED
+
         defaults = {}
         for field in cls._meta.get_fields():
             if field.concrete and not field.primary_key and field.name != "atualizado_em":
@@ -558,9 +610,13 @@ class FAQ(models.Model):
 
 class FAQResposta(models.Model):
     faq = models.ForeignKey(FAQ, related_name="respostas", on_delete=models.CASCADE)
-    ordem = models.PositiveIntegerField(default=0, help_text="Ordem de envio das mensagens de resposta")
+    ordem = models.PositiveIntegerField(
+        default=0, help_text="Ordem de envio das mensagens de resposta"
+    )
     texto = models.TextField(blank=True, help_text="Mensagem de texto da resposta")
-    arquivo = models.FileField(upload_to="faq_arquivos/", blank=True, null=True, help_text="Arquivo opcional")
+    arquivo = models.FileField(
+        upload_to="faq_arquivos/", blank=True, null=True, help_text="Arquivo opcional"
+    )
 
     class Meta:
         ordering = ["ordem", "id"]
@@ -611,7 +667,9 @@ class FAQSugerida(models.Model):
         """Cria uma FAQSugerida ou, se já existir uma PENDENTE com a mesma
         pergunta (case-insensitive), incrementa `ocorrencias` e retorna essa."""
         pergunta = (pergunta or "").strip()
-        existente = cls.objects.filter(status=cls.Status.PENDENTE, pergunta__iexact=pergunta).first()
+        existente = cls.objects.filter(
+            status=cls.Status.PENDENTE, pergunta__iexact=pergunta
+        ).first()
         if existente:
             existente.ocorrencias = models.F("ocorrencias") + 1
             existente.save(update_fields=["ocorrencias"])
@@ -653,7 +711,8 @@ class Solicitacao(models.Model):
     escopo = models.CharField(max_length=15, choices=Escopo.choices, default=Escopo.NAO_APLICAVEL)
     contratos = models.ManyToManyField(ContratoPenhor, related_name="solicitacoes", blank=True)
     prazo_dias = models.PositiveIntegerField(
-        null=True, blank=True,
+        null=True,
+        blank=True,
         help_text="Prazo da renovação (30/60/90/120/150/180). Nulo para quitar/parcela/segunda via.",
     )
     status = models.CharField(max_length=15, choices=Status.choices, default=Status.PENDENTE)
@@ -704,7 +763,8 @@ class ImportDataJob(models.Model):
     usuario = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
-        null=True, blank=True,
+        null=True,
+        blank=True,
         verbose_name="Usuário",
     )
 

@@ -15,7 +15,9 @@ def enviar_boletos(solicitacao_id: int):
     mensagem de acompanhamento conforme o tipo (quitação -> resgate de
     garantias; renovação -> pagar hoje + próximo vencimento)."""
     try:
-        solicitacao = Solicitacao.objects.select_related("cliente", "conversa").get(pk=solicitacao_id)
+        solicitacao = Solicitacao.objects.select_related("cliente", "conversa").get(
+            pk=solicitacao_id
+        )
     except Solicitacao.DoesNotExist:
         logger.warning("enviar_boletos: Solicitacao %s não encontrada", solicitacao_id)
         return
@@ -68,6 +70,7 @@ def _enviar_acompanhamento(solicitacao: Solicitacao, msgs, enviar_texto):
     hoje = timezone.localdate()
     if solicitacao.tipo == Solicitacao.Tipo.QUITAR:
         from core.models import BotConfig
+
         dias = max(1, BotConfig.get_solo().dias_resgate_garantia)
         data_resgate = (hoje + timedelta(days=dias)).strftime("%d/%m/%Y")
         enviar_texto(msgs.msg_quitacao_garantia.format(data_resgate=data_resgate))

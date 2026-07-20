@@ -82,7 +82,9 @@ def whatsapp_webhook(request):
     # Filter out non-message events from the Evolution API
     event = str(body.get("event") or "").strip().lower()
     if event and event not in ("messages.upsert", "send.message"):
-        return JsonResponse({"status": "ignored", "reason": f"unhandled event: {event}"}, status=200)
+        return JsonResponse(
+            {"status": "ignored", "reason": f"unhandled event: {event}"}, status=200
+        )
 
     try:
         data = body.get("data") or {}
@@ -113,6 +115,7 @@ def whatsapp_webhook(request):
             # Classifica a conversa (ContatoSalvo > Telefone > sem push_name)
             try:
                 from whatsapp.tasks import classificar_e_atualizar_conversa
+
                 classificar_e_atualizar_conversa(conversa, push_name)
             except Exception:
                 logger.debug("Classificação no webhook (OUT) falhou (não-crítico)", exc_info=True)
@@ -141,6 +144,7 @@ def whatsapp_webhook(request):
         # com o bot desligado, para que o painel mostre nome/tipo/CPF.
         try:
             from whatsapp.tasks import classificar_e_atualizar_conversa
+
             classificar_e_atualizar_conversa(conversa, push_name)
         except Exception:
             logger.debug("Classificação no webhook (IN) falhou (não-crítico)", exc_info=True)

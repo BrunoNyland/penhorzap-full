@@ -85,9 +85,7 @@ class ClassificacaoLote(BaseModel):
     abaixo é preenchido de forma independente, sem exclusão mútua entre eles
     (substitui o `tipo_intencao` único de `ClassificacaoMensagem`)."""
 
-    saudacao: bool = Field(
-        default=False, description="True se o cliente cumprimentou neste lote."
-    )
+    saudacao: bool = Field(default=False, description="True se o cliente cumprimentou neste lote.")
     faq_ids: list[int] = Field(
         default_factory=list,
         description="IDs de TODAS as FAQs cadastradas que respondem alguma pergunta do lote.",
@@ -120,7 +118,8 @@ class ClassificacaoLote(BaseModel):
         description="Perguntas do lote sem FAQ correspondente, cada uma reescrita curta e genérica.",
     )
     precisa_humano: bool = Field(
-        default=False, description="True se um operador humano deve revisar/atuar antes de responder."
+        default=False,
+        description="True se um operador humano deve revisar/atuar antes de responder.",
     )
 
     def nenhuma_acao(self) -> bool:

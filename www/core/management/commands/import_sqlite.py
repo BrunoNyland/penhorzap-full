@@ -5,12 +5,13 @@ licitacoes) into the real penhorzap MySQL database.
 Usage:
     python manage.py import_sqlite /projects/penhorzap/0886.sqlite3
 """
+
 import logging
 
 from django.core.management.base import BaseCommand
 from django.db import connection
 
-from core.models import Cliente, Conversa, ContratoPenhor, Telefone
+from core.models import Cliente, ContratoPenhor, Conversa, Telefone
 from core.services import importar_sqlite_arquivo
 from core.utils import normalizar_cpfs_clientes
 
@@ -18,7 +19,9 @@ logger = logging.getLogger("core.import_sqlite")
 
 
 class Command(BaseCommand):
-    help = "Importa clientes, contratos, agencias_penhor e licitacoes do sqlite legado para o MySQL."
+    help = (
+        "Importa clientes, contratos, agencias_penhor e licitacoes do sqlite legado para o MySQL."
+    )
 
     def add_arguments(self, parser):
         parser.add_argument("sqlite_path", type=str)
@@ -36,7 +39,12 @@ class Command(BaseCommand):
         # inconsistentes. Normaliza para 11 dígitos após cada import,
         # reaproveitando o mesmo helper usado pela migração 0014.
         resultado = normalizar_cpfs_clientes(
-            connection, Cliente, Telefone, ContratoPenhor, Conversa, logger=logger,
+            connection,
+            Cliente,
+            Telefone,
+            ContratoPenhor,
+            Conversa,
+            logger=logger,
         )
         if resultado["renomeados"]:
             self.stdout.write(

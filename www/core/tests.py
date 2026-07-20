@@ -5,9 +5,10 @@ FAQSugerida, Cliente.buscar_por_cpf e MensagensConfig.get_solo(). Nada de
 whatsapp/tasks.py nem ia/ aqui — ver whatsapp/tests.py e ia/tests.py
 (propriedade de outro workstream).
 """
-from datetime import timedelta
 
+from datetime import timedelta
 from decimal import Decimal
+
 from django.test import TestCase
 from django.utils import timezone
 
@@ -255,13 +256,14 @@ class ImportarSqliteArquivoTests(TestCase):
     def setUp(self):
         import sqlite3
         import tempfile
+
         self.temp_file = tempfile.NamedTemporaryFile(delete=False)
         self.temp_path = self.temp_file.name
         self.temp_file.close()
 
         # Connect and create tables
         conn = sqlite3.connect(self.temp_path)
-        
+
         conn.execute("""
             CREATE TABLE agencias_penhor (
                 codigo TEXT PRIMARY KEY, dv TEXT, nome TEXT, uf TEXT, situacao TEXT,
@@ -301,7 +303,7 @@ class ImportarSqliteArquivoTests(TestCase):
                 fator_de_atualizacao_avaliacao TEXT, margem TEXT, peso TEXT, valor_p_grama TEXT, laudo TEXT
             )
         """)
-        
+
         # Insert one mock row per table
         conn.execute("""
             INSERT INTO agencias_penhor VALUES ('0886', '0', 'Agencia Centro', 'MS', 'ATIVA', 'AGENCIA', 'MEDIO', 'SIM', 'Rua 14', 'Centro', 'Campo Grande', '79000-000')
@@ -329,13 +331,14 @@ class ImportarSqliteArquivoTests(TestCase):
 
     def tearDown(self):
         import os
+
         if os.path.exists(self.temp_path):
             os.unlink(self.temp_path)
 
     def test_importar_sqlite_sucesso(self):
-        from core.models import Conversa, AgenciaPenhor, Licitacao, Telefone, ContratoPenhor
+        from core.models import AgenciaPenhor, ContratoPenhor, Conversa, Licitacao, Telefone
         from core.services import importar_sqlite_arquivo
-        
+
         # Create a conversation to test reassociation
         conversa = Conversa.objects.create(remote_jid="5567999755980@s.whatsapp.net")
 

@@ -5,6 +5,7 @@ Cobre a garantia dura de que `extrair_intencao` nunca levanta (mesmo sem
 Gemini nunca contém valores financeiros de contrato nem respostas de FAQ --
 só o necessário para desambiguar (número/vencimento/parcelado; id+pergunta).
 """
+
 from django.test import TestCase, override_settings
 
 from ia.schemas import ClassificacaoLote
@@ -29,7 +30,9 @@ class ExtrairIntencaoSemApiKeyTests(TestCase):
     @override_settings(GEMINI_API_KEY="")
     def test_sem_api_key_nao_levanta_mesmo_com_entrada_vazia(self):
         # Garantia dura: nenhuma combinação de entrada pode fazer levantar.
-        resultado = extrair_intencao("", [], [], [], identificado=False, db_atualizada=False, contato_tipo="desconhecido")
+        resultado = extrair_intencao(
+            "", [], [], [], identificado=False, db_atualizada=False, contato_tipo="desconhecido"
+        )
         self.assertIsInstance(resultado, ClassificacaoLote)
         self.assertTrue(resultado.precisa_humano)
 
@@ -121,11 +124,17 @@ class PrivacidadeDoPromptTests(TestCase):
             contrato["vlr_parcela"],
         ]
         for valor in valores_financeiros:
-            self.assertNotIn(valor, prompt, f"valor financeiro {valor!r} vazou para o prompt completo da IA")
+            self.assertNotIn(
+                valor, prompt, f"valor financeiro {valor!r} vazou para o prompt completo da IA"
+            )
 
     def test_formatar_faqs_so_id_e_pergunta_nunca_resposta(self):
         faqs = [
-            {"id": 1, "pergunta": "Vocês aceitam relógio?", "resposta": "SEGREDO_RESPOSTA_NAO_DEVE_VAZAR"},
+            {
+                "id": 1,
+                "pergunta": "Vocês aceitam relógio?",
+                "resposta": "SEGREDO_RESPOSTA_NAO_DEVE_VAZAR",
+            },
             {"id": 2, "pergunta": "Qual o horário de funcionamento?"},
         ]
         texto = _formatar_faqs(faqs)
@@ -194,4 +203,6 @@ class PrivacidadeDoPromptTests(TestCase):
             contrato["vlr_parcela"],
         ]
         for valor in valores_financeiros:
-            self.assertNotIn(valor, prompt, f"valor financeiro {valor!r} vazou para o prompt do lote")
+            self.assertNotIn(
+                valor, prompt, f"valor financeiro {valor!r} vazou para o prompt do lote"
+            )

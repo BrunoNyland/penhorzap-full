@@ -3,29 +3,29 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, Spec
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    SolicitacaoViewSet,
-    FAQViewSet,
-    FAQSugeridaViewSet,
+    AuthView,
+    BotConfigAPIView,
     ClienteViewSet,
     ConversaViewSet,
     DashboardStatsAPIView,
-    BotConfigAPIView,
-    MensagensConfigAPIView,
-    MensagensConfigRestoreAPIView,
-    SimulatorView,
-    SimulatorChatAPIView,
-    WhatsAppStatusAPIView,
-    WhatsAppConectarAPIView,
-    WhatsAppDesconectarAPIView,
-    WhatsappConnectionView,
+    FAQSugeridaViewSet,
+    FAQViewSet,
+    ImportSqliteAPIView,
+    ImportSqliteLatestAPIView,
+    ImportSqliteStatusAPIView,
+    ImportSqliteSyncAPIView,
     LoginAPIView,
     LogoutAPIView,
+    MensagensConfigAPIView,
+    MensagensConfigRestoreAPIView,
+    SimulatorChatAPIView,
+    SimulatorView,
+    SolicitacaoViewSet,
     UserAPIView,
-    AuthView,
-    ImportSqliteAPIView,
-    ImportSqliteSyncAPIView,
-    ImportSqliteStatusAPIView,
-    ImportSqliteLatestAPIView,
+    WhatsAppConectarAPIView,
+    WhatsappConnectionView,
+    WhatsAppDesconectarAPIView,
+    WhatsAppStatusAPIView,
 )
 
 router = DefaultRouter()
@@ -42,7 +42,6 @@ urlpatterns = router.urls + [
     path("schema/", SpectacularAPIView.as_view(), name="schema"),
     path("docs/", SpectacularSwaggerView.as_view(url_name="api:schema"), name="swagger-ui"),
     path("redoc/", SpectacularRedocView.as_view(url_name="api:schema"), name="redoc"),
-
     # Validation Suite Endpoints
     path("auth/", AuthView.as_view(), name="auth"),
     path("dashboard/", DashboardStatsAPIView.as_view(), name="dashboard-stats"),
@@ -50,21 +49,30 @@ urlpatterns = router.urls + [
     path("configs/mensagens/", MensagensConfigAPIView.as_view(), name="mensagens-config"),
     path("whatsapp/state/", WhatsappConnectionView.as_view(), name="whatsapp-connection"),
     path("simulador/", SimulatorView.as_view(), name="simulador"),
-
     # Prompt Request Endpoints
     path("dashboard/stats/", DashboardStatsAPIView.as_view(), name="dashboard-stats-prompt"),
     path("bot-config/", BotConfigAPIView.as_view(), name="bot-config-prompt"),
     path("mensagens-config/", MensagensConfigAPIView.as_view(), name="mensagens-config-prompt"),
-    path("mensagens-config/restore/", MensagensConfigRestoreAPIView.as_view(), name="mensagens-config-restore"),
+    path(
+        "mensagens-config/restore/",
+        MensagensConfigRestoreAPIView.as_view(),
+        name="mensagens-config-restore",
+    ),
     path("simulador/chat/", SimulatorChatAPIView.as_view(), name="simulador-chat"),
     path("whatsapp/status/", WhatsAppStatusAPIView.as_view(), name="whatsapp-status"),
     path("whatsapp/conectar/", WhatsAppConectarAPIView.as_view(), name="whatsapp-conectar"),
-    path("whatsapp/desconectar/", WhatsAppDesconectarAPIView.as_view(), name="whatsapp-desconectar"),
+    path(
+        "whatsapp/desconectar/", WhatsAppDesconectarAPIView.as_view(), name="whatsapp-desconectar"
+    ),
     path("auth/login/", LoginAPIView.as_view(), name="auth-login"),
     path("auth/logout/", LogoutAPIView.as_view(), name="auth-logout"),
     path("auth/user/", UserAPIView.as_view(), name="auth-user"),
     path("import/sqlite/", ImportSqliteAPIView.as_view(), name="import-sqlite"),
     path("import/sqlite/sync/", ImportSqliteSyncAPIView.as_view(), name="import-sqlite-sync"),
-    path("import/sqlite/<int:pk>/status/", ImportSqliteStatusAPIView.as_view(), name="import-sqlite-status"),
+    path(
+        "import/sqlite/<int:pk>/status/",
+        ImportSqliteStatusAPIView.as_view(),
+        name="import-sqlite-status",
+    ),
     path("import/sqlite/latest/", ImportSqliteLatestAPIView.as_view(), name="import-sqlite-latest"),
 ]

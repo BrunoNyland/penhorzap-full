@@ -3,18 +3,18 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from core.models import (
+    FAQ,
     Boleto,
+    BotConfig,
     Cliente,
     ContratoPenhor,
-    Mensagem,
-    Solicitacao,
-    BotConfig,
-    MensagensConfig,
-    FAQ,
+    Conversa,
     FAQResposta,
     FAQSugerida,
+    Mensagem,
+    MensagensConfig,
+    Solicitacao,
     Telefone,
-    Conversa,
 )
 
 
@@ -104,7 +104,7 @@ class WritableFileField(serializers.FileField):
             cleaned = data
             for prefix in ["/media/", "media/"]:
                 if cleaned.startswith(prefix):
-                    cleaned = cleaned[len(prefix):]
+                    cleaned = cleaned[len(prefix) :]
             return cleaned
         return super().to_internal_value(data)
 
@@ -155,7 +155,9 @@ class FAQSerializer(serializers.ModelSerializer):
 
 
 class FAQSugeridaSerializer(serializers.ModelSerializer):
-    revisado_por_nome = serializers.CharField(source="revisado_por.username", read_only=True, default="")
+    revisado_por_nome = serializers.CharField(
+        source="revisado_por.username", read_only=True, default=""
+    )
 
     class Meta:
         model = FAQSugerida
@@ -467,8 +469,12 @@ class ClienteListSerializer(serializers.ModelSerializer):
     num_telefones = serializers.IntegerField(read_only=True, default=0)
     num_conversas = serializers.IntegerField(read_only=True, default=0)
     num_contratos_ativos = serializers.IntegerField(read_only=True, default=0)
-    total_emprestimo_ativo = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True, default=0)
-    total_avaliacao_ativo = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True, default=0)
+    total_emprestimo_ativo = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True, default=0
+    )
+    total_avaliacao_ativo = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True, default=0
+    )
 
     class Meta:
         model = Cliente

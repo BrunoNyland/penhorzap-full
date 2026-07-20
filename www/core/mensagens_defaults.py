@@ -18,8 +18,7 @@ DEFAULT_MSG_CADASTRO_NAO_LOCALIZADO = (
 
 DEFAULT_MSG_PEDIR_CPF = "Me informe seu CPF por gentileza, que já verifico para você."
 DEFAULT_MSG_CPF_INVALIDO = (
-    "O CPF que vc me passou está inválido 🤦‍♂️ Dá uma conferida e me manda "
-    "novamente por favor 😁🙏"
+    "O CPF que vc me passou está inválido 🤦‍♂️ Dá uma conferida e me manda novamente por favor 😁🙏"
 )
 DEFAULT_MSG_CPF_NAO_BATE = (
     "Esse CPF não bate com o que tenho aqui pra este número. Você pode "
@@ -37,9 +36,7 @@ DEFAULT_MSG_SEM_CONTRATOS_ATIVOS = (
 
 # --- Pagamento / boletos -----------------------------------------------------
 
-DEFAULT_MSG_SOLICITACAO_CRIADA = (
-    "Vou gerar o(s) boleto(s) e daqui a pouco eu te envio aqui mesmo."
-)
+DEFAULT_MSG_SOLICITACAO_CRIADA = "Vou gerar o(s) boleto(s) e daqui a pouco eu te envio aqui mesmo."
 DEFAULT_MSG_BOLETO_INTRO = (
     "Prontinho, segue o boleto que você pediu. 😁👍 Logo abaixo te mando também "
     "o código de barras pra facilitar."
@@ -49,8 +46,7 @@ DEFAULT_MSG_RENOVACAO_PROXIMO_VENCIMENTO = (
     "vencimento será {proximo_vencimento}."
 )
 DEFAULT_MSG_QUITACAO_GARANTIA = (
-    "Pagando hoje o boleto, vc pode vir resgatar a partir de 📆{data_resgate} "
-    "as 🕜11hrs."
+    "Pagando hoje o boleto, vc pode vir resgatar a partir de 📆{data_resgate} as 🕜11hrs."
 )
 DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA = (
     "Localizei o boleto anterior. Pra eu te mandar de novo, me confirma: é "
@@ -64,9 +60,7 @@ DEFAULT_MSG_NEUTRA_PADRAO = (
 
 # --- Templates v2 (identificação por telefone / respostas de contrato) ------
 
-DEFAULT_TPL_SAUDACAO_CLIENTE = (
-    "{saudacao}, {nome}! 😊 Como posso te ajudar?"
-)
+DEFAULT_TPL_SAUDACAO_CLIENTE = "{saudacao}, {nome}! 😊 Como posso te ajudar?"
 DEFAULT_TPL_SAUDACAO_CLIENTE_COM_PEDIDO = "{saudacao}, {nome}! 😊"
 DEFAULT_TPL_CONTRATO_VENCIMENTO = "📄 *Contrato* {contrato}\n🗓️ *Vencimento*: {vencimento}."
 DEFAULT_TPL_CONTRATO_RENOVACAO = "🔹Renovação {prazo_dias} dias: {valor_renovacao}"
@@ -96,12 +90,10 @@ DEFAULT_TPL_TOTALIZADOR_GERAL = (
 )
 
 DEFAULT_MSG_FALLBACK_SEM_RESPOSTA = (
-    "Boa pergunta! Deixa eu verificar com calma e já te retorno por aqui "
-    "mesmo, combinado?"
+    "Boa pergunta! Deixa eu verificar com calma e já te retorno por aqui mesmo, combinado?"
 )
 DEFAULT_MSG_DUVIDA_ANOTADA = (
-    "Sobre {duvidas}: vou verificar com calma e te retorno por aqui mesmo, "
-    "combinado? 🙂"
+    "Sobre {duvidas}: vou verificar com calma e te retorno por aqui mesmo, combinado? 🙂"
 )
 DEFAULT_MSG_INFO_NEGADA_DESCONHECIDO = (
     "Por segurança, as informações do seu contrato constam no próprio "

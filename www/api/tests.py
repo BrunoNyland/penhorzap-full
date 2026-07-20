@@ -1,6 +1,6 @@
 import json
 from datetime import timedelta
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -9,13 +9,14 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from core.mensagens_defaults import MENSAGENS_DEFAULTS, SIMULADOR_SESSION_KEY
 from core.models import (
+    FAQ,
     Boleto,
     BotConfig,
     Cliente,
     ContratoPenhor,
     Conversa,
-    FAQ,
     FAQResposta,
     FAQSugerida,
     Mensagem,
@@ -23,7 +24,6 @@ from core.models import (
     Solicitacao,
 )
 from ia.schemas import ClassificacaoLote, InfoContrato, InfoContratoPedido
-from core.mensagens_defaults import MENSAGENS_DEFAULTS, SIMULADOR_SESSION_KEY
 
 
 class APIEndpointsTestCase(APITestCase):
@@ -208,7 +208,7 @@ class APIEndpointsTestCase(APITestCase):
             status=Solicitacao.Status.CONCLUIDA,
         )
         url = reverse("api:solicitacao-list")
-        
+
         response = self.client.get(url, {"status": "pendente"})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
@@ -241,13 +241,13 @@ class APIEndpointsTestCase(APITestCase):
     def test_solicitacao_upload_boletos(self, mock_async_task):
         self.client.force_authenticate(user=self.staff_user)
         url = reverse("api:solicitacao-boletos", kwargs={"pk": self.solicitacao.id})
-        
+
         pdf_file = SimpleUploadedFile("boleto1.pdf", b"pdf data 1", content_type="application/pdf")
         pdf_file2 = SimpleUploadedFile("boleto2.pdf", b"pdf data 2", content_type="application/pdf")
-        
+
         payload = {
             "arquivo": [pdf_file, pdf_file2],
-            "linha_digitavel": ["34191.79001 01043.513184 1", "34191.79001 01043.513184 2"]
+            "linha_digitavel": ["34191.79001 01043.513184 1", "34191.79001 01043.513184 2"],
         }
         response = self.client.post(url, payload, format="multipart")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -356,8 +356,8 @@ class APIEndpointsTestCase(APITestCase):
             "ativo": True,
             "respostas": [
                 {"ordem": 0, "texto": "Para renovar envie o contrato."},
-                {"ordem": 1, "texto": "Ou use o site da Caixa."}
-            ]
+                {"ordem": 1, "texto": "Ou use o site da Caixa."},
+            ],
         }
         response = self.client.post(url, payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -368,20 +368,17 @@ class APIEndpointsTestCase(APITestCase):
     def test_faq_create_multipart(self):
         self.client.force_authenticate(user=self.staff_user)
         url = reverse("api:faq-list")
-        
+
         faq_data = {
             "pergunta": "Como amortizar?",
             "ativo": True,
             "respostas": [
                 {"ordem": 0, "texto": "Envie o valor parcial."},
-                {"ordem": 1, "texto": "Confira o comprovante."}
-            ]
+                {"ordem": 1, "texto": "Confira o comprovante."},
+            ],
         }
         file_0 = SimpleUploadedFile("comprovante.png", b"fake png data", content_type="image/png")
-        payload = {
-            "faq": json.dumps(faq_data),
-            "arquivo_0": file_0
-        }
+        payload = {"faq": json.dumps(faq_data), "arquivo_0": file_0}
         response = self.client.post(url, payload, format="multipart")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         faq = FAQ.objects.get(pergunta="Como amortizar?")
@@ -395,31 +392,33 @@ class APIEndpointsTestCase(APITestCase):
     def test_faq_update_multipart(self):
         self.client.force_authenticate(user=self.staff_user)
         url = reverse("api:faq-detail", kwargs={"pk": self.faq.id})
-        
+
         # Set an initial file for the first reply in the DB
         self.faq_resposta.arquivo = "faq_arquivos/antigo.pdf"
         self.faq_resposta.save()
-        
+
         faq_data = {
             "pergunta": "Qual o horário de funcionamento? (Alterado)",
             "ativo": False,
             "respostas": [
-                {"id": self.faq_resposta.id, "ordem": 0, "texto": "Novo texto 1", "arquivo": "/media/faq_arquivos/antigo.pdf"},
-                {"ordem": 1, "texto": "Novo texto 2"}
-            ]
+                {
+                    "id": self.faq_resposta.id,
+                    "ordem": 0,
+                    "texto": "Novo texto 1",
+                    "arquivo": "/media/faq_arquivos/antigo.pdf",
+                },
+                {"ordem": 1, "texto": "Novo texto 2"},
+            ],
         }
         file_1 = SimpleUploadedFile("anexo.pdf", b"pdf data", content_type="application/pdf")
-        payload = {
-            "faq": json.dumps(faq_data),
-            "arquivo_1": file_1
-        }
+        payload = {"faq": json.dumps(faq_data), "arquivo_1": file_1}
         response = self.client.put(url, payload, format="multipart")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
+
         self.faq.refresh_from_db()
         self.assertEqual(self.faq.pergunta, "Qual o horário de funcionamento? (Alterado)")
         self.assertFalse(self.faq.ativo)
-        
+
         respostas = self.faq.respostas.order_by("ordem")
         self.assertEqual(respostas.count(), 2)
         # Verify first reply preserved the file path
@@ -430,12 +429,12 @@ class APIEndpointsTestCase(APITestCase):
     def test_faq_toggle(self):
         self.client.force_authenticate(user=self.staff_user)
         url = reverse("api:faq-toggle", kwargs={"pk": self.faq.id})
-        
+
         self.assertTrue(self.faq.ativo)
         response = self.client.post(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(response.data["ativo"])
-        
+
         self.faq.refresh_from_db()
         self.assertFalse(self.faq.ativo)
 
@@ -457,25 +456,25 @@ class APIEndpointsTestCase(APITestCase):
 
     def test_conversa_list_filters(self):
         self.client.force_authenticate(user=self.staff_user)
-        
+
         # Make first needs review
         self.conversa.precisa_revisao_humana = True
         self.conversa.save()
-        
+
         # Create second
         Conversa.objects.create(
             remote_jid="5567888888888@s.whatsapp.net",
             estado=Conversa.Estado.ENCERRADA,
             tipo_contato=Conversa.TipoContato.PESSOAL,
-            precisa_revisao_humana=False
+            precisa_revisao_humana=False,
         )
         url = reverse("api:conversa-list")
-        
+
         # Filter: needs review
         response = self.client.get(url, {"revisao": "1"})
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]["id"], self.conversa.id)
-        
+
         # Filter: estado
         response = self.client.get(url, {"estado": "encerrada"})
         self.assertEqual(len(response.data), 1)
@@ -499,12 +498,12 @@ class APIEndpointsTestCase(APITestCase):
     def test_conversa_toggle_revisao(self):
         self.client.force_authenticate(user=self.staff_user)
         url = reverse("api:conversa-toggle-revisao", kwargs={"pk": self.conversa.id})
-        
+
         self.assertFalse(self.conversa.precisa_revisao_humana)
         response = self.client.post(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data["precisa_revisao_humana"])
-        
+
         self.conversa.refresh_from_db()
         self.assertTrue(self.conversa.precisa_revisao_humana)
 
@@ -519,17 +518,17 @@ class APIEndpointsTestCase(APITestCase):
 
     def test_cliente_list_filters(self):
         self.client.force_authenticate(user=self.staff_user)
-        
+
         # Create blocked client
         Cliente.objects.create(
             cpf="98765432109",
             nome="Spammer IA",
             cidade="Campo Grande",
             bloqueado_ia=True,
-            bloqueado_motivo="Muitas mensagens"
+            bloqueado_motivo="Muitas mensagens",
         )
         url = reverse("api:cliente-list")
-        
+
         # Filter: blocked only
         response = self.client.get(url, {"bloqueado": "1"})
         self.assertEqual(len(response.data), 1)
@@ -553,23 +552,25 @@ class APIEndpointsTestCase(APITestCase):
     def test_cliente_toggle_bloqueio(self):
         self.client.force_authenticate(user=self.staff_user)
         url = reverse("api:cliente-toggle-bloqueio", kwargs={"pk": self.cliente.cpf})
-        
+
         # Block
-        response = self.client.post(url, {"acao": "bloquear", "motivo": "Falar bobagem"}, format="json")
+        response = self.client.post(
+            url, {"acao": "bloquear", "motivo": "Falar bobagem"}, format="json"
+        )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data["bloqueado_ia"])
         self.assertEqual(response.data["bloqueado_motivo"], "Falar bobagem")
-        
+
         self.cliente.refresh_from_db()
         self.assertTrue(self.cliente.bloqueado_ia)
         self.assertEqual(self.cliente.bloqueado_motivo, "Falar bobagem")
-        
+
         # Unblock
         response = self.client.post(url, {"acao": "desbloquear"}, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(response.data["bloqueado_ia"])
         self.assertEqual(response.data["bloqueado_motivo"], "")
-        
+
         self.cliente.refresh_from_db()
         self.assertFalse(self.cliente.bloqueado_ia)
 
@@ -578,11 +579,11 @@ class APIEndpointsTestCase(APITestCase):
     @patch("api.views.get_client")
     def test_whatsapp_connection_get_open(self, mock_get_client):
         self.client.force_authenticate(user=self.staff_user)
-        
+
         mock_evo = MagicMock()
         mock_evo.get_connection_state.return_value = "open"
         mock_get_client.return_value = mock_evo
-        
+
         url = reverse("api:whatsapp-connection")
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -593,12 +594,12 @@ class APIEndpointsTestCase(APITestCase):
     @patch("api.views.get_client")
     def test_whatsapp_connection_get_closed(self, mock_get_client):
         self.client.force_authenticate(user=self.staff_user)
-        
+
         mock_evo = MagicMock()
         mock_evo.get_connection_state.return_value = "close"
         mock_evo.get_qrcode_base64.return_value = "data:image/png;base64,mockcode"
         mock_get_client.return_value = mock_evo
-        
+
         url = reverse("api:whatsapp-connection")
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -609,14 +610,14 @@ class APIEndpointsTestCase(APITestCase):
     @patch("api.views.get_client")
     def test_whatsapp_connection_post(self, mock_get_client, mock_async_task):
         self.client.force_authenticate(user=self.staff_user)
-        
+
         mock_evo = MagicMock()
         mock_evo.get_connection_state.return_value = "connecting"
         mock_evo.get_qrcode_base64.return_value = "data:image/png;base64,mockcode"
         mock_get_client.return_value = mock_evo
-        
+
         url = reverse("api:whatsapp-connection")
-        
+
         # Toggle bot configuration to active
         response = self.client.post(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -647,7 +648,9 @@ class APIEndpointsTestCase(APITestCase):
         self.assertEqual(response.data["turnos"], [])
 
         # Select client
-        response = self.client.post(url, {"acao": "selecionar_cliente", "cpf": self.cliente.cpf}, format="json")
+        response = self.client.post(
+            url, {"acao": "selecionar_cliente", "cpf": self.cliente.cpf}, format="json"
+        )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["cliente"]["cpf"], self.cliente.cpf)
 
@@ -666,11 +669,16 @@ class APIEndpointsTestCase(APITestCase):
         )
         mock_extrair_intencao.return_value = mock_result
 
-        response = self.client.post(url, {"acao": "enviar", "mensagem": "Aceita relógio?"}, format="json")
+        response = self.client.post(
+            url, {"acao": "enviar", "mensagem": "Aceita relógio?"}, format="json"
+        )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data["turnos"]), 2)
         self.assertEqual(response.data["turnos"][0]["texto"], "Aceita relógio?")
-        self.assertEqual(response.data["turnos"][1]["texto"], MensagensConfig.get_solo().msg_fallback_sem_resposta)
+        self.assertEqual(
+            response.data["turnos"][1]["texto"],
+            MensagensConfig.get_solo().msg_fallback_sem_resposta,
+        )
         self.assertEqual(response.data["turnos"][1]["debug"]["acoes"], ["duvida_sem_faq:1"])
 
         # Restart
@@ -702,7 +710,9 @@ class APIEndpointsTestCase(APITestCase):
         self.client.login(username="admin", password="password")
         url = reverse("api:simulador")
 
-        response = self.client.post(url, {"acao": "selecionar_cliente", "cpf": self.cliente.cpf}, format="json")
+        response = self.client.post(
+            url, {"acao": "selecionar_cliente", "cpf": self.cliente.cpf}, format="json"
+        )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         mock_extrair_intencao.return_value = ClassificacaoLote(
@@ -715,7 +725,9 @@ class APIEndpointsTestCase(APITestCase):
             duvidas_sem_faq=[],
         )
 
-        response = self.client.post(url, {"acao": "enviar", "mensagem": "quando vencem meus contratos?"}, format="json")
+        response = self.client.post(
+            url, {"acao": "enviar", "mensagem": "quando vencem meus contratos?"}, format="json"
+        )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         turnos = response.data["turnos"]
 
@@ -738,7 +750,9 @@ class ConversaDetailMidiaTestCase(APITestCase):
     NUNCA `payload_bruto` (não deve vazar o payload bruto da Evolution)."""
 
     def setUp(self):
-        self.staff_user = User.objects.create_user(username="admin2", password="password", is_staff=True)
+        self.staff_user = User.objects.create_user(
+            username="admin2", password="password", is_staff=True
+        )
         self.conversa = Conversa.objects.create(
             remote_jid="5567988776655@s.whatsapp.net",
             estado=Conversa.Estado.NOVA,
@@ -776,7 +790,9 @@ class BaixarMediaMensagemTestCase(APITestCase):
     cobrindo o caminho feliz até a chamada à Evolution API."""
 
     def setUp(self):
-        self.staff_user = User.objects.create_user(username="staffmedia", password="password", is_staff=True)
+        self.staff_user = User.objects.create_user(
+            username="staffmedia", password="password", is_staff=True
+        )
         self.conversa = Conversa.objects.create(
             remote_jid="5567988776655@s.whatsapp.net",
             estado=Conversa.Estado.NOVA,
@@ -801,9 +817,13 @@ class BaixarMediaMensagemTestCase(APITestCase):
     @patch("requests.post")
     def test_baixa_midia_com_sucesso(self, mock_post):
         import base64
+
         mock_post.return_value = MagicMock(
             status_code=201,
-            json=lambda: {"base64": base64.b64encode(b"fake-jpeg-bytes").decode(), "mimetype": "image/jpeg"},
+            json=lambda: {
+                "base64": base64.b64encode(b"fake-jpeg-bytes").decode(),
+                "mimetype": "image/jpeg",
+            },
         )
         self.client.force_authenticate(user=self.staff_user)
         response = self.client.get(self._url())
@@ -833,6 +853,7 @@ class BaixarMediaMensagemTestCase(APITestCase):
     @patch("requests.post")
     def test_midia_embrulhada_em_ephemeral_message_e_baixada(self, mock_post):
         import base64
+
         mensagem_efemera = Mensagem.objects.create(
             conversa=self.conversa,
             direcao=Mensagem.Direcao.IN,
@@ -841,13 +862,18 @@ class BaixarMediaMensagemTestCase(APITestCase):
             payload_bruto={
                 "data": {
                     "key": {"id": "WA124"},
-                    "message": {"ephemeralMessage": {"message": {"audioMessage": {"mimetype": "audio/ogg"}}}},
+                    "message": {
+                        "ephemeralMessage": {"message": {"audioMessage": {"mimetype": "audio/ogg"}}}
+                    },
                 }
             },
         )
         mock_post.return_value = MagicMock(
             status_code=201,
-            json=lambda: {"base64": base64.b64encode(b"fake-audio-bytes").decode(), "mimetype": "audio/ogg"},
+            json=lambda: {
+                "base64": base64.b64encode(b"fake-audio-bytes").decode(),
+                "mimetype": "audio/ogg",
+            },
         )
         self.client.force_authenticate(user=self.staff_user)
         url = f"/api/conversas/{self.conversa.id}/mensagens/{mensagem_efemera.id}/media/"
@@ -858,8 +884,12 @@ class BaixarMediaMensagemTestCase(APITestCase):
 
 class ConversaEnviarArquivoTestCase(APITestCase):
     def setUp(self):
-        self.staff_user = User.objects.create_user(username="staffarq", password="password", is_staff=True)
-        self.regular_user = User.objects.create_user(username="userarq", password="password", is_staff=False)
+        self.staff_user = User.objects.create_user(
+            username="staffarq", password="password", is_staff=True
+        )
+        self.regular_user = User.objects.create_user(
+            username="userarq", password="password", is_staff=False
+        )
         self.conversa = Conversa.objects.create(
             remote_jid="5567999999999@s.whatsapp.net",
             estado=Conversa.Estado.NOVA,
@@ -890,7 +920,9 @@ class ConversaEnviarArquivoTestCase(APITestCase):
 
     def test_enviar_arquivo_extensao_proibida(self):
         self.client.force_authenticate(user=self.staff_user)
-        arquivo = SimpleUploadedFile("virus.exe", b"binario qualquer", content_type="application/octet-stream")
+        arquivo = SimpleUploadedFile(
+            "virus.exe", b"binario qualquer", content_type="application/octet-stream"
+        )
         response = self.client.post(self.url, {"arquivo": arquivo}, format="multipart")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(Mensagem.objects.filter(conversa=self.conversa).count(), 0)
@@ -900,7 +932,9 @@ class ConversaEnviarArquivoTestCase(APITestCase):
         from api.views import ConversaViewSet
 
         with patch.object(ConversaViewSet, "_TAMANHO_MAXIMO_ANEXO_BYTES", 10):
-            arquivo = SimpleUploadedFile("foto.jpg", b"mais de dez bytes de conteudo", content_type="image/jpeg")
+            arquivo = SimpleUploadedFile(
+                "foto.jpg", b"mais de dez bytes de conteudo", content_type="image/jpeg"
+            )
             response = self.client.post(self.url, {"arquivo": arquivo}, format="multipart")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("tamanho", response.data["detail"].lower())
@@ -919,8 +953,12 @@ class ConversaEnviarArquivoTestCase(APITestCase):
 
 class FAQSugeridaViewSetTestCase(APITestCase):
     def setUp(self):
-        self.staff_user = User.objects.create_user(username="staffsug", password="password", is_staff=True)
-        self.regular_user = User.objects.create_user(username="usersug", password="password", is_staff=False)
+        self.staff_user = User.objects.create_user(
+            username="staffsug", password="password", is_staff=True
+        )
+        self.regular_user = User.objects.create_user(
+            username="usersug", password="password", is_staff=False
+        )
         self.pendente = FAQSugerida.objects.create(
             pergunta="Vocês trabalham no feriado?",
             pergunta_original="vcs abrem no feriado?",
@@ -1004,7 +1042,9 @@ class FAQSugeridaViewSetTestCase(APITestCase):
 
 class DashboardFaqsSugeridasPendentesTestCase(APITestCase):
     def setUp(self):
-        self.staff_user = User.objects.create_user(username="staffdash", password="password", is_staff=True)
+        self.staff_user = User.objects.create_user(
+            username="staffdash", password="password", is_staff=True
+        )
         FAQSugerida.objects.create(pergunta="Pendente 1")
         FAQSugerida.objects.create(pergunta="Pendente 2")
         FAQSugerida.objects.create(pergunta="Já tratada", status=FAQSugerida.Status.REJEITADA)

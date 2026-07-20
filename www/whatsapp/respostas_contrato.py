@@ -6,6 +6,7 @@ cliente é gerado por ela. Este módulo pega os pedidos já classificados
 produz texto pronto para enviar via WhatsApp — os valores usados SEMPRE vêm
 do banco (via `whatsapp.tasks._contratos_ativos_values`), nunca da IA.
 """
+
 import logging
 import re
 from datetime import date, datetime
@@ -233,7 +234,9 @@ def _montar_totalizador(info, contratos: list, ativos_map: dict, msgs, prazo=Non
             return f"{_montar_totalizador_geral(contratos, ativos_map, msgs)}{sufixo}"
 
         total = _somar_decimais(valores)
-        return f"{render_template(msgs.tpl_totalizador, qtd=qtd, total=formatar_moeda(total))}{sufixo}"
+        return (
+            f"{render_template(msgs.tpl_totalizador, qtd=qtd, total=formatar_moeda(total))}{sufixo}"
+        )
 
     if info == InfoContrato.VALOR_PARCELA:
         total = _somar_decimais(ativos_map[num].get("vlr_parcela") for num in contratos)
@@ -243,7 +246,11 @@ def _montar_totalizador(info, contratos: list, ativos_map: dict, msgs, prazo=Non
     return _montar_totalizador_geral(contratos, ativos_map, msgs)
 
 
-_INFOS_NUMERICOS = (InfoContrato.VALOR_RENOVACAO, InfoContrato.VALOR_QUITACAO, InfoContrato.VALOR_PARCELA)
+_INFOS_NUMERICOS = (
+    InfoContrato.VALOR_RENOVACAO,
+    InfoContrato.VALOR_QUITACAO,
+    InfoContrato.VALOR_PARCELA,
+)
 
 _CAMPO_VALOR_DB = {
     CampoValor.EMPRESTIMO: "vlr_emprestimo",
@@ -276,7 +283,8 @@ def _resolver_alvo(pedido, ativos_map: dict) -> list[str]:
     if pedido.filtro_vencido:
         hoje = timezone.localdate()
         alvo = [
-            n for n in alvo
+            n
+            for n in alvo
             if ativos_map[n].get("data_vencimento") and ativos_map[n]["data_vencimento"] < hoje
         ]
 
@@ -288,9 +296,13 @@ def _resolver_alvo(pedido, ativos_map: dict) -> list[str]:
             valor = ativos_map[num].get(campo)
             if valor is None:
                 return False
-            if pedido.filtro_valor_min is not None and valor < Decimal(str(pedido.filtro_valor_min)):
+            if pedido.filtro_valor_min is not None and valor < Decimal(
+                str(pedido.filtro_valor_min)
+            ):
                 return False
-            if pedido.filtro_valor_max is not None and valor > Decimal(str(pedido.filtro_valor_max)):
+            if pedido.filtro_valor_max is not None and valor > Decimal(
+                str(pedido.filtro_valor_max)
+            ):
                 return False
             return True
 
@@ -361,7 +373,9 @@ def renderizar_infos_contrato(cliente, pedidos, msgs) -> list[str]:
                 contratos_resumo = [n for n in alvo if ativos_map[n].get("parcelado")]
             if len(contratos_resumo) > 1:
                 totalizadores_numericos.append(
-                    _montar_totalizador(pedido.info, contratos_resumo, ativos_map, msgs, prazo=prazo)
+                    _montar_totalizador(
+                        pedido.info, contratos_resumo, ativos_map, msgs, prazo=prazo
+                    )
                 )
                 continue
 
@@ -504,7 +518,9 @@ def renderizar_infos_contrato(cliente, pedidos, msgs) -> list[str]:
         if eh_numerico:
             if len(contratos_incluidos) > 1:
                 totalizadores_numericos.append(
-                    _montar_totalizador(pedido.info, contratos_incluidos, ativos_map, msgs, prazo=prazo)
+                    _montar_totalizador(
+                        pedido.info, contratos_incluidos, ativos_map, msgs, prazo=prazo
+                    )
                 )
         else:
             existe_nao_numerico = True

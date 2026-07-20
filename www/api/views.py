@@ -64,13 +64,13 @@ logger = logging.getLogger(__name__)
 def custom_exception_handler(exc, context):
     response = exception_handler(exc, context)
     if response is not None and response.status_code == 401:
-        request = context.get('request')
+        request = context.get("request")
         if request and (not request.user or not request.user.is_authenticated):
             response.status_code = 403
     return response
 
 
-@method_decorator(ensure_csrf_cookie, name='dispatch')
+@method_decorator(ensure_csrf_cookie, name="dispatch")
 class AuthView(GenericAPIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = serializers.Serializer
@@ -82,7 +82,7 @@ class AuthView(GenericAPIView):
                 "action": serializers.CharField(required=False),
                 "username": serializers.CharField(required=False),
                 "password": serializers.CharField(required=False),
-            }
+            },
         ),
         responses={
             200: inline_serializer(
@@ -91,17 +91,19 @@ class AuthView(GenericAPIView):
                     "authenticated": serializers.BooleanField(),
                     "username": serializers.CharField(required=False),
                     "is_staff": serializers.BooleanField(required=False),
-                }
+                },
             )
-        }
+        },
     )
     def get(self, request):
         if request.user and request.user.is_authenticated:
-            return Response({
-                "authenticated": True,
-                "username": request.user.username,
-                "is_staff": request.user.is_staff
-            })
+            return Response(
+                {
+                    "authenticated": True,
+                    "username": request.user.username,
+                    "is_staff": request.user.is_staff,
+                }
+            )
         return Response({"authenticated": False})
 
     def post(self, request):
@@ -112,14 +114,17 @@ class AuthView(GenericAPIView):
             user = authenticate(request, username=username, password=password)
             if user is not None:
                 if not user.is_staff:
-                    return Response({"detail": "Acesso restrito a administradores."}, status=status.HTTP_403_FORBIDDEN)
+                    return Response(
+                        {"detail": "Acesso restrito a administradores."},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
                 login(request, user)
-                return Response({
-                    "authenticated": True,
-                    "username": user.username,
-                    "is_staff": user.is_staff
-                })
-            return Response({"detail": "Usuário ou senha incorretos."}, status=status.HTTP_401_UNAUTHORIZED)
+                return Response(
+                    {"authenticated": True, "username": user.username, "is_staff": user.is_staff}
+                )
+            return Response(
+                {"detail": "Usuário ou senha incorretos."}, status=status.HTTP_401_UNAUTHORIZED
+            )
         elif action_param == "logout":
             logout(request)
             return Response({"authenticated": False})
@@ -139,9 +144,9 @@ class LoginAPIView(GenericAPIView):
                 fields={
                     "token": serializers.CharField(),
                     "user": UserSerializer(),
-                }
+                },
             )
-        }
+        },
     )
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
@@ -155,12 +160,11 @@ class LoginAPIView(GenericAPIView):
         if user is not None:
             login(request, user)
             token, _ = Token.objects.get_or_create(user=user)
-            return Response({
-                "token": token.key,
-                "user": UserSerializer(user).data
-            })
+            return Response({"token": token.key, "user": UserSerializer(user).data})
         else:
-            return Response({"detail": "Credenciais inválidas."}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response(
+                {"detail": "Credenciais inválidas."}, status=status.HTTP_401_UNAUTHORIZED
+            )
 
 
 class LogoutAPIView(GenericAPIView):
@@ -171,10 +175,9 @@ class LogoutAPIView(GenericAPIView):
         request=None,
         responses={
             200: inline_serializer(
-                name="LogoutResponse",
-                fields={"detail": serializers.CharField()}
+                name="LogoutResponse", fields={"detail": serializers.CharField()}
             )
-        }
+        },
     )
     def post(self, request):
         if request.auth:
@@ -187,9 +190,7 @@ class UserAPIView(GenericAPIView):
     permission_classes = [permissions.IsAdminUser]
     serializer_class = UserSerializer
 
-    @extend_schema(
-        responses={200: UserSerializer}
-    )
+    @extend_schema(responses={200: UserSerializer})
     def get(self, request):
         return Response(UserSerializer(request.user).data)
 
@@ -224,7 +225,7 @@ class DashboardStatsAPIView(GenericAPIView):
                     "buckets_dia_mes": serializers.JSONField(),
                     "maior_valor_bucket": serializers.IntegerField(),
                     "faqs_sugeridas_pendentes": serializers.IntegerField(),
-                }
+                },
             )
         }
     )
@@ -236,10 +237,14 @@ class DashboardStatsAPIView(GenericAPIView):
         # Solicitações por tipo/status
         tipo_labels = dict(Solicitacao.Tipo.choices)
         status_labels = dict(Solicitacao.Status.choices)
-        por_tipo = list(Solicitacao.objects.values("tipo").annotate(total=Count("id")).order_by("tipo"))
+        por_tipo = list(
+            Solicitacao.objects.values("tipo").annotate(total=Count("id")).order_by("tipo")
+        )
         for row in por_tipo:
             row["label"] = tipo_labels.get(row["tipo"], row["tipo"])
-        por_status = list(Solicitacao.objects.values("status").annotate(total=Count("id")).order_by("status"))
+        por_status = list(
+            Solicitacao.objects.values("status").annotate(total=Count("id")).order_by("status")
+        )
         for row in por_status:
             row["label"] = status_labels.get(row["status"], row["status"])
 
@@ -252,7 +257,9 @@ class DashboardStatsAPIView(GenericAPIView):
         )
         mapa_mensagens = {}
         for row in mensagens_raw:
-            mapa_mensagens.setdefault(row["dia"], {"in": 0, "out": 0})[row["direcao"]] = row["total"]
+            mapa_mensagens.setdefault(row["dia"], {"in": 0, "out": 0})[row["direcao"]] = row[
+                "total"
+            ]
 
         conversas_novas_raw = list(
             Conversa.objects.filter(criado_em__date__gte=inicio_30)
@@ -277,13 +284,15 @@ class DashboardStatsAPIView(GenericAPIView):
             msgs = mapa_mensagens.get(dia, {})
             recebidas = msgs.get("in", 0)
             enviadas = msgs.get("out", 0)
-            serie_30_dias.append({
-                "dia": dia.isoformat(),
-                "recebidas": recebidas,
-                "enviadas": enviadas,
-                "conversas_novas": mapa_conversas_novas.get(dia, 0),
-                "boletos_enviados": mapa_boletos.get(dia, 0),
-            })
+            serie_30_dias.append(
+                {
+                    "dia": dia.isoformat(),
+                    "recebidas": recebidas,
+                    "enviadas": enviadas,
+                    "conversas_novas": mapa_conversas_novas.get(dia, 0),
+                    "boletos_enviados": mapa_boletos.get(dia, 0),
+                }
+            )
             maior_valor_serie = max(maior_valor_serie, recebidas, enviadas)
 
         # Cobertura de clientes
@@ -309,14 +318,26 @@ class DashboardStatsAPIView(GenericAPIView):
         boletos_enviados = Boleto.objects.filter(enviado_em__isnull=False).count()
 
         # FAQs sugeridas pendentes de curadoria (fallback do bot novo, WS-A/WS-B)
-        faqs_sugeridas_pendentes = FAQSugerida.objects.filter(status=FAQSugerida.Status.PENDENTE).count()
+        faqs_sugeridas_pendentes = FAQSugerida.objects.filter(
+            status=FAQSugerida.Status.PENDENTE
+        ).count()
 
         # Padrões sazonais (janela de 180 dias)
         janela_qs = Mensagem.objects.filter(criado_em__date__gte=inicio_180)
         por_dia_semana_raw = list(
-            janela_qs.annotate(dow=ExtractWeekDay("criado_em")).values("dow").annotate(total=Count("id"))
+            janela_qs.annotate(dow=ExtractWeekDay("criado_em"))
+            .values("dow")
+            .annotate(total=Count("id"))
         )
-        DIAS_SEMANA_PT = {1: "Domingo", 2: "Segunda", 3: "Terça", 4: "Quarta", 5: "Quinta", 6: "Sexta", 7: "Sábado"}
+        DIAS_SEMANA_PT = {
+            1: "Domingo",
+            2: "Segunda",
+            3: "Terça",
+            4: "Quarta",
+            5: "Quinta",
+            6: "Sexta",
+            7: "Sábado",
+        }
         mapa_semana = {row["dow"]: row["total"] for row in por_dia_semana_raw}
         por_dia_semana = [
             {"label": DIAS_SEMANA_PT[dow], "total": mapa_semana.get(dow, 0)} for dow in range(1, 8)
@@ -324,7 +345,9 @@ class DashboardStatsAPIView(GenericAPIView):
         maior_valor_semana = max([row["total"] for row in por_dia_semana] + [1])
 
         por_dia_mes_raw = list(
-            janela_qs.annotate(dom=ExtractDay("criado_em")).values("dom").annotate(total=Count("id"))
+            janela_qs.annotate(dom=ExtractDay("criado_em"))
+            .values("dom")
+            .annotate(total=Count("id"))
         )
         buckets = {"1-7": 0, "8-15": 0, "16-23": 0, "24-31": 0}
         for row in por_dia_mes_raw:
@@ -369,18 +392,13 @@ class BotConfigAPIView(GenericAPIView):
     permission_classes = [permissions.IsAdminUser]
     serializer_class = BotConfigSerializer
 
-    @extend_schema(
-        responses={200: BotConfigSerializer}
-    )
+    @extend_schema(responses={200: BotConfigSerializer})
     def get(self, request):
         config = BotConfig.get_solo()
         serializer = BotConfigSerializer(config)
         return Response(serializer.data)
 
-    @extend_schema(
-        request=BotConfigSerializer,
-        responses={200: BotConfigSerializer}
-    )
+    @extend_schema(request=BotConfigSerializer, responses={200: BotConfigSerializer})
     def patch(self, request):
         config = BotConfig.get_solo()
         serializer = BotConfigSerializer(config, data=request.data, partial=True)
@@ -394,18 +412,13 @@ class MensagensConfigAPIView(GenericAPIView):
     permission_classes = [permissions.IsAdminUser]
     serializer_class = MensagensConfigSerializer
 
-    @extend_schema(
-        responses={200: MensagensConfigSerializer}
-    )
+    @extend_schema(responses={200: MensagensConfigSerializer})
     def get(self, request):
         config = MensagensConfig.get_solo()
         serializer = MensagensConfigSerializer(config)
         return Response(serializer.data)
 
-    @extend_schema(
-        request=MensagensConfigSerializer,
-        responses={200: MensagensConfigSerializer}
-    )
+    @extend_schema(request=MensagensConfigSerializer, responses={200: MensagensConfigSerializer})
     def patch(self, request):
         config = MensagensConfig.get_solo()
         serializer = MensagensConfigSerializer(config, data=request.data, partial=True)
@@ -416,10 +429,9 @@ class MensagensConfigAPIView(GenericAPIView):
 
     @extend_schema(
         request=inline_serializer(
-            name="RestoreRequestInline",
-            fields={"campo": serializers.CharField(required=True)}
+            name="RestoreRequestInline", fields={"campo": serializers.CharField(required=True)}
         ),
-        responses={200: MensagensConfigSerializer}
+        responses={200: MensagensConfigSerializer},
     )
     def post(self, request):
         config = MensagensConfig.get_solo()
@@ -432,7 +444,9 @@ class MensagensConfigAPIView(GenericAPIView):
             serializer = MensagensConfigSerializer(config)
             return Response(serializer.data)
         else:
-            return Response({"detail": "Campo inválido para restauração."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "Campo inválido para restauração."}, status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class MensagensConfigRestoreAPIView(GenericAPIView):
@@ -441,10 +455,9 @@ class MensagensConfigRestoreAPIView(GenericAPIView):
 
     @extend_schema(
         request=inline_serializer(
-            name="RestoreRequest",
-            fields={"campo": serializers.CharField(required=False)}
+            name="RestoreRequest", fields={"campo": serializers.CharField(required=False)}
         ),
-        responses={200: MensagensConfigSerializer}
+        responses={200: MensagensConfigSerializer},
     )
     def post(self, request):
         config = MensagensConfig.get_solo()
@@ -463,7 +476,10 @@ class MensagensConfigRestoreAPIView(GenericAPIView):
             serializer = MensagensConfigSerializer(config)
             return Response(serializer.data)
         else:
-            return Response({"detail": f"Campo '{campo}' inválido para restauração."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": f"Campo '{campo}' inválido para restauração."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
 
 class FAQViewSet(viewsets.ModelViewSet):
@@ -585,6 +601,7 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_object(self):
         from django.http import Http404
+
         lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
         cpf_raw = self.kwargs[lookup_url_kwarg]
 
@@ -599,6 +616,7 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
         self.check_object_permissions(self.request, obj)
 
         from django.db.models import prefetch_related_objects
+
         prefetch_related_objects(
             [obj],
             "telefones",
@@ -625,12 +643,14 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
         # Filtrar apenas clientes com pelo menos um contrato ativo se solicitado
         ativos_somente = self.request.query_params.get("ativos_somente")
         if ativos_somente == "1":
-            qs = qs.filter(
-                contratos_penhor__isnull=False
-            ).filter(
-                ~Q(contratos_penhor__situacao_codigo__in=SITUACOES_LIQUIDADAS_COD) &
-                ~Q(contratos_penhor__situacao__icontains="Liquidado")
-            ).distinct()
+            qs = (
+                qs.filter(contratos_penhor__isnull=False)
+                .filter(
+                    ~Q(contratos_penhor__situacao_codigo__in=SITUACOES_LIQUIDADAS_COD)
+                    & ~Q(contratos_penhor__situacao__icontains="Liquidado")
+                )
+                .distinct()
+            )
 
         if self.action == "list":
             qs = qs.annotate(
@@ -638,16 +658,19 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
                 num_conversas=Count("conversas", distinct=True),
                 num_contratos_ativos=Count(
                     "contratos_penhor",
-                    filter=~Q(contratos_penhor__situacao_codigo__in=SITUACOES_LIQUIDADAS_COD) & ~Q(contratos_penhor__situacao__icontains="Liquidado"),
-                    distinct=True
+                    filter=~Q(contratos_penhor__situacao_codigo__in=SITUACOES_LIQUIDADAS_COD)
+                    & ~Q(contratos_penhor__situacao__icontains="Liquidado"),
+                    distinct=True,
                 ),
                 total_emprestimo_ativo=Sum(
                     "contratos_penhor__vlr_emprestimo",
-                    filter=~Q(contratos_penhor__situacao_codigo__in=SITUACOES_LIQUIDADAS_COD) & ~Q(contratos_penhor__situacao__icontains="Liquidado")
+                    filter=~Q(contratos_penhor__situacao_codigo__in=SITUACOES_LIQUIDADAS_COD)
+                    & ~Q(contratos_penhor__situacao__icontains="Liquidado"),
                 ),
                 total_avaliacao_ativo=Sum(
                     "contratos_penhor__vlr_avaliacao",
-                    filter=~Q(contratos_penhor__situacao_codigo__in=SITUACOES_LIQUIDADAS_COD) & ~Q(contratos_penhor__situacao__icontains="Liquidado")
+                    filter=~Q(contratos_penhor__situacao_codigo__in=SITUACOES_LIQUIDADAS_COD)
+                    & ~Q(contratos_penhor__situacao__icontains="Liquidado"),
                 ),
             )
         q = self.request.query_params.get("q", "").strip()
@@ -669,7 +692,7 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
         if bloquear is not None:
             should_block = bool(bloquear)
         elif acao is not None:
-            should_block = (acao == "bloquear")
+            should_block = acao == "bloquear"
         else:
             should_block = not cliente.bloqueado_ia
 
@@ -697,10 +720,21 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
 
     # Extensões aceitas no envio manual de arquivo pelo operador (WS-B item 3).
     _EXTENSOES_ANEXO_PERMITIDAS = {
-        "jpg", "jpeg", "png", "webp", "gif",
-        "mp3", "ogg", "opus", "m4a",
+        "jpg",
+        "jpeg",
+        "png",
+        "webp",
+        "gif",
+        "mp3",
+        "ogg",
+        "opus",
+        "m4a",
         "mp4",
-        "pdf", "doc", "docx", "xls", "xlsx",
+        "pdf",
+        "doc",
+        "docx",
+        "xls",
+        "xlsx",
     }
     _TAMANHO_MAXIMO_ANEXO_BYTES = 16 * 1024 * 1024  # 16MB, teto prático do WhatsApp.
 
@@ -735,10 +769,10 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(tipo_contato=tipo_contato)
         if q:
             qs = qs.filter(
-                Q(remote_jid__icontains=q) |
-                Q(cliente__cpf__icontains=q) |
-                Q(cliente__nome__icontains=q) |
-                Q(nome_salvo__icontains=q)
+                Q(remote_jid__icontains=q)
+                | Q(cliente__cpf__icontains=q)
+                | Q(cliente__nome__icontains=q)
+                | Q(nome_salvo__icontains=q)
             )
 
         # Annotate count of active (non-liquidated) penhor contracts for the
@@ -767,13 +801,13 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
         if not request.user.is_superuser:
             return Response(
                 {"detail": "Apenas superusuários podem limpar todas as conversas."},
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_403_FORBIDDEN,
             )
         confirmacao = request.data.get("confirmacao")
         if confirmacao != "DELETAR_TUDO":
             return Response(
                 {"detail": "Confirmação inválida para limpar todas as conversas."},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
         Conversa.objects.all().delete()
         return Response({"message": "Todas as conversas foram limpas com sucesso!"})
@@ -859,6 +893,7 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
         legenda = (request.data.get("legenda") or "").strip()
 
         import mimetypes
+
         mimetype = mimetypes.guess_type(arquivo.name)[0] or ""
         if mimetype.startswith("image/"):
             tipo_midia = Mensagem.TipoMidia.IMAGE
@@ -953,27 +988,27 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
                 logger.warning("Evolution API retornou status %s ao obter mídia", resp.status_code)
                 return Response(
                     {"detail": "Não foi possível obter a mídia com o gateway do WhatsApp."},
-                    status=status.HTTP_502_BAD_GATEWAY
+                    status=status.HTTP_502_BAD_GATEWAY,
                 )
             res_json = resp.json()
         except requests.RequestException:
             logger.exception("Falha de conexão com a Evolution API ao baixar mídia")
             return Response(
                 {"detail": "Falha de conexão com o gateway do WhatsApp."},
-                status=status.HTTP_502_BAD_GATEWAY
+                status=status.HTTP_502_BAD_GATEWAY,
             )
         except ValueError:
             logger.error("Resposta não-JSON da Evolution API ao baixar mídia")
             return Response(
                 {"detail": "Resposta inválida do gateway do WhatsApp."},
-                status=status.HTTP_502_BAD_GATEWAY
+                status=status.HTTP_502_BAD_GATEWAY,
             )
 
         base64_str = res_json.get("base64")
         if not base64_str:
             return Response(
                 {"detail": "Mídia não retornou dados de conteúdo (base64)."},
-                status=status.HTTP_502_BAD_GATEWAY
+                status=status.HTTP_502_BAD_GATEWAY,
             )
 
         # Decodifica o base64 para binário
@@ -982,10 +1017,12 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
         except Exception:
             return Response(
                 {"detail": "Erro ao descriptografar o conteúdo do arquivo."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        mimetype = res_json.get("mimetype") or media_node.get("mimetype") or "application/octet-stream"
+        mimetype = (
+            res_json.get("mimetype") or media_node.get("mimetype") or "application/octet-stream"
+        )
 
         response = HttpResponse(file_data, content_type=mimetype)
         # Se for um documento/arquivo que o navegador não exibe em tela, adiciona Content-Disposition para download
@@ -1029,7 +1066,11 @@ def _montar_resposta_simulador(resultado, cliente, msgs) -> list:
         )
         if cliente:
             primeiro_nome = (cliente.nome or "").split()[0] if cliente.nome else ""
-            tpl = msgs.tpl_saudacao_cliente_com_pedido if tem_pedido_junto else msgs.tpl_saudacao_cliente
+            tpl = (
+                msgs.tpl_saudacao_cliente_com_pedido
+                if tem_pedido_junto
+                else msgs.tpl_saudacao_cliente
+            )
             fila.append(render_template(tpl, saudacao=_saudacao(), nome=primeiro_nome))
         else:
             tpl = msgs.msg_saudacao_com_pedido if tem_pedido_junto else msgs.msg_saudacao
@@ -1054,7 +1095,9 @@ def _montar_resposta_simulador(resultado, cliente, msgs) -> list:
         infos_para_render = []
         pediu_campo_valor = False
         for pedido in resultado.infos_contrato:
-            tem_filtro_valor = pedido.filtro_valor_min is not None or pedido.filtro_valor_max is not None
+            tem_filtro_valor = (
+                pedido.filtro_valor_min is not None or pedido.filtro_valor_max is not None
+            )
             if tem_filtro_valor and pedido.filtro_valor_campo is None:
                 if not pediu_campo_valor:
                     fila.append(msgs.msg_pedir_campo_valor_filtro)
@@ -1066,14 +1109,23 @@ def _montar_resposta_simulador(resultado, cliente, msgs) -> list:
 
     if resultado.solicitacoes:
         from ia.schemas import TipoPagamento
+
         tem_indefinido = any(d.tipo == TipoPagamento.INDEFINIDO for d in resultado.solicitacoes)
         if resultado.pronto_para_criar_solicitacao and cliente and not tem_indefinido:
-            fila.append(f"{msgs.msg_solicitacao_criada}\n\n(simulação: nenhuma solicitação real foi criada)")
+            fila.append(
+                f"{msgs.msg_solicitacao_criada}\n\n(simulação: nenhuma solicitação real foi criada)"
+            )
         else:
-            fila.append(_montar_pergunta_pagamento_incompleto(cliente, msgs, resultado.solicitacoes, fila=fila))
+            fila.append(
+                _montar_pergunta_pagamento_incompleto(
+                    cliente, msgs, resultado.solicitacoes, fila=fila
+                )
+            )
 
     if resultado.segunda_via:
-        fila.append(msgs.msg_segunda_via_confirma.format(contratos='(simulação)', tipo='(simulação)'))
+        fila.append(
+            msgs.msg_segunda_via_confirma.format(contratos="(simulação)", tipo="(simulação)")
+        )
 
     if resultado.duvidas_sem_faq:
         duvidas_txt = "; ".join(resultado.duvidas_sem_faq)
@@ -1124,6 +1176,7 @@ class SimulatorView(GenericAPIView):
 
     def _get_estado(self, request):
         from core.mensagens_defaults import SIMULADOR_SESSION_KEY
+
         estado = request.session.get(SIMULADOR_SESSION_KEY)
         if estado is None:
             estado = {"cliente_cpf": None, "turnos": []}
@@ -1139,10 +1192,7 @@ class SimulatorView(GenericAPIView):
         if cliente:
             cliente_data = ClienteDetailSerializer(cliente).data
 
-        return {
-            "cliente": cliente_data,
-            "turnos": estado["turnos"]
-        }
+        return {"cliente": cliente_data, "turnos": estado["turnos"]}
 
     @extend_schema(
         responses={
@@ -1150,8 +1200,8 @@ class SimulatorView(GenericAPIView):
                 name="SimulatorGetResponse",
                 fields={
                     "cliente": serializers.JSONField(allow_null=True),
-                    "turnos": serializers.ListField(child=serializers.JSONField())
-                }
+                    "turnos": serializers.ListField(child=serializers.JSONField()),
+                },
             )
         }
     )
@@ -1166,17 +1216,17 @@ class SimulatorView(GenericAPIView):
                 "acao": serializers.CharField(),
                 "cpf": serializers.CharField(required=False),
                 "mensagem": serializers.CharField(required=False),
-            }
+            },
         ),
         responses={
             200: inline_serializer(
                 name="SimulatorPostResponse",
                 fields={
                     "cliente": serializers.JSONField(allow_null=True),
-                    "turnos": serializers.ListField(child=serializers.JSONField())
-                }
+                    "turnos": serializers.ListField(child=serializers.JSONField()),
+                },
             )
-        }
+        },
     )
     def post(self, request):
         estado = self._get_estado(request)
@@ -1212,6 +1262,7 @@ class SimulatorView(GenericAPIView):
                     cliente = Cliente.buscar_por_cpf(estado["cliente_cpf"])
 
                 from whatsapp.tasks import HISTORICO_TAMANHO, _contratos_ativos_values
+
                 historico = [
                     {"direcao": turno["direcao"], "texto": turno["texto"]}
                     for turno in estado["turnos"][-HISTORICO_TAMANHO:]
@@ -1258,8 +1309,10 @@ class SimulatorChatAPIView(GenericAPIView):
             fields={
                 "mensagem": serializers.CharField(),
                 "cliente_cpf": serializers.CharField(required=False, allow_blank=True),
-                "historico": serializers.ListField(child=serializers.JSONField(), required=False, allow_null=True)
-            }
+                "historico": serializers.ListField(
+                    child=serializers.JSONField(), required=False, allow_null=True
+                ),
+            },
         ),
         responses={
             200: inline_serializer(
@@ -1267,10 +1320,10 @@ class SimulatorChatAPIView(GenericAPIView):
                 fields={
                     "resposta_sugerida": serializers.CharField(),
                     "debug": serializers.JSONField(),
-                    "historico": serializers.ListField(child=serializers.JSONField())
-                }
+                    "historico": serializers.ListField(child=serializers.JSONField()),
+                },
             )
-        }
+        },
     )
     def post(self, request):
         mensagem = request.data.get("mensagem", "").strip()
@@ -1293,6 +1346,7 @@ class SimulatorChatAPIView(GenericAPIView):
             historico_turnos = historico
 
         from whatsapp.tasks import HISTORICO_TAMANHO, _contratos_ativos_values
+
         historico_ia = [
             {"direcao": h.get("direcao"), "texto": h.get("texto")}
             for h in historico_turnos[-HISTORICO_TAMANHO:]
@@ -1335,12 +1389,14 @@ class SimulatorChatAPIView(GenericAPIView):
             request.session["api_simulador_ia"] = session_state
             request.session.modified = True
 
-        return Response({
-            "resposta_sugerida": texto_resposta,
-            "respostas": respostas,
-            "debug": debug,
-            "historico": historico_turnos
-        })
+        return Response(
+            {
+                "resposta_sugerida": texto_resposta,
+                "respostas": respostas,
+                "debug": debug,
+                "historico": historico_turnos,
+            }
+        )
 
 
 class WhatsappConnectionView(GenericAPIView):
@@ -1355,7 +1411,7 @@ class WhatsappConnectionView(GenericAPIView):
                     "state": serializers.CharField(),
                     "bot_ativo": serializers.BooleanField(),
                     "qrcode_base64": serializers.CharField(required=False),
-                }
+                },
             )
         }
     )
@@ -1363,10 +1419,7 @@ class WhatsappConnectionView(GenericAPIView):
         client = get_client()
         state = client.get_connection_state()
         bot_config = BotConfig.get_solo()
-        data = {
-            "state": state,
-            "bot_ativo": bot_config.ativo
-        }
+        data = {"state": state, "bot_ativo": bot_config.ativo}
         if state != "open":
             data["qrcode_base64"] = client.get_qrcode_base64()
         return Response(data)
@@ -1380,9 +1433,9 @@ class WhatsappConnectionView(GenericAPIView):
                     "state": serializers.CharField(),
                     "bot_ativo": serializers.BooleanField(),
                     "qrcode_base64": serializers.CharField(required=False),
-                }
+                },
             )
-        }
+        },
     )
     def post(self, request):
         bot_config = BotConfig.get_solo()
@@ -1395,10 +1448,7 @@ class WhatsappConnectionView(GenericAPIView):
 
         client = get_client()
         state = client.get_connection_state()
-        data = {
-            "state": state,
-            "bot_ativo": bot_config.ativo
-        }
+        data = {"state": state, "bot_ativo": bot_config.ativo}
         if state != "open":
             data["qrcode_base64"] = client.get_qrcode_base64()
         return Response(data)
@@ -1412,10 +1462,7 @@ class WhatsAppStatusAPIView(GenericAPIView):
         responses={
             200: inline_serializer(
                 name="WhatsAppStatusResponse",
-                fields={
-                    "state": serializers.CharField(),
-                    "bot_ativo": serializers.BooleanField()
-                }
+                fields={"state": serializers.CharField(), "bot_ativo": serializers.BooleanField()},
             )
         }
     )
@@ -1423,10 +1470,7 @@ class WhatsAppStatusAPIView(GenericAPIView):
         client = get_client()
         state = client.get_connection_state()
         bot_config = BotConfig.get_solo()
-        return Response({
-            "state": state,
-            "bot_ativo": bot_config.ativo
-        })
+        return Response({"state": state, "bot_ativo": bot_config.ativo})
 
 
 class WhatsAppConectarAPIView(GenericAPIView):
@@ -1440,10 +1484,10 @@ class WhatsAppConectarAPIView(GenericAPIView):
                 name="WhatsAppConectarResponse",
                 fields={
                     "state": serializers.CharField(),
-                    "qrcode_base64": serializers.CharField(allow_null=True)
-                }
+                    "qrcode_base64": serializers.CharField(allow_null=True),
+                },
             )
-        }
+        },
     )
     def post(self, request):
         client = get_client()
@@ -1451,10 +1495,7 @@ class WhatsAppConectarAPIView(GenericAPIView):
         qrcode_base64 = None
         if state != "open":
             qrcode_base64 = client.get_qrcode_base64()
-        return Response({
-            "state": state,
-            "qrcode_base64": qrcode_base64
-        })
+        return Response({"state": state, "qrcode_base64": qrcode_base64})
 
 
 class WhatsAppDesconectarAPIView(GenericAPIView):
@@ -1466,21 +1507,15 @@ class WhatsAppDesconectarAPIView(GenericAPIView):
         responses={
             200: inline_serializer(
                 name="WhatsAppDesconectarResponse",
-                fields={
-                    "success": serializers.BooleanField(),
-                    "state": serializers.CharField()
-                }
+                fields={"success": serializers.BooleanField(), "state": serializers.CharField()},
             )
-        }
+        },
     )
     def post(self, request):
         client = get_client()
         success = client.logout()
         state = client.get_connection_state()
-        return Response({
-            "success": success,
-            "state": state
-        })
+        return Response({"success": success, "state": state})
 
 
 class SolicitacaoViewSet(
@@ -1524,14 +1559,19 @@ class SolicitacaoViewSet(
             [request.FILES["arquivo"]] if "arquivo" in request.FILES else []
         )
         if not arquivos:
-            return Response({"detail": "Envie ao menos um PDF no campo 'arquivo'."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "Envie ao menos um PDF no campo 'arquivo'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         linhas = request.POST.getlist("linha_digitavel")
 
         criados = []
         for i, arquivo in enumerate(arquivos):
             linha_digitavel = linhas[i].strip() if i < len(linhas) else ""
-            boleto = Boleto.objects.create(solicitacao=solicitacao, arquivo=arquivo, linha_digitavel=linha_digitavel)
+            boleto = Boleto.objects.create(
+                solicitacao=solicitacao, arquivo=arquivo, linha_digitavel=linha_digitavel
+            )
             criados.append(boleto)
 
         async_task("api.tasks.enviar_boletos", solicitacao.id)
@@ -1558,9 +1598,9 @@ class ImportSqliteAPIView(GenericAPIView):
                     "status": serializers.CharField(),
                     "arquivo": serializers.CharField(),
                     "criado_em": serializers.DateTimeField(),
-                }
+                },
             )
-        }
+        },
     )
     def post(self, request):
         arquivos = request.FILES.getlist("arquivo")
@@ -1613,7 +1653,7 @@ class ImportSqliteStatusAPIView(GenericAPIView):
                     "erro": serializers.CharField(),
                     "criado_em": serializers.DateTimeField(),
                     "finalizado_em": serializers.DateTimeField(allow_null=True),
-                }
+                },
             )
         }
     )
@@ -1641,9 +1681,7 @@ class ImportSqliteLatestAPIView(GenericAPIView):
         responses={
             200: inline_serializer(
                 name="ImportSqliteLatestResponse",
-                fields={
-                    "results": serializers.ListField(child=serializers.JSONField())
-                }
+                fields={"results": serializers.ListField(child=serializers.JSONField())},
             )
         }
     )
@@ -1692,7 +1730,9 @@ class ImportSqliteSyncAPIView(GenericAPIView):
 
         if arquivo.size > 80 * 1024 * 1024:
             return Response(
-                {"detail": "Arquivo maior que 80MB. Use o endpoint assíncrono /api/import/sqlite/ para arquivos grandes."},
+                {
+                    "detail": "Arquivo maior que 80MB. Use o endpoint assíncrono /api/import/sqlite/ para arquivos grandes."
+                },
                 status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             )
 

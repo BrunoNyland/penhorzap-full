@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 """Django's command-line utility for administrative tasks."""
+
 import os
 import sys
 
@@ -12,7 +13,7 @@ def main():
     env_file = os.path.join(os.path.dirname(project_dir), ".env")
     dotenv.load_dotenv(env_file)
 
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'penhorzap.settings')
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "penhorzap.settings")
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:
@@ -24,5 +25,5 @@ def main():
     execute_from_command_line(sys.argv)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

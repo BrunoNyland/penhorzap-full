@@ -11,6 +11,7 @@ texto nasce de templates em `core.models.MensagensConfig`, renderizados em
 Python (`whatsapp.respostas_contrato`). Isso também encolhe drasticamente o
 prompt (sem persona/regras de redação) e o output (só rótulos JSON).
 """
+
 import logging
 
 from django.conf import settings
@@ -57,9 +58,10 @@ def _formatar_contratos(contratos_cliente):
 def _formatar_historico(historico_mensagens):
     if not historico_mensagens:
         return "(sem histórico)"
-    return "\n".join(
-        f"- [{m.get('direcao', '?')}] {m.get('texto', '')}" for m in historico_mensagens
-    ) or "(sem histórico)"
+    return (
+        "\n".join(f"- [{m.get('direcao', '?')}] {m.get('texto', '')}" for m in historico_mensagens)
+        or "(sem histórico)"
+    )
 
 
 def _formatar_faqs(faqs):
@@ -86,8 +88,15 @@ def _formatar_mensagens_lote(mensagens_lote) -> str:
     return "\n".join(f"{i}. {texto}" for i, texto in enumerate(mensagens_lote, start=1))
 
 
-def _montar_prompt(mensagens_lote, historico_mensagens, contratos_cliente, faqs,
-                    identificado, db_atualizada, contato_tipo):
+def _montar_prompt(
+    mensagens_lote,
+    historico_mensagens,
+    contratos_cliente,
+    faqs,
+    identificado,
+    db_atualizada,
+    contato_tipo,
+):
     if isinstance(mensagens_lote, str):
         mensagens_lote = [mensagens_lote]
 
@@ -167,8 +176,13 @@ def extrair_intencao(
         return res
 
     prompt = _montar_prompt(
-        mensagens_lote, historico_mensagens, contratos_cliente, faqs,
-        identificado, db_atualizada, contato_tipo,
+        mensagens_lote,
+        historico_mensagens,
+        contratos_cliente,
+        faqs,
+        identificado,
+        db_atualizada,
+        contato_tipo,
     )
 
     try:

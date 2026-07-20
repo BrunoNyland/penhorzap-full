@@ -11,6 +11,7 @@ na Evolution API v2 e podem precisar de ajuste conforme a versão real em uso
 para []/False — o fluxo do bot continua funcionando, só sem a classificação
 automática de contatos salvos.
 """
+
 import base64
 import logging
 import os
@@ -40,7 +41,9 @@ class EvolutionClient:
         url = f"{self.base_url}/message/sendText/{self.instance}"
         payload = {"number": numero, "text": texto}
         try:
-            resp = requests.post(url, json=payload, headers=self._headers(), timeout=DEFAULT_TIMEOUT)
+            resp = requests.post(
+                url, json=payload, headers=self._headers(), timeout=DEFAULT_TIMEOUT
+            )
             resp.raise_for_status()
             return True
         except requests.RequestException:
@@ -94,7 +97,9 @@ class EvolutionClient:
             "media": media_b64,
         }
         try:
-            resp = requests.post(url, json=payload, headers=self._headers(), timeout=DEFAULT_TIMEOUT)
+            resp = requests.post(
+                url, json=payload, headers=self._headers(), timeout=DEFAULT_TIMEOUT
+            )
             resp.raise_for_status()
             return True
         except requests.RequestException:
@@ -108,6 +113,7 @@ class EvolutionClient:
             return False
 
         import mimetypes
+
         mimetype, _ = mimetypes.guess_type(file_path)
         if not mimetype:
             mimetype = "application/octet-stream"
@@ -137,11 +143,15 @@ class EvolutionClient:
             payload["caption"] = caption
 
         try:
-            resp = requests.post(url, json=payload, headers=self._headers(), timeout=DEFAULT_TIMEOUT)
+            resp = requests.post(
+                url, json=payload, headers=self._headers(), timeout=DEFAULT_TIMEOUT
+            )
             resp.raise_for_status()
             return True
         except requests.RequestException:
-            logger.exception("Falha ao enviar arquivo (%s) via Evolution API para %s", filename, numero)
+            logger.exception(
+                "Falha ao enviar arquivo (%s) via Evolution API para %s", filename, numero
+            )
             return False
 
     # --- Contatos / leitura (provisional, v2) --------------------------------
@@ -165,7 +175,9 @@ class EvolutionClient:
             resp.raise_for_status()
             data = resp.json()
         except requests.RequestException:
-            logger.warning("fetch_contacts: endpoint %s indisponível (sync de contatos pulado)", url)
+            logger.warning(
+                "fetch_contacts: endpoint %s indisponível (sync de contatos pulado)", url
+            )
             return []
         except ValueError:
             logger.warning("fetch_contacts: resposta não-JSON de %s", url)
@@ -178,12 +190,7 @@ class EvolutionClient:
                 continue
             if item.get("isGroup"):
                 continue
-            jid = (
-                item.get("remoteJid")
-                or item.get("jid")
-                or item.get("id")
-                or ""
-            )
+            jid = item.get("remoteJid") or item.get("jid") or item.get("id") or ""
             # Para contatos salvos na agenda, a Evolution v2 devolve como
             # ``pushName`` o nome que o dono salvou (ex.: "PHN_CPF_NOME"
             # para clientes ou "Badu" para contatos pessoais).
@@ -200,7 +207,9 @@ class EvolutionClient:
         url = f"{self.base_url}{path}"
         payload = {"readMessages": [{"id": message_id or "", "remoteJid": remote_jid}]}
         try:
-            resp = requests.post(url, json=payload, headers=self._headers(), timeout=DEFAULT_TIMEOUT)
+            resp = requests.post(
+                url, json=payload, headers=self._headers(), timeout=DEFAULT_TIMEOUT
+            )
             resp.raise_for_status()
             return True
         except requests.RequestException:

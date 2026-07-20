@@ -1,13 +1,13 @@
 from django.contrib import admin
 
 from .models import (
+    FAQ,
     AgenciaPenhor,
     Boleto,
     BotConfig,
     Cliente,
-    Conversa,
     ContratoPenhor,
-    FAQ,
+    Conversa,
     FAQResposta,
     ImportDataJob,
     Licitacao,
@@ -25,7 +25,15 @@ class TelefoneInline(admin.TabularInline):
 
 @admin.register(Cliente)
 class ClienteAdmin(admin.ModelAdmin):
-    list_display = ("cpf", "nome", "cidade", "situacao_cpf", "situacao_cadastro", "boleto_emitido", "bloqueado_ia")
+    list_display = (
+        "cpf",
+        "nome",
+        "cidade",
+        "situacao_cpf",
+        "situacao_cadastro",
+        "boleto_emitido",
+        "bloqueado_ia",
+    )
     list_filter = ("situacao_cpf", "situacao_cadastro", "cidade", "bloqueado_ia")
     search_fields = ("cpf", "nome")
     inlines = [TelefoneInline]
@@ -62,7 +70,14 @@ class LicitacaoAdmin(admin.ModelAdmin):
 
 @admin.register(Conversa)
 class ConversaAdmin(admin.ModelAdmin):
-    list_display = ("id", "remote_jid", "cliente", "estado", "precisa_revisao_humana", "ultima_interacao")
+    list_display = (
+        "id",
+        "remote_jid",
+        "cliente",
+        "estado",
+        "precisa_revisao_humana",
+        "ultima_interacao",
+    )
     list_filter = ("estado", "precisa_revisao_humana")
     search_fields = ("remote_jid", "cliente__cpf", "cliente__nome")
 

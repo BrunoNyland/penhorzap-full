@@ -6,6 +6,7 @@ Escopo: `whatsapp/tasks.py` (`process_mensagem` e o lock/coalescência),
 e `whatsapp.tasks.extrair_intencao` são sempre mockados aqui -- nenhum teste
 bate na Evolution API real nem no Gemini.
 """
+
 import json
 from datetime import timedelta
 from decimal import Decimal
@@ -113,7 +114,10 @@ class WhatsappTasksTestCase(TestCase):
 
     def _in(self, conv, texto, push_name=""):
         return Mensagem.objects.create(
-            conversa=conv, direcao=Mensagem.Direcao.IN, texto=texto, push_name=push_name,
+            conversa=conv,
+            direcao=Mensagem.Direcao.IN,
+            texto=texto,
+            push_name=push_name,
         )
 
     def _last_out_texto(self, conv):
@@ -227,7 +231,10 @@ class DesconhecidoTests(WhatsappTasksTestCase):
     def test_desconhecido_verificado_por_cpf_pagamento_e_permitido(self):
         cliente = Cliente.objects.create(cpf="52998224725", nome="Carlos Lima")
         ContratoPenhor.objects.create(
-            contrato="C1", cliente=cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            contrato="C1",
+            cliente=cliente,
+            situacao="Contrato Renovado",
+            situacao_codigo="RN",
             data_vencimento=timezone.localdate() + timedelta(days=10),
         )
         conv = Conversa.objects.create(
@@ -254,7 +261,10 @@ class DesconhecidoTests(WhatsappTasksTestCase):
     def test_pagamento_indefinido_pergunta_renovacao_ou_quitacao(self):
         cliente = Cliente.objects.create(cpf="52998224725", nome="Carlos Lima")
         ContratoPenhor.objects.create(
-            contrato="C1", cliente=cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            contrato="C1",
+            cliente=cliente,
+            situacao="Contrato Renovado",
+            situacao_codigo="RN",
             data_vencimento=timezone.localdate() + timedelta(days=10),
             vlr_emprestimo=100.0,
         )
@@ -282,7 +292,10 @@ class DesconhecidoTests(WhatsappTasksTestCase):
     def test_pagamento_incompleto_nao_repete_contratos_se_ja_enviado_recentemente(self):
         cliente = Cliente.objects.create(cpf="52998224725", nome="Carlos Lima")
         ContratoPenhor.objects.create(
-            contrato="C1", cliente=cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            contrato="C1",
+            cliente=cliente,
+            situacao="Contrato Renovado",
+            situacao_codigo="RN",
             data_vencimento=timezone.localdate() + timedelta(days=10),
             vlr_emprestimo=100.0,
         )
@@ -296,7 +309,7 @@ class DesconhecidoTests(WhatsappTasksTestCase):
         Mensagem.objects.create(
             conversa=conv,
             direcao=Mensagem.Direcao.OUT,
-            texto="📄 Contrato C1 — vencimento 26/07/2026 — valor do empréstimo R$ 100,00."
+            texto="📄 Contrato C1 — vencimento 26/07/2026 — valor do empréstimo R$ 100,00.",
         )
 
         with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
@@ -313,7 +326,10 @@ class DesconhecidoTests(WhatsappTasksTestCase):
     def test_pagamento_incompleto_nao_repete_contratos_se_na_fila(self):
         cliente = Cliente.objects.create(cpf="52998224725", nome="Carlos Lima")
         ContratoPenhor.objects.create(
-            contrato="C1", cliente=cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            contrato="C1",
+            cliente=cliente,
+            situacao="Contrato Renovado",
+            situacao_codigo="RN",
             data_vencimento=timezone.localdate() + timedelta(days=10),
             vlr_emprestimo=100.0,
         )
@@ -328,7 +344,9 @@ class DesconhecidoTests(WhatsappTasksTestCase):
         with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
             # IA diz que quer info de contrato (lista) e pagamento na mesma rodada
             mock_ia.return_value = _classificacao(
-                infos_contrato=[InfoContratoPedido(info=InfoContrato.LISTA_CONTRATOS, contratos=[])],
+                infos_contrato=[
+                    InfoContratoPedido(info=InfoContrato.LISTA_CONTRATOS, contratos=[])
+                ],
                 solicitacoes=[SolicitacaoDraft(tipo=TipoPagamento.INDEFINIDO, contratos=[])],
             )
             mensagem = self._in(conv, "quais meus contratos e quero pagar")
@@ -346,12 +364,18 @@ class DesconhecidoTests(WhatsappTasksTestCase):
         # sentido reenviar a lista inteira de novo.
         cliente = Cliente.objects.create(cpf="52998224725", nome="Carlos Lima")
         ContratoPenhor.objects.create(
-            contrato="C1", cliente=cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            contrato="C1",
+            cliente=cliente,
+            situacao="Contrato Renovado",
+            situacao_codigo="RN",
             data_vencimento=timezone.localdate() + timedelta(days=10),
             vlr_emprestimo=100.0,
         )
         ContratoPenhor.objects.create(
-            contrato="C2", cliente=cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            contrato="C2",
+            cliente=cliente,
+            situacao="Contrato Renovado",
+            situacao_codigo="RN",
             data_vencimento=timezone.localdate() + timedelta(days=20),
             vlr_emprestimo=200.0,
         )
@@ -381,7 +405,10 @@ class DesconhecidoTests(WhatsappTasksTestCase):
     def test_quitar_com_contrato_ja_identificado_nao_repete_lista(self):
         cliente = Cliente.objects.create(cpf="52998224725", nome="Carlos Lima")
         ContratoPenhor.objects.create(
-            contrato="C1", cliente=cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            contrato="C1",
+            cliente=cliente,
+            situacao="Contrato Renovado",
+            situacao_codigo="RN",
             data_vencimento=timezone.localdate() + timedelta(days=10),
         )
         conv = Conversa.objects.create(
@@ -406,7 +433,10 @@ class DesconhecidoTests(WhatsappTasksTestCase):
     def test_renovacao_com_contrato_ambiguo_ainda_mostra_a_lista(self):
         cliente = Cliente.objects.create(cpf="52998224725", nome="Carlos Lima")
         ContratoPenhor.objects.create(
-            contrato="C1", cliente=cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            contrato="C1",
+            cliente=cliente,
+            situacao="Contrato Renovado",
+            situacao_codigo="RN",
             data_vencimento=timezone.localdate() + timedelta(days=10),
             vlr_emprestimo=100.0,
         )
@@ -472,11 +502,17 @@ class InfoContratoRendererIntegrationTests(WhatsappTasksTestCase):
         cliente = Cliente.objects.create(cpf="11144477735", nome="Fernanda Reis")
         Telefone.objects.create(cliente=cliente, numero="+5567988880000")
         ContratoPenhor.objects.create(
-            contrato="C10", cliente=cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            contrato="C10",
+            cliente=cliente,
+            situacao="Contrato Renovado",
+            situacao_codigo="RN",
             data_vencimento=timezone.localdate() + timedelta(days=10),
         )
         ContratoPenhor.objects.create(
-            contrato="C11", cliente=cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            contrato="C11",
+            cliente=cliente,
+            situacao="Contrato Renovado",
+            situacao_codigo="RN",
             data_vencimento=timezone.localdate() + timedelta(days=20),
         )
         conv = Conversa.objects.create(
@@ -495,7 +531,9 @@ class InfoContratoRendererIntegrationTests(WhatsappTasksTestCase):
             process_mensagem(mensagem.id)
 
         outs = list(
-            conv.mensagens.filter(direcao=Mensagem.Direcao.OUT).order_by("criado_em").values_list("texto", flat=True)
+            conv.mensagens.filter(direcao=Mensagem.Direcao.OUT)
+            .order_by("criado_em")
+            .values_list("texto", flat=True)
         )
         # "oi" (setup) + intro + 2 linhas + totalizador = 5
         self.assertEqual(len(outs), 5)
@@ -535,7 +573,9 @@ class FaqEFallbackTests(WhatsappTasksTestCase):
             process_mensagem(mensagem.id)
 
         outs = list(
-            self.conv.mensagens.filter(direcao=Mensagem.Direcao.OUT).order_by("criado_em").values_list("texto", flat=True)
+            self.conv.mensagens.filter(direcao=Mensagem.Direcao.OUT)
+            .order_by("criado_em")
+            .values_list("texto", flat=True)
         )
         self.assertEqual(outs, ["oi", "Primeira resposta", "Segunda resposta"])
 
@@ -580,7 +620,10 @@ class MultiAcaoLoteTests(WhatsappTasksTestCase):
         self.cliente = Cliente.objects.create(cpf="52998224725", nome="Paula Reis")
         Telefone.objects.create(cliente=self.cliente, numero="+5567966665555")
         self.contrato = ContratoPenhor.objects.create(
-            contrato="C1", cliente=self.cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            contrato="C1",
+            cliente=self.cliente,
+            situacao="Contrato Renovado",
+            situacao_codigo="RN",
             data_vencimento=timezone.localdate() + timedelta(days=10),
             liquidacao="R$ 500,00",
         )
@@ -605,7 +648,9 @@ class MultiAcaoLoteTests(WhatsappTasksTestCase):
             process_mensagem(mensagem.id)
 
         outs = list(
-            self.conv.mensagens.filter(direcao=Mensagem.Direcao.OUT).order_by("criado_em").values_list("texto", flat=True)
+            self.conv.mensagens.filter(direcao=Mensagem.Direcao.OUT)
+            .order_by("criado_em")
+            .values_list("texto", flat=True)
         )
         # "oi" (setup) + saudação + faq + quitação (1 contrato = 1 linha)
         self.assertEqual(len(outs), 4)
@@ -636,7 +681,9 @@ class MultiAcaoLoteTests(WhatsappTasksTestCase):
             process_mensagem(mensagem.id)
 
         outs = list(
-            self.conv.mensagens.filter(direcao=Mensagem.Direcao.OUT).order_by("criado_em").values_list("texto", flat=True)
+            self.conv.mensagens.filter(direcao=Mensagem.Direcao.OUT)
+            .order_by("criado_em")
+            .values_list("texto", flat=True)
         )
         self.assertIn("Paula", outs[1])
         self.assertNotIn("posso", outs[1].lower())
@@ -655,12 +702,16 @@ class MultiAcaoLoteTests(WhatsappTasksTestCase):
                 solicitacoes=[SolicitacaoDraft(tipo=TipoPagamento.QUITAR)],
             )
             mensagem = self._in(
-                conv, "vcs abrem sábado? quero quitar meu contrato", push_name="PHN_99999999999_Fulano"
+                conv,
+                "vcs abrem sábado? quero quitar meu contrato",
+                push_name="PHN_99999999999_Fulano",
             )
             process_mensagem(mensagem.id)
 
         outs = list(
-            conv.mensagens.filter(direcao=Mensagem.Direcao.OUT).order_by("criado_em").values_list("texto", flat=True)
+            conv.mensagens.filter(direcao=Mensagem.Direcao.OUT)
+            .order_by("criado_em")
+            .values_list("texto", flat=True)
         )
         self.assertEqual(outs, ["oi", "Sim, sábado até meio-dia!", self.msgs.msg_pedir_cpf])
 
@@ -677,7 +728,9 @@ class MultiAcaoLoteTests(WhatsappTasksTestCase):
             process_mensagem(mensagem.id)
 
         outs = list(
-            self.conv.mensagens.filter(direcao=Mensagem.Direcao.OUT).order_by("criado_em").values_list("texto", flat=True)
+            self.conv.mensagens.filter(direcao=Mensagem.Direcao.OUT)
+            .order_by("criado_em")
+            .values_list("texto", flat=True)
         )
         self.assertEqual(outs, ["oi", "Sim, sábado até meio-dia!", self.msgs.msg_db_desatualizada])
         self.conv.refresh_from_db()
@@ -692,7 +745,9 @@ class MultiAcaoLoteTests(WhatsappTasksTestCase):
             process_mensagem(mensagem.id)
 
         outs = list(
-            self.conv.mensagens.filter(direcao=Mensagem.Direcao.OUT).order_by("criado_em").values_list("texto", flat=True)
+            self.conv.mensagens.filter(direcao=Mensagem.Direcao.OUT)
+            .order_by("criado_em")
+            .values_list("texto", flat=True)
         )
         self.assertEqual(outs, ["oi", "Sim, sábado até meio-dia!", "Aceitamos sim!"])
 
@@ -707,7 +762,9 @@ class MultiAcaoLoteTests(WhatsappTasksTestCase):
 
         self.assertEqual(FAQSugerida.objects.count(), 2)
         outs = list(
-            self.conv.mensagens.filter(direcao=Mensagem.Direcao.OUT).order_by("criado_em").values_list("texto", flat=True)
+            self.conv.mensagens.filter(direcao=Mensagem.Direcao.OUT)
+            .order_by("criado_em")
+            .values_list("texto", flat=True)
         )
         # "oi" (setup) + saudação + msg_duvida_anotada
         self.assertEqual(len(outs), 3)
@@ -739,7 +796,11 @@ class MultiAcaoLoteTests(WhatsappTasksTestCase):
         with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
             mock_ia.return_value = _classificacao(
                 infos_contrato=[
-                    InfoContratoPedido(info=InfoContrato.LISTA_CONTRATOS, filtro_valor_min=10000, filtro_valor_campo=None)
+                    InfoContratoPedido(
+                        info=InfoContrato.LISTA_CONTRATOS,
+                        filtro_valor_min=10000,
+                        filtro_valor_campo=None,
+                    )
                 ],
             )
             mensagem = self._in(self.conv, "me manda os contratos acima de 10 mil")
@@ -897,24 +958,26 @@ class WebhookExtrairConteudoTests(TestCase):
         # Mídia enviada com "mensagens temporárias" ativado no chat do
         # WhatsApp vem embrulhada -- sem desembrulhar, o parser não
         # encontrava imageMessage/audioMessage e a mensagem virava "vazia".
-        texto, tipo = _extrair_conteudo({
-            "ephemeralMessage": {"message": {"imageMessage": {"caption": "colar de ouro"}}}
-        })
+        texto, tipo = _extrair_conteudo(
+            {"ephemeralMessage": {"message": {"imageMessage": {"caption": "colar de ouro"}}}}
+        )
         self.assertEqual((texto, tipo), ("colar de ouro", "image"))
 
     def test_audio_dentro_de_view_once_message_v2_e_desembrulhado(self):
         # Áudio/foto "de visualização única" usa outro nó de embrulho.
-        texto, tipo = _extrair_conteudo({
-            "viewOnceMessageV2": {"message": {"audioMessage": {}}}
-        })
+        texto, tipo = _extrair_conteudo({"viewOnceMessageV2": {"message": {"audioMessage": {}}}})
         self.assertEqual((texto, tipo), ("", "audio"))
 
     def test_embrulhos_aninhados_sao_desembrulhados_ate_o_conteudo_real(self):
-        texto, tipo = _extrair_conteudo({
-            "ephemeralMessage": {"message": {
-                "viewOnceMessage": {"message": {"imageMessage": {"caption": "aneis"}}}
-            }}
-        })
+        texto, tipo = _extrair_conteudo(
+            {
+                "ephemeralMessage": {
+                    "message": {
+                        "viewOnceMessage": {"message": {"imageMessage": {"caption": "aneis"}}}
+                    }
+                }
+            }
+        )
         self.assertEqual((texto, tipo), ("aneis", "image"))
 
 
@@ -928,9 +991,9 @@ class DesembrulharNoMensagemTests(TestCase):
         self.assertEqual(desembrulhar_no_mensagem(None), {})
 
     def test_view_once_message_v2_extension(self):
-        resultado = desembrulhar_no_mensagem({
-            "viewOnceMessageV2Extension": {"message": {"videoMessage": {"caption": "v"}}}
-        })
+        resultado = desembrulhar_no_mensagem(
+            {"viewOnceMessageV2Extension": {"message": {"videoMessage": {"caption": "v"}}}}
+        )
         self.assertEqual(resultado, {"videoMessage": {"caption": "v"}})
 
     def test_embrulho_sem_message_interno_nao_quebra(self):
@@ -941,7 +1004,9 @@ class DesembrulharNoMensagemTests(TestCase):
 
 @override_settings(WEBHOOK_TOKEN="test-token-123")
 class WhatsappWebhookTestCase(TestCase):
-    def _payload(self, remote_jid="5567999999999@s.whatsapp.net", message=None, wa_id="WA1", from_me=False):
+    def _payload(
+        self, remote_jid="5567999999999@s.whatsapp.net", message=None, wa_id="WA1", from_me=False
+    ):
         return {
             "data": {
                 "key": {"remoteJid": remote_jid, "id": wa_id, "fromMe": from_me},
@@ -1048,8 +1113,17 @@ class MontarTotalizadorGeralTests(TestCase):
 
     def test_soma_avaliacao_emprestimo_e_renovacao_por_prazo_disponivel(self):
         ativos_map = {
-            "C1": {"vlr_avaliacao": Decimal("1000"), "vlr_emprestimo": Decimal("500"), "vlr_renovacao_30": Decimal("100")},
-            "C2": {"vlr_avaliacao": Decimal("2000"), "vlr_emprestimo": Decimal("800"), "vlr_renovacao_30": Decimal("150"), "vlr_renovacao_60": Decimal("300")},
+            "C1": {
+                "vlr_avaliacao": Decimal("1000"),
+                "vlr_emprestimo": Decimal("500"),
+                "vlr_renovacao_30": Decimal("100"),
+            },
+            "C2": {
+                "vlr_avaliacao": Decimal("2000"),
+                "vlr_emprestimo": Decimal("800"),
+                "vlr_renovacao_30": Decimal("150"),
+                "vlr_renovacao_60": Decimal("300"),
+            },
         }
         resultado = _montar_totalizador_geral(["C1", "C2"], ativos_map, self.msgs)
         self.assertIn("R$ 3.000,00", resultado)  # avaliação
@@ -1086,17 +1160,23 @@ class RenderizarInfosContratoTests(TestCase):
         return ContratoPenhor.objects.create(**defaults)
 
     def test_sem_cliente_retorna_mensagem_sem_contratos(self):
-        resultado = renderizar_infos_contrato(None, [InfoContratoPedido(info=InfoContrato.VENCIMENTO)], self.msgs)
+        resultado = renderizar_infos_contrato(
+            None, [InfoContratoPedido(info=InfoContrato.VENCIMENTO)], self.msgs
+        )
         self.assertEqual(resultado, [self.msgs.msg_sem_contratos_ativos])
 
     def test_sem_contratos_ativos_retorna_mensagem_padrao(self):
         # cliente sem nenhum ContratoPenhor
-        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VENCIMENTO)], self.msgs)
+        resultado = renderizar_infos_contrato(
+            self.cliente, [InfoContratoPedido(info=InfoContrato.VENCIMENTO)], self.msgs
+        )
         self.assertEqual(resultado, [self.msgs.msg_sem_contratos_ativos])
 
     def test_vencimento(self):
         c = self._contrato(contrato="C1")
-        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VENCIMENTO)], self.msgs)
+        resultado = renderizar_infos_contrato(
+            self.cliente, [InfoContratoPedido(info=InfoContrato.VENCIMENTO)], self.msgs
+        )
         self.assertEqual(len(resultado), 1)
         self.assertIn("C1", resultado[0])
         self.assertIn(formatar_data(c.data_vencimento), resultado[0])
@@ -1144,7 +1224,9 @@ class RenderizarInfosContratoTests(TestCase):
         # Quitação vem do campo texto `liquidacao` do ERP (já formatado),
         # NUNCA de vlr_liquido (valor recebido na contratação).
         self._contrato(contrato="C1", liquidacao="R$850,00", vlr_liquido=999)
-        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO)], self.msgs)
+        resultado = renderizar_infos_contrato(
+            self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO)], self.msgs
+        )
         self.assertEqual(len(resultado), 1)
         texto = resultado[0]
         self.assertIn("C1", texto)
@@ -1154,13 +1236,17 @@ class RenderizarInfosContratoTests(TestCase):
 
     def test_quitacao_sem_liquidacao_avisa_indisponivel(self):
         self._contrato(contrato="C1", liquidacao="")
-        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO)], self.msgs)
+        resultado = renderizar_infos_contrato(
+            self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO)], self.msgs
+        )
         self.assertIn("indisponível", resultado[0])
 
     def test_parcela_pula_contrato_nao_parcelado(self):
         self._contrato(contrato="C1", parcelado=False, vlr_parcela=100)
         self._contrato(contrato="C2", parcelado=True, vlr_parcela=200)
-        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_PARCELA)], self.msgs)
+        resultado = renderizar_infos_contrato(
+            self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_PARCELA)], self.msgs
+        )
         # só 1 contrato parcelado -> sem intro/totalizador, lista de 1 item.
         self.assertEqual(len(resultado), 1)
         self.assertIn("C2", resultado[0])
@@ -1171,32 +1257,44 @@ class RenderizarInfosContratoTests(TestCase):
     def test_multi_contrato_usa_intro_e_totalizador(self):
         self._contrato(contrato="C1")
         self._contrato(contrato="C2")
-        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VENCIMENTO)], self.msgs)
+        resultado = renderizar_infos_contrato(
+            self.cliente, [InfoContratoPedido(info=InfoContrato.VENCIMENTO)], self.msgs
+        )
         # sequência: intro -> 1 linha por contrato -> totalizador
         self.assertEqual(len(resultado), 4)
         self.assertEqual(resultado[0], self.msgs.tpl_intro_vencimento)
         self.assertIn("C1", resultado[1])
         self.assertIn("C2", resultado[2])
         ativos_map = {c["contrato"]: c for c in _contratos_ativos_values(self.cliente)}
-        self.assertEqual(resultado[3], _montar_totalizador_geral(["C1", "C2"], ativos_map, self.msgs))
+        self.assertEqual(
+            resultado[3], _montar_totalizador_geral(["C1", "C2"], ativos_map, self.msgs)
+        )
 
     def test_um_unico_contrato_retorna_lista_de_um_item_sem_intro_totalizador(self):
         self._contrato(contrato="C1")
-        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VENCIMENTO)], self.msgs)
+        resultado = renderizar_infos_contrato(
+            self.cliente, [InfoContratoPedido(info=InfoContrato.VENCIMENTO)], self.msgs
+        )
         self.assertEqual(len(resultado), 1)
-        self.assertNotEqual(resultado[0], render_template(self.msgs.tpl_lista_header, nome="Beatriz", qtd=1))
+        self.assertNotEqual(
+            resultado[0], render_template(self.msgs.tpl_lista_header, nome="Beatriz", qtd=1)
+        )
 
     def test_lista_e_detalhe_usam_template_resumo(self):
         self._contrato(contrato="C1", vlr_emprestimo=500)
         for info in (InfoContrato.LISTA_CONTRATOS, InfoContrato.DETALHE_CONTRATO):
-            resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=info)], self.msgs)
+            resultado = renderizar_infos_contrato(
+                self.cliente, [InfoContratoPedido(info=info)], self.msgs
+            )
             self.assertEqual(len(resultado), 1)
             self.assertIn("C1", resultado[0])
             self.assertIn("R$ 500,00", resultado[0])
 
     def test_laudo_contrato(self):
         self._contrato(contrato="C1", laudo="Anel de ouro com diamante de 18k")
-        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.LAUDO)], self.msgs)
+        resultado = renderizar_infos_contrato(
+            self.cliente, [InfoContratoPedido(info=InfoContrato.LAUDO)], self.msgs
+        )
         self.assertEqual(len(resultado), 1)
         self.assertIn("C1", resultado[0])
         self.assertIn("Anel de ouro com diamante de 18k", resultado[0])
@@ -1206,8 +1304,12 @@ class RenderizarInfosContratoTests(TestCase):
             "UM COLAR, DE: OURO; CONSTAM: amolgada(s), PESO LOTE: 16,30G "
             "(DEZESSEIS GRAMAS E TRINTA CENTIGRAMAS)"
         )
-        self._contrato(contrato="C1", laudo=laudo_erp, peso=Decimal("16.30"), vlr_avaliacao=Decimal("5000.00"))
-        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.LAUDO)], self.msgs)
+        self._contrato(
+            contrato="C1", laudo=laudo_erp, peso=Decimal("16.30"), vlr_avaliacao=Decimal("5000.00")
+        )
+        resultado = renderizar_infos_contrato(
+            self.cliente, [InfoContratoPedido(info=InfoContrato.LAUDO)], self.msgs
+        )
         self.assertEqual(len(resultado), 1)
         texto = resultado[0]
         self.assertIn("16,30 g", texto)
@@ -1217,7 +1319,9 @@ class RenderizarInfosContratoTests(TestCase):
 
     def test_laudo_com_peso_e_avaliacao_nulos_nao_levanta(self):
         self._contrato(contrato="C1", laudo="Anel de ouro", peso=None, vlr_avaliacao=None)
-        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.LAUDO)], self.msgs)
+        resultado = renderizar_infos_contrato(
+            self.cliente, [InfoContratoPedido(info=InfoContrato.LAUDO)], self.msgs
+        )
         texto = resultado[0]
         self.assertIn("(peso não informado)", texto)
         self.assertIn("(valor não informado)", texto)
@@ -1243,7 +1347,9 @@ class RenderizarInfosContratoTests(TestCase):
         self.assertIn("C3", resultado[3])
         self.assertIn("Pulseira de ouro", resultado[3])
         ativos_map = {c["contrato"]: c for c in _contratos_ativos_values(self.cliente)}
-        self.assertEqual(resultado[4], _montar_totalizador_geral(["C1", "C2", "C3"], ativos_map, self.msgs))
+        self.assertEqual(
+            resultado[4], _montar_totalizador_geral(["C1", "C2", "C3"], ativos_map, self.msgs)
+        )
 
     def test_pedido_numerico_mais_nao_numerico_nao_empilha_totalizador_geral(self):
         self._contrato(contrato="C1", liquidacao="R$ 1.000,00", laudo="Colar de ouro")
@@ -1332,7 +1438,9 @@ class RenderizarInfosContratoTests(TestCase):
         self._contrato(contrato="C1", vlr_emprestimo=Decimal("15000"))
         self._contrato(contrato="C2", vlr_emprestimo=Decimal("5000"))
         pedido = InfoContratoPedido(
-            info=InfoContrato.LISTA_CONTRATOS, filtro_valor_min=10000, filtro_valor_campo=CampoValor.EMPRESTIMO
+            info=InfoContrato.LISTA_CONTRATOS,
+            filtro_valor_min=10000,
+            filtro_valor_campo=CampoValor.EMPRESTIMO,
         )
         resultado = renderizar_infos_contrato(self.cliente, [pedido], self.msgs)
         texto = "\n".join(resultado)
@@ -1340,10 +1448,16 @@ class RenderizarInfosContratoTests(TestCase):
         self.assertNotIn("C2", texto)
 
     def test_filtro_valor_campo_avaliacao_usa_vlr_avaliacao(self):
-        self._contrato(contrato="C1", vlr_emprestimo=Decimal("5000"), vlr_avaliacao=Decimal("15000"))
-        self._contrato(contrato="C2", vlr_emprestimo=Decimal("15000"), vlr_avaliacao=Decimal("5000"))
+        self._contrato(
+            contrato="C1", vlr_emprestimo=Decimal("5000"), vlr_avaliacao=Decimal("15000")
+        )
+        self._contrato(
+            contrato="C2", vlr_emprestimo=Decimal("15000"), vlr_avaliacao=Decimal("5000")
+        )
         pedido = InfoContratoPedido(
-            info=InfoContrato.LISTA_CONTRATOS, filtro_valor_min=10000, filtro_valor_campo=CampoValor.AVALIACAO
+            info=InfoContrato.LISTA_CONTRATOS,
+            filtro_valor_min=10000,
+            filtro_valor_campo=CampoValor.AVALIACAO,
         )
         resultado = renderizar_infos_contrato(self.cliente, [pedido], self.msgs)
         texto = "\n".join(resultado)
@@ -1354,7 +1468,9 @@ class RenderizarInfosContratoTests(TestCase):
         self._contrato(contrato="C1", vlr_emprestimo=Decimal("15000"))
         self._contrato(contrato="C2", vlr_emprestimo=Decimal("5000"))
         pedido = InfoContratoPedido(
-            info=InfoContrato.LISTA_CONTRATOS, filtro_valor_max=10000, filtro_valor_campo=CampoValor.EMPRESTIMO
+            info=InfoContrato.LISTA_CONTRATOS,
+            filtro_valor_max=10000,
+            filtro_valor_campo=CampoValor.EMPRESTIMO,
         )
         resultado = renderizar_infos_contrato(self.cliente, [pedido], self.msgs)
         texto = "\n".join(resultado)
@@ -1366,7 +1482,9 @@ class RenderizarInfosContratoTests(TestCase):
         # (whatsapp.tasks) antes de chegar aqui; o renderer nunca quebra --
         # se chegar sem campo definido, simplesmente não filtra por valor.
         self._contrato(contrato="C1", vlr_emprestimo=Decimal("5000"))
-        pedido = InfoContratoPedido(info=InfoContrato.LISTA_CONTRATOS, filtro_valor_min=10000, filtro_valor_campo=None)
+        pedido = InfoContratoPedido(
+            info=InfoContrato.LISTA_CONTRATOS, filtro_valor_min=10000, filtro_valor_campo=None
+        )
         resultado = renderizar_infos_contrato(self.cliente, [pedido], self.msgs)
         self.assertIn("C1", "\n".join(resultado))
 
@@ -1379,14 +1497,18 @@ class RenderizarInfosContratoTests(TestCase):
         resultado = renderizar_infos_contrato(self.cliente, [pedido], self.msgs)
         totalizador = resultado[-1]
         self.assertIn("R$ 3.000,00", totalizador)
-        self.assertEqual(totalizador, render_template(self.msgs.tpl_totalizador, qtd=2, total="R$ 3.000,00"))
+        self.assertEqual(
+            totalizador, render_template(self.msgs.tpl_totalizador, qtd=2, total="R$ 3.000,00")
+        )
 
     def test_totalizador_parcela_soma_so_parcelados(self):
         self._contrato(contrato="C1", parcelado=True, vlr_parcela=100)
         self._contrato(contrato="C2", parcelado=True, vlr_parcela=250)
         self._contrato(contrato="C3", parcelado=False, vlr_parcela=999)
         resultado = renderizar_infos_contrato(
-            self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_PARCELA, detalhado=True)], self.msgs
+            self.cliente,
+            [InfoContratoPedido(info=InfoContrato.VALOR_PARCELA, detalhado=True)],
+            self.msgs,
         )
         totalizador = resultado[-1]
         self.assertIn("R$ 350,00", totalizador)
@@ -1399,7 +1521,9 @@ class RenderizarInfosContratoTests(TestCase):
         # formatos que o ERP legado produz.
         self._contrato(contrato="C1", liquidacao="R$ 1.813,70")
         self._contrato(contrato="C2", liquidacao="R$4.448,60")
-        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO)], self.msgs)
+        resultado = renderizar_infos_contrato(
+            self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO)], self.msgs
+        )
         totalizador = resultado[-1]
         self.assertIn("R$ 6.262,30", totalizador)
         self.assertNotIn("indisponível", totalizador)
@@ -1408,7 +1532,9 @@ class RenderizarInfosContratoTests(TestCase):
     def test_totalizador_quitacao_parcial_indisponivel_soma_resto_com_aviso(self):
         self._contrato(contrato="C1", liquidacao="R$ 1.813,70")
         self._contrato(contrato="C2", liquidacao="")
-        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO)], self.msgs)
+        resultado = renderizar_infos_contrato(
+            self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO)], self.msgs
+        )
         totalizador = resultado[-1]
         self.assertIn("R$ 1.813,70", totalizador)
         self.assertIn("não somei 1 contrato(s) com valor de quitação indisponível", totalizador)
@@ -1416,7 +1542,9 @@ class RenderizarInfosContratoTests(TestCase):
     def test_totalizador_quitacao_todos_indisponiveis_usa_totalizador_geral(self):
         self._contrato(contrato="C1", liquidacao="")
         self._contrato(contrato="C2", liquidacao="")
-        resultado = renderizar_infos_contrato(self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO)], self.msgs)
+        resultado = renderizar_infos_contrato(
+            self.cliente, [InfoContratoPedido(info=InfoContrato.VALOR_QUITACAO)], self.msgs
+        )
         totalizador = resultado[-1]
         ativos_map = {c["contrato"]: c for c in _contratos_ativos_values(self.cliente)}
         base_esperada = _montar_totalizador_geral(["C1", "C2"], ativos_map, self.msgs)
@@ -1530,7 +1658,10 @@ class DebounceTests(WhatsappTasksTestCase):
         self.cliente = Cliente.objects.create(cpf="52998224725", nome="Paula Reis")
         Telefone.objects.create(cliente=self.cliente, numero="+5567966665555")
         self.contrato = ContratoPenhor.objects.create(
-            contrato="C1", cliente=self.cliente, situacao="Contrato Renovado", situacao_codigo="RN",
+            contrato="C1",
+            cliente=self.cliente,
+            situacao="Contrato Renovado",
+            situacao_codigo="RN",
             data_vencimento=timezone.localdate() + timedelta(days=10),
             liquidacao="R$ 500,00",
         )
@@ -1652,7 +1783,10 @@ class DebounceTests(WhatsappTasksTestCase):
         conv = Conversa.objects.create(remote_jid="5567900000043@s.whatsapp.net")
         Mensagem.objects.create(conversa=conv, direcao=Mensagem.Direcao.OUT, texto="oi")
         mensagem = Mensagem.objects.create(
-            conversa=conv, direcao=Mensagem.Direcao.IN, tipo_midia=Mensagem.TipoMidia.IMAGE, texto="",
+            conversa=conv,
+            direcao=Mensagem.Direcao.IN,
+            tipo_midia=Mensagem.TipoMidia.IMAGE,
+            texto="",
         )
 
         with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
@@ -1666,7 +1800,10 @@ class DebounceTests(WhatsappTasksTestCase):
     def test_midia_com_texto_pendente_no_lote_nao_responde_e_marca_so_a_midia(self):
         texto_msg = self._in(self.conv, "quanto pra quitar?")
         midia_msg = Mensagem.objects.create(
-            conversa=self.conv, direcao=Mensagem.Direcao.IN, tipo_midia=Mensagem.TipoMidia.IMAGE, texto="",
+            conversa=self.conv,
+            direcao=Mensagem.Direcao.IN,
+            tipo_midia=Mensagem.TipoMidia.IMAGE,
+            texto="",
         )
 
         with patch("whatsapp.tasks.extrair_intencao") as mock_ia:

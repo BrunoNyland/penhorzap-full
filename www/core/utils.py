@@ -1,4 +1,5 @@
 """Parsing helpers for the legacy 0886.sqlite3 data (all columns are TEXT)."""
+
 import ast
 import datetime
 import logging
@@ -163,7 +164,9 @@ def parse_nome_salvo(nome: str):
     return (m.group(1), m.group(2).strip())
 
 
-def normalizar_cpfs_clientes(connection, cliente_model, telefone_model, contrato_model, conversa_model, logger=None):
+def normalizar_cpfs_clientes(
+    connection, cliente_model, telefone_model, contrato_model, conversa_model, logger=None
+):
     """Renomeia `Cliente.cpf` (chave primária) para a forma normalizada (11
     dígitos), atualizando em cascata as FKs de `telefone_model`,
     `contrato_model` e `conversa_model` que apontam para o cliente.

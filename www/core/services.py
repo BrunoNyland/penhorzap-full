@@ -36,6 +36,7 @@ def importar_sqlite_arquivo(path: str) -> dict[str, int]:
         # Reclassificar e reassociar conversas existentes aos novos clientes importados
         from core.models import Conversa
         from whatsapp.tasks import _classificar_contato
+
         for conversa in Conversa.objects.all():
             tipo, nome, cliente = _classificar_contato(conversa)
             conversa.tipo_contato = tipo
@@ -78,8 +79,17 @@ def _import_agencias(conn):
             update_conflicts=True,
             unique_fields=_unique_target(["codigo"]),
             update_fields=[
-                "dv", "nome", "uf", "situacao", "tipo", "porte", "penhor",
-                "logradouro", "bairro", "cidade", "cep",
+                "dv",
+                "nome",
+                "uf",
+                "situacao",
+                "tipo",
+                "porte",
+                "penhor",
+                "logradouro",
+                "bairro",
+                "cidade",
+                "cep",
             ],
         )
     return len(objs)
@@ -111,9 +121,17 @@ def _import_licitacoes(conn):
             update_conflicts=True,
             unique_fields=_unique_target(["numero"]),
             update_fields=[
-                "situacao", "centralizadora", "data", "uf", "local_retirada",
-                "periodo_retirada", "periodo_lances", "periodo_exposicao",
-                "participantes", "urls_arquivos", "data_limite_pagamento",
+                "situacao",
+                "centralizadora",
+                "data",
+                "uf",
+                "local_retirada",
+                "periodo_retirada",
+                "periodo_lances",
+                "periodo_exposicao",
+                "participantes",
+                "urls_arquivos",
+                "data_limite_pagamento",
             ],
         )
     return len(objs)
@@ -156,10 +174,23 @@ def _import_clientes(conn):
             update_conflicts=True,
             unique_fields=_unique_target(["cpf"]),
             update_fields=[
-                "nome", "situacao_cpf", "situacao_cadastro", "logradouro", "bairro",
-                "cidade", "cep", "aniversario", "data_da_captura_das_renovacoes",
-                "documento", "boleto_emitido", "conta_nsgd", "codigo_de_barras",
-                "codigo_sipen", "cocli", "limite_especial", "emails",
+                "nome",
+                "situacao_cpf",
+                "situacao_cadastro",
+                "logradouro",
+                "bairro",
+                "cidade",
+                "cep",
+                "aniversario",
+                "data_da_captura_das_renovacoes",
+                "documento",
+                "boleto_emitido",
+                "conta_nsgd",
+                "codigo_de_barras",
+                "codigo_sipen",
+                "cocli",
+                "limite_especial",
+                "emails",
             ],
         )
 
@@ -244,7 +275,9 @@ def _import_contratos(conn):
                 vlr_parcela=parse_br_decimal(r["vlr_parcela"]),
                 vlr_parcela_atualizada=parse_br_decimal(r["vlr_parcela_atualizada"]),
                 tarifa_custodia=parse_br_decimal(r["tarifa_custodia"]),
-                fator_de_atualizacao_avaliacao=parse_br_decimal(r["fator_de_atualizacao_avaliacao"]),
+                fator_de_atualizacao_avaliacao=parse_br_decimal(
+                    r["fator_de_atualizacao_avaliacao"]
+                ),
                 margem=parse_br_decimal(r["margem"]),
                 peso=parse_br_decimal(r["peso"]),
                 valor_p_grama=parse_br_decimal(r["valor_p_grama"]),
@@ -255,9 +288,7 @@ def _import_contratos(conn):
     update_fields = [
         f.name
         for f in ContratoPenhor._meta.get_fields()
-        if getattr(f, "concrete", False)
-        and not f.primary_key
-        and f.name not in ("criado_em",)
+        if getattr(f, "concrete", False) and not f.primary_key and f.name not in ("criado_em",)
     ]
 
     with transaction.atomic():

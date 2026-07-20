@@ -14,7 +14,7 @@ Two test classes:
 import json
 import os
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
@@ -23,13 +23,13 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from core.models import (
+    FAQ,
     BotConfig,
     Cliente,
     Conversa,
-    FAQ,
     FAQResposta,
-    MensagensConfig,
     Mensagem,
+    MensagensConfig,
     Solicitacao,
 )
 
@@ -39,10 +39,12 @@ from core.models import (
 
 BASE_URL = "https://pwa.brunonyland.com"
 
+
 def _server_reachable():
     """Return True if the live HTTPS server responds."""
     try:
         import requests as req
+
         resp = req.get(f"{BASE_URL}/api/auth/", timeout=5, verify=False)
         return resp.status_code in (200, 301, 302, 403)
     except Exception:
@@ -52,6 +54,7 @@ def _server_reachable():
 # ===========================================================================
 # Part 1: Django API integration tests (force_login, SQLite, no network)
 # ===========================================================================
+
 
 @override_settings(
     REST_FRAMEWORK={
@@ -75,13 +78,19 @@ class APIIntegrationTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.staff = User.objects.create_user(
-            username="integration_staff", password="t3stP@ss!", is_staff=True,
+            username="integration_staff",
+            password="t3stP@ss!",
+            is_staff=True,
         )
         cls.non_staff = User.objects.create_user(
-            username="integration_regular", password="t3stP@ss!", is_staff=False,
+            username="integration_regular",
+            password="t3stP@ss!",
+            is_staff=False,
         )
         cls.cliente = Cliente.objects.create(
-            cpf="12345678901", nome="Cliente Integração", cidade="São Paulo",
+            cpf="12345678901",
+            nome="Cliente Integração",
+            cidade="São Paulo",
         )
         cls.conversa = Conversa.objects.create(
             cliente=cls.cliente,
@@ -184,12 +193,21 @@ class APIIntegrationTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         expected_keys = {
-            "por_tipo", "por_status", "serie_30_dias", "maior_valor_serie",
-            "total_clientes", "clientes_com_telefone", "clientes_com_conversa",
-            "clientes_bloqueados", "total_solicitacoes", "total_conversas",
+            "por_tipo",
+            "por_status",
+            "serie_30_dias",
+            "maior_valor_serie",
+            "total_clientes",
+            "clientes_com_telefone",
+            "clientes_com_conversa",
+            "clientes_bloqueados",
+            "total_solicitacoes",
+            "total_conversas",
             "total_boletos",
         }
-        self.assertTrue(expected_keys.issubset(data.keys()), f"Missing keys: {expected_keys - data.keys()}")
+        self.assertTrue(
+            expected_keys.issubset(data.keys()), f"Missing keys: {expected_keys - data.keys()}"
+        )
 
     def test_bot_config_authenticated(self):
         """GET /api/configs/bot/ → 200"""
@@ -475,7 +493,11 @@ class APIIntegrationTests(TestCase):
 # Part 2: Live HTTPS tests (Nginx ↔ Angular SPA ↔ Django)
 # ===========================================================================
 
-@unittest.skipIf(os.environ.get("CI") == "true", "Live-server tests não rodam no CI (dependem do servidor de produção)")
+
+@unittest.skipIf(
+    os.environ.get("CI") == "true",
+    "Live-server tests não rodam no CI (dependem do servidor de produção)",
+)
 @unittest.skipUnless(_server_reachable(), "Live server not reachable")
 class LiveServerIntegrationTests(unittest.TestCase):
     """Tests that hit the real Nginx server to verify SPA serving,
@@ -483,10 +505,12 @@ class LiveServerIntegrationTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        import glob
+        import os
+
         import requests as req
         import urllib3
-        import os
-        import glob
+
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         cls.session = req.Session()
         cls.session.verify = False
@@ -507,6 +531,7 @@ class LiveServerIntegrationTests(unittest.TestCase):
             # descobre os assets com hash a partir do index.html ao vivo,
             # em vez de uma lista hardcoded que apodrece a cada build.
             import re
+
             try:
                 html = cls.session.get(f"{BASE_URL}/painel/", timeout=10).text
                 cls.static_assets = [
@@ -516,7 +541,9 @@ class LiveServerIntegrationTests(unittest.TestCase):
             except Exception:
                 cls.static_assets = []
         if not cls.static_assets:
-            raise unittest.SkipTest("Nenhum asset estático descoberto (dist/ ausente e index.html indisponível)")
+            raise unittest.SkipTest(
+                "Nenhum asset estático descoberto (dist/ ausente e index.html indisponível)"
+            )
 
     @classmethod
     def tearDownClass(cls):
@@ -562,11 +589,15 @@ class LiveServerIntegrationTests(unittest.TestCase):
             with self.subTest(route=route):
                 resp = self.session.get(f"{BASE_URL}{route}")
                 self.assertEqual(resp.status_code, 200, f"{route} returned {resp.status_code}")
-                self.assertIn('<base href="/painel/">', resp.text,
-                              f"{route} did not return Angular index.html")
+                self.assertIn(
+                    '<base href="/painel/">',
+                    resp.text,
+                    f"{route} did not return Angular index.html",
+                )
                 # The HTML body should be the same as the root /painel/
-                self.assertEqual(resp.text, index_body,
-                                 f"{route} returned different content than /painel/")
+                self.assertEqual(
+                    resp.text, index_body, f"{route} returned different content than /painel/"
+                )
 
     # --- Static assets (JS/CSS) with cache headers -------------------------
 
@@ -583,14 +614,22 @@ class LiveServerIntegrationTests(unittest.TestCase):
             with self.subTest(asset=asset):
                 resp = self.session.get(f"{BASE_URL}{asset}")
                 cache_control = resp.headers.get("Cache-Control", "")
-                self.assertIn("public", cache_control,
-                              f"{asset} missing 'public' in Cache-Control: {cache_control}")
-                self.assertIn("immutable", cache_control,
-                              f"{asset} missing 'immutable' in Cache-Control: {cache_control}")
+                self.assertIn(
+                    "public",
+                    cache_control,
+                    f"{asset} missing 'public' in Cache-Control: {cache_control}",
+                )
+                self.assertIn(
+                    "immutable",
+                    cache_control,
+                    f"{asset} missing 'immutable' in Cache-Control: {cache_control}",
+                )
 
     def test_js_assets_correct_content_type(self):
         """JS files should be served as application/javascript."""
-        js_asset = next((a for a in self.static_assets if a.endswith(".js")), "/painel/main-B64CDASC.js")
+        js_asset = next(
+            (a for a in self.static_assets if a.endswith(".js")), "/painel/main-B64CDASC.js"
+        )
         resp = self.session.get(f"{BASE_URL}{js_asset}")
         ct = resp.headers.get("Content-Type", "")
         self.assertTrue(
@@ -600,7 +639,9 @@ class LiveServerIntegrationTests(unittest.TestCase):
 
     def test_css_asset_correct_content_type(self):
         """CSS files should be served as text/css."""
-        css_asset = next((a for a in self.static_assets if a.endswith(".css")), "/painel/styles-TGT4343F.css")
+        css_asset = next(
+            (a for a in self.static_assets if a.endswith(".css")), "/painel/styles-TGT4343F.css"
+        )
         resp = self.session.get(f"{BASE_URL}{css_asset}")
         ct = resp.headers.get("Content-Type", "")
         self.assertIn("text/css", ct, f"Expected text/css, got: {ct}")
@@ -640,7 +681,8 @@ class LiveServerIntegrationTests(unittest.TestCase):
             with self.subTest(url=url):
                 resp = fresh.get(f"{BASE_URL}{url}")
                 self.assertEqual(
-                    resp.status_code, 403,
+                    resp.status_code,
+                    403,
                     f"{url} returned {resp.status_code}, expected 403",
                 )
         fresh.close()
@@ -654,8 +696,7 @@ class LiveServerIntegrationTests(unittest.TestCase):
         resp = fresh.get(f"{BASE_URL}/api/auth/")
         self.assertEqual(resp.status_code, 200)
         cookie_names = [c.name for c in fresh.cookies]
-        self.assertIn("csrftoken", cookie_names,
-                       f"Expected csrftoken cookie, got: {cookie_names}")
+        self.assertIn("csrftoken", cookie_names, f"Expected csrftoken cookie, got: {cookie_names}")
         fresh.close()
 
     # --- Root redirect -----------------------------------------------------
@@ -675,10 +716,12 @@ class LiveServerIntegrationTests(unittest.TestCase):
     def test_http_redirects_to_https(self):
         """HTTP request should redirect to HTTPS."""
         import requests as req
+
         try:
             resp = req.get(
-                f"http://pwa.brunonyland.com/painel/",
-                allow_redirects=False, timeout=5,
+                "http://pwa.brunonyland.com/painel/",
+                allow_redirects=False,
+                timeout=5,
             )
             # Could be 301 redirect or 404 from Certbot config
             self.assertIn(resp.status_code, (301, 302, 404))

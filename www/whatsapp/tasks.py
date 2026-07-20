@@ -39,6 +39,7 @@ Fluxo por mensagem (process_mensagem, split em Fase 3/debounce):
      recheca o silêncio dentro do próprio lock (corrida webhook x scheduler)
      antes de chamar `_processar_lote`.
 """
+
 import logging
 import os
 import re
@@ -137,6 +138,7 @@ def _extrair_cpf_texto(texto: str, permitir_cru: bool = False) -> str:
 def _buscar_cliente_por_cpf(cpf_digits: str):
     """Tenta achar um Cliente pelo CPF de forma flexível."""
     return Cliente.buscar_por_cpf(cpf_digits)
+
 
 def _buscar_telefone_flexivel(numero_normalizado: str):
     """Busca um objeto Telefone de forma flexível, considerando que o número no
@@ -259,9 +261,9 @@ def _contratos_ativos_values(cliente):
     IA nunca vê dados pessoais, contratos de terceiros ou contratos
     liquidados; o renderer de templates (respostas_contrato.py) usa os
     mesmos dicts para os valores financeiros exibidos ao cliente."""
-    qs = cliente.contratos_penhor.exclude(
-        situacao_codigo__in=SITUACOES_LIQUIDADAS_COD
-    ).exclude(situacao__icontains="Liquidado")
+    qs = cliente.contratos_penhor.exclude(situacao_codigo__in=SITUACOES_LIQUIDADAS_COD).exclude(
+        situacao__icontains="Liquidado"
+    )
     return list(
         qs.values(
             "contrato",
@@ -286,7 +288,9 @@ def _contratos_ativos_values(cliente):
     )
 
 
-def _montar_pergunta_pagamento_incompleto(cliente, msgs, drafts=None, conversa=None, fila=None) -> str:
+def _montar_pergunta_pagamento_incompleto(
+    cliente, msgs, drafts=None, conversa=None, fila=None
+) -> str:
     """Pergunta de slot determinística quando PAGAMENTO ainda não tem dados
     suficientes (contrato/prazo) -- nunca texto da IA.
 
@@ -373,8 +377,7 @@ def _montar_pergunta_pagamento_incompleto(cliente, msgs, drafts=None, conversa=N
     if conversa and not ja_apresentado:
         limite = timezone.now() - timedelta(minutes=10)
         recent_outgoing = conversa.mensagens.filter(
-            direcao=Mensagem.Direcao.OUT,
-            criado_em__gte=limite
+            direcao=Mensagem.Direcao.OUT, criado_em__gte=limite
         ).order_by("-criado_em")[:5]
 
         all_in_history = True
@@ -399,9 +402,9 @@ def _criar_solicitacoes(conv, cliente, drafts):
     """Cria uma Solicitação por draft (ação distinta). contratos vazio = todos
     os ativos. Retorna a lista de criadas."""
     ativos_contratos = list(
-        cliente.contratos_penhor.exclude(
-            situacao_codigo__in=SITUACOES_LIQUIDADAS_COD
-        ).exclude(situacao__icontains="Liquidado").values_list("contrato", flat=True)
+        cliente.contratos_penhor.exclude(situacao_codigo__in=SITUACOES_LIQUIDADAS_COD)
+        .exclude(situacao__icontains="Liquidado")
+        .values_list("contrato", flat=True)
     )
     criadas = []
     for d in drafts:
@@ -409,7 +412,9 @@ def _criar_solicitacoes(conv, cliente, drafts):
             contratos_qs = ContratoPenhor.objects.filter(cliente=cliente, contrato__in=d.contratos)
             escopo = Solicitacao.Escopo.ESPECIFICOS
         else:
-            contratos_qs = ContratoPenhor.objects.filter(cliente=cliente, contrato__in=ativos_contratos)
+            contratos_qs = ContratoPenhor.objects.filter(
+                cliente=cliente, contrato__in=ativos_contratos
+            )
             escopo = Solicitacao.Escopo.TODOS
         sol = Solicitacao.objects.create(
             cliente=cliente,
@@ -433,7 +438,8 @@ def _handle_segunda_via(conv, cliente, msgs) -> list:
     acontecendo aqui, síncronos com a decisão tomada."""
     sol = (
         Solicitacao.objects.filter(cliente=cliente, boletos__isnull=False)
-        .order_by("-criado_em").first()
+        .order_by("-criado_em")
+        .first()
     )
     if not sol:
         conv.precisa_revisao_humana = True
@@ -468,7 +474,9 @@ def _handle_segunda_via(conv, cliente, msgs) -> list:
     conv.estado = Conversa.Estado.AGUARDANDO_BOLETO
     conv.save(update_fields=["estado", "ultima_interacao"])
     return [
-        render_template(msgs.msg_segunda_via_confirma, contratos=contratos_txt, tipo=sol.get_tipo_display())
+        render_template(
+            msgs.msg_segunda_via_confirma, contratos=contratos_txt, tipo=sol.get_tipo_display()
+        )
     ]
 
 
@@ -539,7 +547,11 @@ def _reagendar(mensagem_id: int, atraso: timedelta = REAGENDAR_ATRASO):
         next_run=timezone.now() + atraso,
         repeats=-1,
     )
-    logger.info("process_mensagem: conversa ocupada, mensagem %s reagendada (+%ss)", mensagem_id, atraso.seconds)
+    logger.info(
+        "process_mensagem: conversa ocupada, mensagem %s reagendada (+%ss)",
+        mensagem_id,
+        atraso.seconds,
+    )
 
 
 def _reagendar_lote(conversa_id: int, atraso: timedelta = REAGENDAR_ATRASO):
@@ -559,7 +571,11 @@ def _reagendar_lote(conversa_id: int, atraso: timedelta = REAGENDAR_ATRASO):
             repeats=-1,
         ),
     )
-    logger.info("process_lote_conversa: conversa %s ocupada, lote reagendado (+%ss)", conversa_id, atraso.seconds)
+    logger.info(
+        "process_lote_conversa: conversa %s ocupada, lote reagendado (+%ss)",
+        conversa_id,
+        atraso.seconds,
+    )
 
 
 def _agendar_debounce(conv: Conversa, bot: BotConfig):
@@ -630,7 +646,9 @@ def _criar_responders(conv: Conversa):
             ok = client.send_text(numero_destino, texto)
         else:
             logger.warning("Não foi possível normalizar número para responder conversa %s", conv.id)
-        Mensagem.objects.create(conversa=conv, direcao=Mensagem.Direcao.OUT, texto=texto, enviado_ok=ok)
+        Mensagem.objects.create(
+            conversa=conv, direcao=Mensagem.Direcao.OUT, texto=texto, enviado_ok=ok
+        )
         if not ok:
             conv.precisa_revisao_humana = True
             conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
@@ -641,8 +659,12 @@ def _criar_responders(conv: Conversa):
         if numero_destino:
             ok = client.send_file(numero_destino, caminho_completo, nome_arquivo, caption=legenda)
         else:
-            logger.warning("Não foi possível normalizar número para enviar arquivo na conversa %s", conv.id)
-        Mensagem.objects.create(conversa=conv, direcao=Mensagem.Direcao.OUT, texto=texto_msg, enviado_ok=ok)
+            logger.warning(
+                "Não foi possível normalizar número para enviar arquivo na conversa %s", conv.id
+            )
+        Mensagem.objects.create(
+            conversa=conv, direcao=Mensagem.Direcao.OUT, texto=texto_msg, enviado_ok=ok
+        )
         if not ok:
             conv.precisa_revisao_humana = True
             conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
@@ -653,14 +675,18 @@ def _criar_responders(conv: Conversa):
 def _log_auditoria(conv, resultado, acoes: str):
     logger.info(
         "process_mensagem conversa=%s precisa_humano=%s -> %s",
-        conv.id, resultado.precisa_humano, acoes,
+        conv.id,
+        resultado.precisa_humano,
+        acoes,
     )
 
 
 def process_mensagem(mensagem_id: int):
     """Task principal: processa uma mensagem recebida pelo webhook."""
     try:
-        mensagem = Mensagem.objects.select_related("conversa", "conversa__cliente").get(pk=mensagem_id)
+        mensagem = Mensagem.objects.select_related("conversa", "conversa__cliente").get(
+            pk=mensagem_id
+        )
     except Mensagem.DoesNotExist:
         logger.warning("process_mensagem: Mensagem %s não encontrada", mensagem_id)
         return
@@ -703,7 +729,8 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
     if mais_nova_existe:
         logger.info(
             "process_mensagem: mensagem %s superada por outra mais recente na conversa %s (coalescência)",
-            mensagem.id, conv.id,
+            mensagem.id,
+            conv.id,
         )
         return
 
@@ -728,7 +755,9 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
     if cliente and tipo_contato == Conversa.TipoContato.CLIENTE:
         # Identificação por telefone cadastrado/agenda sincronizada -- nunca expira.
         conv.identificacao = Conversa.MetodoIdentificacao.TELEFONE
-    conv.save(update_fields=["tipo_contato", "nome_salvo", "cliente", "identificacao", "ultima_interacao"])
+    conv.save(
+        update_fields=["tipo_contato", "nome_salvo", "cliente", "identificacao", "ultima_interacao"]
+    )
     cliente = conv.cliente  # refreshed
 
     tem_out_anterior = conv.mensagens.filter(direcao=Mensagem.Direcao.OUT).exists()
@@ -737,7 +766,9 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
     # respondido (contato pessoal nunca vai gerar uma chamada de IA).
     if tipo_contato == Conversa.TipoContato.PESSOAL:
         _marcar_mensagens_respondidas(_mensagens_pendentes(conv))
-        logger.info("Contato pessoal %s: mensagem %s armazenada sem resposta", conv.remote_jid, mensagem.id)
+        logger.info(
+            "Contato pessoal %s: mensagem %s armazenada sem resposta", conv.remote_jid, mensagem.id
+        )
         return
 
     # 3) Cliente bloqueado -- não marca a mensagem: cada nova mensagem do
@@ -745,7 +776,9 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
     if cliente and cliente.bloqueado_ia:
         conv.precisa_revisao_humana = True
         conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
-        logger.info("Cliente %s bloqueado p/ IA: mensagem %s sem resposta", cliente.cpf, mensagem.id)
+        logger.info(
+            "Cliente %s bloqueado p/ IA: mensagem %s sem resposta", cliente.cpf, mensagem.id
+        )
         return
 
     # 4) Desconhecido sem resposta prévia -> saúda, marca só esta mensagem e
@@ -768,7 +801,9 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
         and not tem_out_anterior
     ):
         primeiro_nome = (cliente.nome or "").split()[0] if cliente and cliente.nome else ""
-        responder(render_template(msgs.tpl_saudacao_cliente, saudacao=_saudacao(), nome=primeiro_nome))
+        responder(
+            render_template(msgs.tpl_saudacao_cliente, saudacao=_saudacao(), nome=primeiro_nome)
+        )
         _marcar_mensagens_respondidas([mensagem])
         return
 
@@ -778,9 +813,7 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
     # a única pendente, responde a recusa e encerra o turno.
     if mensagem.tipo_midia and not (mensagem.texto or "").strip():
         outras_com_texto = any(
-            (m.texto or "").strip()
-            for m in _mensagens_pendentes(conv)
-            if m.pk != mensagem.pk
+            (m.texto or "").strip() for m in _mensagens_pendentes(conv) if m.pk != mensagem.pk
         )
         if outras_com_texto:
             _marcar_mensagens_respondidas([mensagem])
@@ -814,7 +847,16 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
             cliente = _buscar_cliente_por_cpf(cpf_digitado)
             if cliente:
                 conv.cliente = cliente
-        conv.save(update_fields=["cpf_verificado", "verified_at", "identificacao", "estado", "cliente", "ultima_interacao"])
+        conv.save(
+            update_fields=[
+                "cpf_verificado",
+                "verified_at",
+                "identificacao",
+                "estado",
+                "cliente",
+                "ultima_interacao",
+            ]
+        )
         cliente = conv.cliente
 
     # verificação por CPF expirada? (telefone cadastrado NUNCA expira)
@@ -827,7 +869,15 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
         conv.verified_at = None
         conv.identificacao = Conversa.MetodoIdentificacao.NENHUM
         conv.estado = Conversa.Estado.AGUARDANDO_VERIFICACAO
-        conv.save(update_fields=["cpf_verificado", "verified_at", "identificacao", "estado", "ultima_interacao"])
+        conv.save(
+            update_fields=[
+                "cpf_verificado",
+                "verified_at",
+                "identificacao",
+                "estado",
+                "ultima_interacao",
+            ]
+        )
 
     # 7) Ponto de decisão do debounce (WS-A v3/Fase 3): silêncio do cliente
     # desde a última IN >= debounce_segundos (ou kill-switch debounce=0) ->
@@ -842,7 +892,9 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
         _agendar_debounce(conv, bot)
 
 
-def _processar_lote(conv: Conversa, bot: BotConfig, msgs, client, numero_destino, responder, responder_arquivo):
+def _processar_lote(
+    conv: Conversa, bot: BotConfig, msgs, client, numero_destino, responder, responder_arquivo
+):
     """Chama a IA com o LOTE de mensagens IN não respondidas e despacha
     sequencialmente TODAS as ações classificadas. Extraído do antigo passo
     6-8 de `process_mensagem` (Fase 2) para ser reutilizável tanto no
@@ -881,14 +933,13 @@ def _processar_lote(conv: Conversa, bot: BotConfig, msgs, client, numero_destino
     for faq in FAQ.objects.filter(ativo=True):
         faq_dict = {"id": faq.id, "pergunta": faq.pergunta}
         if enviar_respostas:
-            faq_dict["respostas"] = [
-                resp.texto for resp in faq.respostas.all() if resp.texto
-            ]
+            faq_dict["respostas"] = [resp.texto for resp in faq.respostas.all() if resp.texto]
         faqs.append(faq_dict)
     primeira_do_lote = lote[0]
     historico = list(
         conv.mensagens.filter(criado_em__lt=primeira_do_lote.criado_em)
-        .order_by("-criado_em").values("direcao", "texto")[:HISTORICO_TAMANHO]
+        .order_by("-criado_em")
+        .values("direcao", "texto")[:HISTORICO_TAMANHO]
     )[::-1]
 
     resultado = extrair_intencao(
@@ -930,7 +981,11 @@ def _processar_lote(conv: Conversa, bot: BotConfig, msgs, client, numero_destino
         )
         if identificado and cliente:
             primeiro_nome = (cliente.nome or "").split()[0] if cliente.nome else ""
-            tpl = msgs.tpl_saudacao_cliente_com_pedido if tem_pedido_junto else msgs.tpl_saudacao_cliente
+            tpl = (
+                msgs.tpl_saudacao_cliente_com_pedido
+                if tem_pedido_junto
+                else msgs.tpl_saudacao_cliente
+            )
             fila.append(render_template(tpl, saudacao=_saudacao(), nome=primeiro_nome))
         else:
             tpl = msgs.msg_saudacao_com_pedido if tem_pedido_junto else msgs.msg_saudacao
@@ -993,7 +1048,9 @@ def _processar_lote(conv: Conversa, bot: BotConfig, msgs, client, numero_destino
         infos_para_render = []
         pediu_campo_valor = False
         for pedido in resultado.infos_contrato:
-            tem_filtro_valor = pedido.filtro_valor_min is not None or pedido.filtro_valor_max is not None
+            tem_filtro_valor = (
+                pedido.filtro_valor_min is not None or pedido.filtro_valor_max is not None
+            )
             if tem_filtro_valor and pedido.filtro_valor_campo is None:
                 if not pediu_campo_valor:
                     fila.append(msgs.msg_pedir_campo_valor_filtro)
@@ -1014,7 +1071,11 @@ def _processar_lote(conv: Conversa, bot: BotConfig, msgs, client, numero_destino
             fila.append(msgs.msg_solicitacao_criada)
             acoes_log.append("pagamento_pronto")
         else:
-            fila.append(_montar_pergunta_pagamento_incompleto(cliente, msgs, resultado.solicitacoes, conversa=conv, fila=fila))
+            fila.append(
+                _montar_pergunta_pagamento_incompleto(
+                    cliente, msgs, resultado.solicitacoes, conversa=conv, fila=fila
+                )
+            )
             acoes_log.append("pagamento_incompleto")
 
     # 6) Segunda via
@@ -1146,7 +1207,8 @@ def processar_nao_lidas():
     for conv in convs:
         last_in = (
             conv.mensagens.filter(direcao=Mensagem.Direcao.IN, criado_em__gte=limite)
-            .order_by("-criado_em").first()
+            .order_by("-criado_em")
+            .first()
         )
         if not last_in:
             continue
