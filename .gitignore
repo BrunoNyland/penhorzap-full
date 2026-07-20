@@ -15,7 +15,7 @@ www/__pycache__/
 www/*.py[cod]
 www/*$py.class
 www/*.sqlite3
-www/staticfiles/
+staticfiles/
 www/media/
 www/schema.yml
 www/graphify-out/
