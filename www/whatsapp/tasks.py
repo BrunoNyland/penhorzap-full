@@ -802,7 +802,9 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
         and conv.identificacao == Conversa.MetodoIdentificacao.TELEFONE
         and not tem_out_anterior
     ):
-        primeiro_nome = (cliente.nome or "").split()[0] if cliente and cliente.nome else ""
+        # Nome vem em CAIXA ALTA do ERP (0886.sqlite3) -- .capitalize() evita
+        # que o bot pareça estar gritando com o cliente ("Boa tarde, MARIA!").
+        primeiro_nome = (cliente.nome or "").split()[0].capitalize() if cliente and cliente.nome else ""
         responder(
             render_template(msgs.tpl_saudacao_cliente, saudacao=_saudacao(), nome=primeiro_nome)
         )
@@ -982,7 +984,7 @@ def _processar_lote(
             or resultado.duvidas_sem_faq
         )
         if identificado and cliente:
-            primeiro_nome = (cliente.nome or "").split()[0] if cliente.nome else ""
+            primeiro_nome = (cliente.nome or "").split()[0].capitalize() if cliente.nome else ""
             tpl = (
                 msgs.tpl_saudacao_cliente_com_pedido
                 if tem_pedido_junto

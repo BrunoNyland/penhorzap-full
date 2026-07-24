@@ -1103,7 +1103,7 @@ def _montar_resposta_simulador(resultado, cliente, msgs) -> list:
             or resultado.duvidas_sem_faq
         )
         if cliente:
-            primeiro_nome = (cliente.nome or "").split()[0] if cliente.nome else ""
+            primeiro_nome = (cliente.nome or "").split()[0].capitalize() if cliente.nome else ""
             tpl = (
                 msgs.tpl_saudacao_cliente_com_pedido
                 if tem_pedido_junto
