@@ -766,6 +766,38 @@ class APIEndpointsTestCase(APITestCase):
         self.assertIsNone(response.data["cliente"])
 
     @patch("api.views.extrair_intencao")
+    def test_simulator_view_enviar_lote_mensagens(self, mock_extrair_intencao):
+        # Debounce do simulador: frontend acumula e manda várias mensagens
+        # de uma vez em `mensagens` (lista) -- vira 1 chamada à IA com o
+        # lote inteiro, igual ao debounce real do bot (_processar_lote).
+        self.client.login(username="admin", password="password")
+        url = reverse("api:simulador")
+
+        mock_result = ClassificacaoLote(
+            saudacao=True,
+            precisa_humano=False,
+            solicitacoes=[],
+            infos_contrato=[],
+            pronto_para_criar_solicitacao=False,
+            faq_ids=[],
+            duvidas_sem_faq=[],
+        )
+        mock_extrair_intencao.return_value = mock_result
+
+        response = self.client.post(
+            url,
+            {"acao": "enviar", "mensagens": ["boa tarde", "tudo bem?"]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        mock_extrair_intencao.assert_called_once()
+        lote_arg = mock_extrair_intencao.call_args[0][0]
+        self.assertEqual(lote_arg, ["boa tarde", "tudo bem?"])
+
+        turnos_in = [t for t in response.data["turnos"] if t["direcao"] == "in"]
+        self.assertEqual([t["texto"] for t in turnos_in], ["boa tarde", "tudo bem?"])
+
+    @patch("api.views.extrair_intencao")
     def test_simulator_view_flow_appenda_um_turno_out_por_mensagem(self, mock_extrair_intencao):
         # info_contrato com 2+ contratos ativos faz fan-out: intro + 1 linha
         # por contrato + totalizador -- cada um deve virar 1 turno "out"

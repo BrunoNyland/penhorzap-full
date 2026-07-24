@@ -58,6 +58,28 @@ import { IconComponent } from '../../shared/icon/icon.component';
           }
         </div>
 
+        <div class="selected-context-box card margin-top">
+          <h4>Debounce</h4>
+          <p class="text-small text-muted margin-top-xs">
+            Igual o robô real: espera esse tempo de silêncio antes de mandar as mensagens acumuladas pra IA de uma vez só. 0 = responde na hora.
+          </p>
+          <div class="form-group margin-top-xs">
+            <label for="debounce_segundos">Segundos</label>
+            <input
+              type="number"
+              id="debounce_segundos"
+              min="0"
+              [(ngModel)]="debounceSegundos"
+            />
+          </div>
+          @if (pendingCount() > 0) {
+            <p class="text-small text-muted margin-top-xs">
+              <app-icon name="zap" [size]="12"></app-icon>
+              {{ pendingCount() }} mensagem(ns) aguardando o debounce...
+            </p>
+          }
+        </div>
+
         <button class="btn btn-secondary width-100 margin-top" (click)="reiniciarChat()">
           <app-icon name="refresh-cw" [size]="14"></app-icon> Reiniciar Simulação
         </button>
@@ -504,6 +526,13 @@ export class SimulatorComponent implements OnInit, AfterViewChecked {
   seedEnviando = signal(false);
   private pendingSeed: { mensagens: string[]; clienteCpf: string | null; nome: string } | null = null;
 
+  // Debounce (igual BotConfig.debounce_segundos do robô real, mas
+  // configurável só aqui pra testes -- não persiste, é só do simulador).
+  debounceSegundos = 120;
+  pendingCount = signal(0);
+  private mensagensPendentes: string[] = [];
+  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor() {
     // Evita 1 requisição por tecla digitada e respostas fora de ordem.
     this.searchInput$.pipe(debounceTime(300), takeUntilDestroyed()).subscribe(() => this.buscarClientes());
@@ -621,6 +650,7 @@ export class SimulatorComponent implements OnInit, AfterViewChecked {
   }
 
   removerCliente(): void {
+    this.cancelarPendencias();
     this.apiService.postSimulatorAction({ acao: 'remover_cliente' }).subscribe({
       next: (res) => {
         this.selectedCliente.set(null);
@@ -641,12 +671,40 @@ export class SimulatorComponent implements OnInit, AfterViewChecked {
     if (!text || this.sending()) return;
 
     this.msgInput = '';
-    this.sending.set(true);
 
     // Optimistic user bubble append
     this.turnos.update(list => [...list, { direcao: 'in', texto: text }]);
+    this.mensagensPendentes.push(text);
+    this.pendingCount.set(this.mensagensPendentes.length);
 
-    this.apiService.postSimulatorAction({ acao: 'enviar', mensagem: text }).subscribe({
+    // Debounce igual o robô real: reinicia o timer a cada mensagem nova --
+    // só manda o lote acumulado pra IA depois de `debounceSegundos` de
+    // silêncio. 0 = manda na hora (kill-switch, igual BotConfig.debounce_segundos=0).
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    const segundos = Number(this.debounceSegundos) || 0;
+    if (segundos <= 0) {
+      this.dispararEnvioPendente();
+    } else {
+      this.debounceTimer = setTimeout(() => this.dispararEnvioPendente(), segundos * 1000);
+    }
+  }
+
+  private dispararEnvioPendente(): void {
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    const mensagens = this.mensagensPendentes;
+    if (!mensagens.length) return;
+
+    this.mensagensPendentes = [];
+    this.pendingCount.set(0);
+    this.sending.set(true);
+
+    this.apiService.postSimulatorAction({ acao: 'enviar', mensagens }).subscribe({
       next: (res) => {
         this.turnos.set(res.turnos || []);
         this.sending.set(false);
@@ -655,6 +713,15 @@ export class SimulatorComponent implements OnInit, AfterViewChecked {
         this.sending.set(false);
       }
     });
+  }
+
+  private cancelarPendencias(): void {
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    this.mensagensPendentes = [];
+    this.pendingCount.set(0);
   }
 
   formatarMensagem(texto: string): string {
@@ -675,6 +742,7 @@ export class SimulatorComponent implements OnInit, AfterViewChecked {
   }
 
   reiniciarChat(): void {
+    this.cancelarPendencias();
     this.apiService.postSimulatorAction({ acao: 'reiniciar' }).subscribe({
       next: (res) => {
         this.turnos.set(res.turnos || []);

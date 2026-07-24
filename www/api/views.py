@@ -1293,8 +1293,17 @@ class SimulatorView(GenericAPIView):
             request.session.modified = True
 
         elif acao == "enviar":
-            texto = request.data.get("mensagem", "").strip()
-            if texto:
+            # `mensagens` (lote, debounce do simulador acumulando no
+            # frontend) tem prioridade; `mensagem` (string única) mantido
+            # por compatibilidade. extrair_intencao aceita as duas formas.
+            mensagens_raw = request.data.get("mensagens")
+            if mensagens_raw is None:
+                texto_unico = (request.data.get("mensagem") or "").strip()
+                mensagens = [texto_unico] if texto_unico else []
+            else:
+                mensagens = [m.strip() for m in mensagens_raw if (m or "").strip()]
+
+            if mensagens:
                 cliente = None
                 if estado["cliente_cpf"]:
                     cliente = Cliente.buscar_por_cpf(estado["cliente_cpf"])
@@ -1312,7 +1321,7 @@ class SimulatorView(GenericAPIView):
                 faqs = list(FAQ.objects.filter(ativo=True).values("id", "pergunta"))
 
                 resultado = extrair_intencao(
-                    texto,
+                    mensagens,
                     historico,
                     contratos_cliente,
                     faqs,
@@ -1324,7 +1333,8 @@ class SimulatorView(GenericAPIView):
                 respostas = _montar_resposta_simulador(resultado, cliente, msgs)
                 debug = _debug_resultado_simulador(resultado)
 
-                estado["turnos"].append({"direcao": "in", "texto": texto})
+                for texto in mensagens:
+                    estado["turnos"].append({"direcao": "in", "texto": texto})
                 ultimo_idx = len(respostas) - 1
                 for idx, resposta_texto in enumerate(respostas):
                     turno = {"direcao": "out", "texto": resposta_texto}
