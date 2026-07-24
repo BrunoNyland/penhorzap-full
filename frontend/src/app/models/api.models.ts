@@ -166,6 +166,7 @@ export interface MensagemPainel {
   wa_message_id: string | null;
   push_name: string | null;
   criado_em: string;
+  mensagem_em: string | null;
   possui_midia: boolean;
   tipo_midia: string;
   legenda: string;

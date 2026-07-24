@@ -214,7 +214,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
                         <app-icon name="alert-triangle" [size]="11"></app-icon>
                       </span>
                     }
-                    {{ msg.criado_em | date:'dd/MM/yyyy HH:mm' }}
+                    {{ (msg.mensagem_em || msg.criado_em) | date:'dd/MM/yyyy HH:mm' }}
                   </div>
                 </div>
               </div>

@@ -401,6 +401,15 @@ class Mensagem(models.Model):
         blank=True,
         help_text="Quando o bot considerou esta mensagem IN respondida (controle do lote do debounce).",
     )
+    mensagem_em = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Timestamp real da mensagem no WhatsApp (messageTimestamp do payload da "
+            "Evolution). None em mensagens sem esse dado (enviadas pelo bot/operador "
+            "ou registros legados) — nesse caso o painel cai para `criado_em`."
+        ),
+    )
     criado_em = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -1,5 +1,7 @@
 import json
 import logging
+from datetime import datetime
+from datetime import timezone as dt_timezone
 
 from django.conf import settings
 from django.http import JsonResponse
@@ -42,6 +44,19 @@ def desembrulhar_no_mensagem(message: dict) -> dict:
             break
         message = proximo
     return message
+
+
+def _extrair_timestamp_mensagem(data: dict):
+    """Converte `data.messageTimestamp` (epoch em segundos, UTC) do payload da
+    Evolution para um datetime aware. Retorna None se ausente/inválido —
+    Mensagem.mensagem_em fica null e o painel cai para `criado_em`."""
+    ts = data.get("messageTimestamp")
+    if not ts:
+        return None
+    try:
+        return datetime.fromtimestamp(int(ts), tz=dt_timezone.utc)
+    except (TypeError, ValueError, OSError):
+        return None
 
 
 def _extrair_conteudo(message: dict) -> tuple[str, str]:
@@ -111,6 +126,7 @@ def whatsapp_webhook(request):
                 tipo_midia=tipo_midia,
                 wa_message_id=wa_message_id,
                 payload_bruto=body,
+                mensagem_em=_extrair_timestamp_mensagem(data),
             )
             # Classifica a conversa (ContatoSalvo > Telefone > sem push_name)
             try:
@@ -138,6 +154,7 @@ def whatsapp_webhook(request):
             wa_message_id=wa_message_id,
             push_name=push_name,
             payload_bruto=body,
+            mensagem_em=_extrair_timestamp_mensagem(data),
         )
 
         # Classifica a conversa (ContatoSalvo > Telefone > pushName) mesmo
