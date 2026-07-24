@@ -1835,6 +1835,27 @@ class DebounceTests(WhatsappTasksTestCase):
         self.assertIsNotNone(mensagem.respondida_em)
         self.assertEqual(self._last_out_texto(conv), self.msgs.msg_midia_nao_suportada)
 
+    def test_documento_unico_pendente_responde_reconhecimento_nao_recusa_de_audio(self):
+        conv = Conversa.objects.create(remote_jid="5567900000044@s.whatsapp.net")
+        Mensagem.objects.create(conversa=conv, direcao=Mensagem.Direcao.OUT, texto="oi")
+        mensagem = Mensagem.objects.create(
+            conversa=conv,
+            direcao=Mensagem.Direcao.IN,
+            tipo_midia=Mensagem.TipoMidia.DOCUMENT,
+            texto="",
+        )
+
+        with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
+            process_mensagem(mensagem.id)
+
+        mock_ia.assert_not_called()
+        mensagem.refresh_from_db()
+        self.assertIsNotNone(mensagem.respondida_em)
+        self.assertEqual(self._last_out_texto(conv), self.msgs.msg_documento_recebido)
+        self.assertNotEqual(self._last_out_texto(conv), self.msgs.msg_midia_nao_suportada)
+        conv.refresh_from_db()
+        self.assertTrue(conv.precisa_revisao_humana)
+
     def test_midia_com_texto_pendente_no_lote_nao_responde_e_marca_so_a_midia(self):
         texto_msg = self._in(self.conv, "quanto pra quitar?")
         midia_msg = Mensagem.objects.create(

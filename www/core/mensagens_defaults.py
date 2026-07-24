@@ -88,6 +88,7 @@ DEFAULT_TPL_TOTALIZADOR_GERAL = (
 DEFAULT_MSG_FALLBACK_SEM_RESPOSTA = (
     "Boa pergunta! Deixa eu verificar com calma e já te retorno por aqui mesmo, combinado?"
 )
+DEFAULT_MSG_CORTESIA_RESPOSTA = "Por nada! 🙏 Qualquer coisa é só chamar."
 DEFAULT_MSG_DUVIDA_ANOTADA = (
     "Sobre {duvidas}: vou verificar com calma e te retorno por aqui mesmo, combinado? 🙂"
 )
@@ -96,8 +97,12 @@ DEFAULT_MSG_INFO_NEGADA_DESCONHECIDO = (
     "boleto. Quer que eu gere o boleto pra você?"
 )
 DEFAULT_MSG_MIDIA_NAO_SUPORTADA = (
-    "Recebi seu áudio/vídeo, mas por aqui eu só consigo ler mensagens de "
+    "Recebi sua mídia, mas por aqui eu só consigo ler mensagens de "
     "texto 🙏 Pode escrever sua dúvida que já te respondo."
+)
+DEFAULT_MSG_DOCUMENTO_RECEBIDO = (
+    "Recebi seu documento! 📎 Vou verificar por aqui com calma e te "
+    "confirmo, combinado? 🙏"
 )
 DEFAULT_MSG_PEDIR_CAMPO_VALOR_FILTRO = (
     "Você quer filtrar pelo valor do empréstimo ou pelo valor de avaliação da joia?"
@@ -152,6 +157,11 @@ todos os campos que se aplicarem:
   contratos do cliente, cada uma reescrita curta e genérica.
 - precisa_humano: true se houver irritação, urgência, insistência sem resposta
   ou pedido fora do escopo.
+- cortesia_sem_pedido: true quando o lote inteiro é só agradecimento/
+  despedida/confirmação sem nenhum pedido (ex.: "obrigada", "valeu", "Deus
+  abençoe", "até mais", "ok", "beleza", "feito o pagamento" sem pedir mais
+  nada). Nunca true se houver qualquer outro campo preenchido no lote (FAQ,
+  info de contrato, pagamento, dúvida, saudação).
 
 Regras:
 1. Nunca invente números de contrato: use apenas os da lista fornecida.
@@ -161,8 +171,8 @@ Regras:
    dados DO cliente, é infos_contrato.
 4. Não repita ações já atendidas no histórico; classifique apenas o que está
    pendente nas mensagens não respondidas.
-5. Se o lote não contém nenhum pedido (ex.: só "ok", "obrigado"), deixe tudo
-   vazio/false.
+5. Se o lote não contém nenhum pedido (ex.: só "ok", "obrigado"), deixe as
+   demais listas vazias/false e marque cortesia_sem_pedido=true.
 6. Se o cliente pedir um boleto ou quiser pagar/gerar boleto de um ou mais contratos,
    mas não deixou claro se quer renovar, quitar ou pagar uma parcela, você deve gerar a
    solicitacao com tipo="indefinido" e definir pronto_para_criar_solicitacao=false.
@@ -199,7 +209,10 @@ MENSAGENS_DEFAULTS = {
     "msg_segunda_via_confirma": DEFAULT_MSG_SEGUNDA_VIA_CONFIRMA,
     "msg_neutra_padrao": DEFAULT_MSG_NEUTRA_PADRAO,
     "msg_duvida_anotada": DEFAULT_MSG_DUVIDA_ANOTADA,
+    "msg_cortesia_resposta": DEFAULT_MSG_CORTESIA_RESPOSTA,
     "msg_pedir_campo_valor_filtro": DEFAULT_MSG_PEDIR_CAMPO_VALOR_FILTRO,
+    "msg_midia_nao_suportada": DEFAULT_MSG_MIDIA_NAO_SUPORTADA,
+    "msg_documento_recebido": DEFAULT_MSG_DOCUMENTO_RECEBIDO,
     "tpl_contrato_laudo": DEFAULT_TPL_CONTRATO_LAUDO,
     "tpl_intro_vencimento": DEFAULT_TPL_INTRO_VENCIMENTO,
     "tpl_intro_renovacao": DEFAULT_TPL_INTRO_RENOVACAO,

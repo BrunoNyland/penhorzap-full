@@ -4,8 +4,10 @@ from django.db import models
 from .mensagens_defaults import (
     DEFAULT_MSG_BOLETO_INTRO,
     DEFAULT_MSG_CADASTRO_NAO_LOCALIZADO,
+    DEFAULT_MSG_CORTESIA_RESPOSTA,
     DEFAULT_MSG_CPF_INVALIDO,
     DEFAULT_MSG_CPF_NAO_BATE,
+    DEFAULT_MSG_DOCUMENTO_RECEBIDO,
     DEFAULT_MSG_DUVIDA_ANOTADA,
     DEFAULT_MSG_FALLBACK_SEM_RESPOSTA,
     DEFAULT_MSG_INFO_NEGADA_DESCONHECIDO,
@@ -574,12 +576,23 @@ class MensagensConfig(models.Model):
     tpl_totalizador = models.TextField(default=DEFAULT_TPL_TOTALIZADOR)
     tpl_totalizador_geral = models.TextField(default=DEFAULT_TPL_TOTALIZADOR_GERAL)
     msg_fallback_sem_resposta = models.TextField(default=DEFAULT_MSG_FALLBACK_SEM_RESPOSTA)
+    msg_cortesia_resposta = models.TextField(
+        default=DEFAULT_MSG_CORTESIA_RESPOSTA,
+        help_text="Usada quando o lote é só agradecimento/despedida sem nenhum pedido (ex.: 'obrigada', 'Deus abençoe') -- não usa o fallback de dúvida.",
+    )
     msg_duvida_anotada = models.TextField(
         default=DEFAULT_MSG_DUVIDA_ANOTADA,
         help_text="Anexada ao final da fila quando há dúvidas sem FAQ junto com outras ações. Use {duvidas}.",
     )
     msg_info_negada_desconhecido = models.TextField(default=DEFAULT_MSG_INFO_NEGADA_DESCONHECIDO)
-    msg_midia_nao_suportada = models.TextField(default=DEFAULT_MSG_MIDIA_NAO_SUPORTADA)
+    msg_midia_nao_suportada = models.TextField(
+        default=DEFAULT_MSG_MIDIA_NAO_SUPORTADA,
+        help_text="Áudio/vídeo/imagem sem legenda e sem outra mensagem com texto pendente no mesmo lote.",
+    )
+    msg_documento_recebido = models.TextField(
+        default=DEFAULT_MSG_DOCUMENTO_RECEBIDO,
+        help_text="Documento (PDF etc., ex.: comprovante de pagamento) sem legenda e sem outra mensagem com texto pendente no mesmo lote.",
+    )
     msg_pedir_campo_valor_filtro = models.TextField(
         default=DEFAULT_MSG_PEDIR_CAMPO_VALOR_FILTRO,
         help_text="Pergunta quando o cliente pede um filtro de valor (ex.: 'acima de 10 mil') sem deixar claro se é valor do empréstimo ou de avaliação.",

@@ -93,6 +93,11 @@ SCENARIOS = [
         "descricao": "Pergunta fora do escopo do penhor",
         "turnos": _turno_unico("Vocês fazem empréstimo consignado também?"),
     },
+    {
+        "id": "agradecimento_despedida",
+        "descricao": "Só agradecimento/despedida, sem pedido nenhum (regressão)",
+        "turnos": _turno_unico("Feito o pagamento, obrigada! Deus abençoe"),
+    },
 ]
 
 
@@ -159,6 +164,12 @@ SCENARIO_CHECKS = {
             "0000.000.00000000-0" in r and "*Contrato*" in r for r in respostas
         )
         else ["tratou o contrato inexistente como se fosse um contrato válido"]
+    ),
+    "agradecimento_despedida": lambda resultado, respostas: (
+        []
+        if resultado.cortesia_sem_pedido
+        and not any("Boa pergunta! Deixa eu verificar" in r for r in respostas)
+        else ["esperava cortesia_sem_pedido=true e reconhecimento curto, não o fallback de dúvida"]
     ),
 }
 

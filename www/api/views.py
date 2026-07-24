@@ -1173,7 +1173,10 @@ def _montar_resposta_simulador(resultado, cliente, msgs) -> list:
             fila.append(msgs.msg_fallback_sem_resposta)
 
     if resultado.nenhuma_acao():
-        fila.append(msgs.msg_fallback_sem_resposta)
+        if resultado.cortesia_sem_pedido:
+            fila.append(msgs.msg_cortesia_resposta)
+        else:
+            fila.append(msgs.msg_fallback_sem_resposta)
     elif not fila:
         fila.append(msgs.msg_neutra_padrao)
 
@@ -1194,6 +1197,8 @@ def _debug_resultado_simulador(resultado):
         acoes.append("segunda_via")
     if resultado.duvidas_sem_faq:
         acoes.append(f"duvida_sem_faq:{len(resultado.duvidas_sem_faq)}")
+    if resultado.cortesia_sem_pedido:
+        acoes.append("cortesia_sem_pedido")
 
     return {
         "acoes": acoes,

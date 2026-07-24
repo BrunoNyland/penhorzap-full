@@ -121,6 +121,14 @@ class ClassificacaoLote(BaseModel):
         default=False,
         description="True se um operador humano deve revisar/atuar antes de responder.",
     )
+    cortesia_sem_pedido: bool = Field(
+        default=False,
+        description=(
+            "True quando o lote inteiro é só agradecimento/despedida/confirmação "
+            "sem nenhum pedido (ex.: 'obrigada', 'valeu', 'Deus abençoe', 'até "
+            "mais'). Nunca true se houver qualquer outro campo preenchido."
+        ),
+    )
 
     def nenhuma_acao(self) -> bool:
         """True quando o lote não gerou NENHUMA solicitação classificável

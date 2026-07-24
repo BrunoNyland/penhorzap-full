@@ -811,10 +811,12 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
         _marcar_mensagens_respondidas([mensagem])
         return
 
-    # 5) Mídia sem texto (áudio/vídeo/imagem sem legenda) -> nunca chama a
-    # IA. Se há outra IN com texto ainda pendente no lote, só marca a mídia
-    # e SEGUE (não responde msg_midia_nao_suportada no meio do lote); se é
-    # a única pendente, responde a recusa e encerra o turno.
+    # 5) Mídia sem texto (áudio/vídeo/imagem/documento sem legenda) -> nunca
+    # chama a IA. Se há outra IN com texto ainda pendente no lote, só marca a
+    # mídia e SEGUE (não responde no meio do lote); se é a única pendente,
+    # responde e encerra o turno. Documento (ex.: comprovante de pagamento)
+    # é o caso mais comum de mídia solta -- reconhece o recebimento em vez
+    # de dizer "não consigo ler" (que só faz sentido pra áudio/vídeo/imagem).
     if mensagem.tipo_midia and not (mensagem.texto or "").strip():
         outras_com_texto = any(
             (m.texto or "").strip() for m in _mensagens_pendentes(conv) if m.pk != mensagem.pk
@@ -824,7 +826,10 @@ def _processar_mensagem_com_lock(mensagem: Mensagem, conv: Conversa, bot: BotCon
         else:
             conv.precisa_revisao_humana = True
             conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
-            responder(msgs.msg_midia_nao_suportada)
+            if mensagem.tipo_midia == Mensagem.TipoMidia.DOCUMENT:
+                responder(msgs.msg_documento_recebido)
+            else:
+                responder(msgs.msg_midia_nao_suportada)
             _marcar_mensagens_respondidas([mensagem])
             return
 
@@ -1112,13 +1117,20 @@ def _processar_lote(
             fila.append(msgs.msg_fallback_sem_resposta)
         acoes_log.append(f"duvida_sem_faq:{len(resultado.duvidas_sem_faq)}")
 
-    # 9) Nenhuma ação classificada no lote inteiro -> fallback padrão.
+    # 9) Nenhuma ação classificada no lote inteiro. Se for só cortesia
+    # (agradecimento/despedida, ex.: "obrigada", "Deus abençoe"), responde
+    # com um reconhecimento curto, sem marcar revisão nem sugerir FAQ --
+    # não é uma pergunta sem resposta, é o cliente encerrando a conversa.
     # Fila vazia apesar de haver ação (ex.: FAQ inativa) -> mensagem neutra.
     if resultado.nenhuma_acao():
-        FAQSugerida.registrar(lote_texto_join, conversa=conv, pergunta_original=lote_texto_join)
-        _marcar_revisao()
-        fila.append(msgs.msg_fallback_sem_resposta)
-        acoes_log.append("nenhuma_acao")
+        if resultado.cortesia_sem_pedido:
+            fila.append(msgs.msg_cortesia_resposta)
+            acoes_log.append("cortesia_sem_pedido")
+        else:
+            FAQSugerida.registrar(lote_texto_join, conversa=conv, pergunta_original=lote_texto_join)
+            _marcar_revisao()
+            fila.append(msgs.msg_fallback_sem_resposta)
+            acoes_log.append("nenhuma_acao")
     elif not fila:
         _marcar_revisao()
         fila.append(msgs.msg_neutra_padrao)
