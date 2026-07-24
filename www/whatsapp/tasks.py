@@ -694,11 +694,11 @@ def process_mensagem(mensagem_id: int):
         return
 
     bot = BotConfig.get_solo()
-    if not bot.ativo:
+    if not bot.deve_processar_mensagens():
         conv = mensagem.conversa
         conv.precisa_revisao_humana = True
         conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
-        logger.info("Bot desativado: mensagem %s armazenada sem resposta", mensagem_id)
+        logger.info("Bot desativado/database desatualizada: mensagem %s armazenada sem resposta", mensagem_id)
         return
 
     conv_id = mensagem.conversa_id
@@ -1010,8 +1010,11 @@ def _processar_lote(
                 fila.append(resp.texto)
         acoes_log.append(f"faq:{faq.id}")
 
-    # 3) Gates POR AÇÃO (identificação/database/desconhecido-por-CPF):
-    # calculados uma vez, suprimem só infos_contrato/pagamento/segunda_via.
+    # 3) Gates POR AÇÃO (identificação/desconhecido-por-CPF): calculados uma
+    # vez, suprimem só infos_contrato/pagamento/segunda_via. Não há mais gate
+    # de database desatualizada aqui -- o bot inteiro não fica ativo nesse
+    # caso (BotConfigSerializer.validate), então este trecho só roda com
+    # db_atualizada=True.
     tem_infos = bool(resultado.infos_contrato)
     tem_pagamento = bool(resultado.solicitacoes)
     tem_segunda_via = resultado.segunda_via
@@ -1019,17 +1022,13 @@ def _processar_lote(
     info_suprimido = False
     pagamento_suprimido = False
     segunda_via_suprimida = False
-    gate_motivo = None  # "identificacao" | "db"
+    gate_motivo = None  # "identificacao"
 
     if (tem_infos or tem_pagamento or tem_segunda_via) and not identificado:
         info_suprimido = tem_infos
         pagamento_suprimido = tem_pagamento
         segunda_via_suprimida = tem_segunda_via
         gate_motivo = "identificacao"
-    elif (tem_infos or tem_pagamento) and not db_atualizada:
-        info_suprimido = tem_infos
-        pagamento_suprimido = tem_pagamento
-        gate_motivo = "db"
     elif (
         tem_infos
         and conv.identificacao == Conversa.MetodoIdentificacao.CPF
@@ -1085,7 +1084,7 @@ def _processar_lote(
         fila.extend(_handle_segunda_via(conv, cliente, msgs))
         acoes_log.append("segunda_via")
 
-    # 7) Mensagem agregada do gate de identificação/database, UMA vez.
+    # 7) Mensagem do gate de identificação, UMA vez.
     if gate_motivo == "identificacao":
         if tipo_contato == Conversa.TipoContato.DESCONHECIDO:
             fila.append(msgs.msg_cadastro_nao_localizado)
@@ -1094,10 +1093,6 @@ def _processar_lote(
             conv.save(update_fields=["estado", "ultima_interacao"])
             fila.append(msgs.msg_pedir_cpf)
         acoes_log.append("gate:identificacao_ausente")
-    elif gate_motivo == "db":
-        _marcar_revisao()
-        fila.append(msgs.msg_db_desatualizada)
-        acoes_log.append("gate:db_desatualizada")
 
     # 8) Dúvidas sem FAQ correspondente: registra sugestão de FAQ por
     # dúvida + marca revisão; com outras ações na fila, anexa
@@ -1153,10 +1148,13 @@ def process_lote_conversa(conversa_id: int):
         return
 
     bot = BotConfig.get_solo()
-    if not bot.ativo:
+    if not bot.deve_processar_mensagens():
         conv.precisa_revisao_humana = True
         conv.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
-        logger.info("Bot desativado: lote da conversa %s armazenado sem resposta", conversa_id)
+        logger.info(
+            "Bot desativado/database desatualizada: lote da conversa %s armazenado sem resposta",
+            conversa_id,
+        )
         return
 
     with transaction.atomic():
@@ -1197,7 +1195,7 @@ def processar_nao_lidas():
     enquanto o bot estava desligado e ficaram armazenadas; aqui as devolvemos
     ao fluxo normal."""
     bot = BotConfig.get_solo()
-    if not bot.ativo:
+    if not bot.deve_processar_mensagens():
         return
     from django_q.tasks import async_task
 

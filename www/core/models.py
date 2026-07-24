@@ -6,7 +6,6 @@ from .mensagens_defaults import (
     DEFAULT_MSG_CADASTRO_NAO_LOCALIZADO,
     DEFAULT_MSG_CPF_INVALIDO,
     DEFAULT_MSG_CPF_NAO_BATE,
-    DEFAULT_MSG_DB_DESATUALIZADA,
     DEFAULT_MSG_DUVIDA_ANOTADA,
     DEFAULT_MSG_FALLBACK_SEM_RESPOSTA,
     DEFAULT_MSG_INFO_NEGADA_DESCONHECIDO,
@@ -466,10 +465,6 @@ class BotConfig(models.Model):
         blank=True,
         help_text="Carimbado pelo comando import_sqlite. Base para o freshness check.",
     )
-    freshness_horas = models.PositiveIntegerField(
-        default=24,
-        help_text="Idade máxima (em horas) do último import para considerar a database atualizada.",
-    )
     debounce_segundos = models.PositiveIntegerField(
         default=120,
         help_text="Segundos de silêncio do cliente antes de a IA responder. 0 = responder imediatamente. Respostas sem IA (CPF, saudação, mídia) continuam imediatas.",
@@ -511,13 +506,24 @@ class BotConfig(models.Model):
         return obj
 
     def database_atualizada(self, agora=None) -> bool:
-        """True se o último import_sqlite está dentro de freshness_horas."""
+        """True se o último import_sqlite foi feito hoje (mesma data-calendário,
+        fuso local) -- validade de 1 dia, não uma janela rolante de horas. Um
+        import de ontem já conta como desatualizado, mesmo que tenha poucas
+        horas de idade."""
         if not self.ultima_atualizacao_dados:
             return False
         from django.utils import timezone
 
         ref = agora or timezone.now()
-        return (ref - self.ultima_atualizacao_dados).total_seconds() <= self.freshness_horas * 3600
+        return timezone.localtime(self.ultima_atualizacao_dados).date() == timezone.localtime(ref).date()
+
+    def deve_processar_mensagens(self, agora=None) -> bool:
+        """Gate único usado por process_mensagem/process_lote_conversa/
+        processar_nao_lidas: além de `ativo`, exige database atualizada --
+        se a base ficar desatualizada enquanto o bot já estava ligado (ex.:
+        ninguém rodou o import de hoje), ele para de responder sozinho, sem
+        precisar de alguém desligar manualmente."""
+        return self.ativo and self.database_atualizada(agora=agora)
 
 
 class MensagensConfig(models.Model):
@@ -535,7 +541,6 @@ class MensagensConfig(models.Model):
     msg_pedir_cpf = models.TextField(default=DEFAULT_MSG_PEDIR_CPF)
     msg_cpf_invalido = models.TextField(default=DEFAULT_MSG_CPF_INVALIDO)
     msg_cpf_nao_bate = models.TextField(default=DEFAULT_MSG_CPF_NAO_BATE)
-    msg_db_desatualizada = models.TextField(default=DEFAULT_MSG_DB_DESATUALIZADA)
     msg_sem_contratos_ativos = models.TextField(default=DEFAULT_MSG_SEM_CONTRATOS_ATIVOS)
     msg_solicitacao_criada = models.TextField(default=DEFAULT_MSG_SOLICITACAO_CRIADA)
     msg_boleto_intro = models.TextField(default=DEFAULT_MSG_BOLETO_INTRO)

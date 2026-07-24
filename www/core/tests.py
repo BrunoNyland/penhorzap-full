@@ -91,33 +91,38 @@ class ParseNomeSalvoTests(TestCase):
 
 
 class BotConfigDatabaseAtualizadaTests(TestCase):
+    """Validade dos dados é de 1 dia-calendário (fuso local), não uma janela
+    rolante de horas -- um import de ontem à noite já conta como
+    desatualizado às 00h01 de hoje, mesmo com poucas horas de idade."""
+
     def test_sem_ultima_atualizacao_dados_e_falsa(self):
-        config = BotConfig(ultima_atualizacao_dados=None, freshness_horas=24)
+        config = BotConfig(ultima_atualizacao_dados=None)
         self.assertFalse(config.database_atualizada())
 
-    def test_atualizacao_fresca_dentro_da_janela(self):
+    def test_atualizacao_de_hoje_e_considerada_atualizada(self):
+        # .replace() precisa ser feito em cima do horário JÁ convertido pro
+        # fuso local -- fazer em cima do UTC bruto de timezone.now() e só
+        # depois converter podia cair no dia errado dependendo da hora UTC
+        # atual (ex.: replace(hour=0) num horário UTC de madrugada vira
+        # "ontem" ao converter pra America/Sao_Paulo, UTC-3).
         agora = timezone.now()
-        config = BotConfig(
-            ultima_atualizacao_dados=agora - timedelta(hours=1),
-            freshness_horas=24,
-        )
+        hoje_de_manha = timezone.localtime(agora).replace(hour=0, minute=1)
+        config = BotConfig(ultima_atualizacao_dados=hoje_de_manha)
         self.assertTrue(config.database_atualizada(agora=agora))
 
-    def test_atualizacao_expirada_fora_da_janela(self):
+    def test_atualizacao_de_ontem_e_desatualizada_mesmo_com_poucas_horas(self):
         agora = timezone.now()
-        config = BotConfig(
-            ultima_atualizacao_dados=agora - timedelta(hours=25),
-            freshness_horas=24,
-        )
+        ontem_tarde = (timezone.localtime(agora) - timedelta(days=1)).replace(hour=23, minute=59)
+        config = BotConfig(ultima_atualizacao_dados=ontem_tarde)
         self.assertFalse(config.database_atualizada(agora=agora))
 
-    def test_atualizacao_exatamente_no_limite_e_fresca(self):
+    def test_atualizacao_de_data_futura_nao_conta_como_atualizada_hoje(self):
+        # Comparação é por igualdade estrita de data, não "<=" -- não deveria
+        # acontecer na prática (import não roda no futuro).
         agora = timezone.now()
-        config = BotConfig(
-            ultima_atualizacao_dados=agora - timedelta(hours=24),
-            freshness_horas=24,
-        )
-        self.assertTrue(config.database_atualizada(agora=agora))
+        amanha = (timezone.localtime(agora) + timedelta(days=1)).replace(hour=0, minute=1)
+        config = BotConfig(ultima_atualizacao_dados=amanha)
+        self.assertFalse(config.database_atualizada(agora=agora))
 
     def test_get_solo_cria_singleton_pk_1(self):
         config = BotConfig.get_solo()

@@ -24,12 +24,8 @@ DEFAULT_MSG_CPF_NAO_BATE = (
     "Esse CPF não bate com o que tenho aqui pra este número. Você pode "
     "confirmar pra mim o CPF certo do titular do contrato?"
 )
-# --- Informações / FAQ / database desatualizada ------------------------------
+# --- Informações / FAQ --------------------------------------------------------
 
-DEFAULT_MSG_DB_DESATUALIZADA = (
-    "*Mensagem automática:* Oi. Estou ocupado no momento. Mas assim que eu "
-    "tiver um tempinho eu te verifico pra vc. 🤝"
-)
 DEFAULT_MSG_SEM_CONTRATOS_ATIVOS = (
     "Pelo que verifiquei aqui no sistema vc não tem contratos ativos no momento."
 )
@@ -180,7 +176,6 @@ MENSAGENS_DEFAULTS = {
     "msg_pedir_cpf": DEFAULT_MSG_PEDIR_CPF,
     "msg_cpf_invalido": DEFAULT_MSG_CPF_INVALIDO,
     "msg_cpf_nao_bate": DEFAULT_MSG_CPF_NAO_BATE,
-    "msg_db_desatualizada": DEFAULT_MSG_DB_DESATUALIZADA,
     "msg_sem_contratos_ativos": DEFAULT_MSG_SEM_CONTRATOS_ATIVOS,
     "msg_solicitacao_criada": DEFAULT_MSG_SOLICITACAO_CRIADA,
     "msg_boleto_intro": DEFAULT_MSG_BOLETO_INTRO,

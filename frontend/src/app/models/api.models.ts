@@ -9,7 +9,6 @@
 export interface BotConfig {
   ativo: boolean;
   ultima_atualizacao_dados: string | null;
-  freshness_horas: number;
   debounce_segundos: number;
   horario_encerramento: string | null;
   responder_desconhecidos: boolean;
@@ -34,7 +33,6 @@ export interface MensagensConfig {
   msg_pedir_cpf: string;
   msg_cpf_invalido: string;
   msg_cpf_nao_bate: string;
-  msg_db_desatualizada: string;
   msg_sem_contratos_ativos: string;
   msg_solicitacao_criada: string;
   msg_boleto_intro: string;

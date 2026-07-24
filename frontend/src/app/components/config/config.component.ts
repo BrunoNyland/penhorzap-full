@@ -68,6 +68,11 @@ import { ComponentCanDeactivate } from '../../guards/unsaved-changes.guard';
                 <span class="custom-checkbox"></span>
                 <span><strong>Bot Ativo</strong> (Permite processamento e respostas automáticas no WhatsApp)</span>
               </label>
+              @if (botConfig.database_atualizada) {
+                <span class="badge badge-success margin-left-xs">Dados do ERP atualizados hoje</span>
+              } @else {
+                <span class="badge badge-danger margin-left-xs">Dados do ERP desatualizados — importe a base de hoje pra poder ativar o bot</span>
+              }
             </div>
 
             <div class="form-group margin-bottom">
@@ -86,32 +91,18 @@ import { ComponentCanDeactivate } from '../../guards/unsaved-changes.guard';
               </label>
             </div>
 
-            <div class="grid-2">
+            <div class="grid-2 margin-top">
               <div class="form-group">
                 <label for="horario_encerramento">Horário de Encerramento Automático</label>
-                <input 
-                  type="time" 
-                  id="horario_encerramento" 
-                  name="horario_encerramento" 
-                  [(ngModel)]="botConfig.horario_encerramento" 
+                <input
+                  type="time"
+                  id="horario_encerramento"
+                  name="horario_encerramento"
+                  [(ngModel)]="botConfig.horario_encerramento"
                 />
                 <span class="help-text">Desativa o bot automaticamente no horário selecionado (fuso SP).</span>
               </div>
 
-              <div class="form-group">
-                <label for="freshness_horas">Validade dos Dados ERP (Horas)</label>
-                <input 
-                  type="number" 
-                  id="freshness_horas" 
-                  name="freshness_horas" 
-                  min="1" 
-                  [(ngModel)]="botConfig.freshness_horas" 
-                />
-                <span class="help-text">Tempo máximo aceitável após o último import do SQLite.</span>
-              </div>
-            </div>
-
-            <div class="grid-2 margin-top">
               <div class="form-group">
                 <label for="debounce_segundos">Debounce da IA (Segundos)</label>
                 <input
@@ -439,7 +430,6 @@ export class ConfigComponent implements OnInit, ComponentCanDeactivate {
     { key: 'msg_pedir_cpf', label: 'Pedir CPF', help: 'Mensagem solicitando que o usuário digite seu CPF.' },
     { key: 'msg_cpf_invalido', label: 'CPF Inválido', help: 'Erro retornado se o CPF falhar na validação do dígito verificador.' },
     { key: 'msg_cpf_nao_bate', label: 'CPF Não Confere', help: 'Mensagem de erro quando o CPF digitado difere do CPF registrado p/ aquele contato.' },
-    { key: 'msg_db_desatualizada', label: 'Base de dados Desatualizada', help: 'Erro emitido ao pedir informações financeiras se a base do ERP estiver fora do freshness.' },
     { key: 'msg_sem_contratos_ativos', label: 'Sem Contratos Ativos', help: 'Retorno quando o cliente verificado não possui contratos ativos em aberto.' },
     { key: 'msg_solicitacao_criada', label: 'Solicitação Criada', help: 'Confirmando a abertura da solicitação para envio dos boletos.' },
     { key: 'msg_boleto_intro', label: 'Introdução do Boleto', help: 'Introdução enviada imediatamente antes de anexar o PDF do boleto.' },
@@ -615,8 +605,9 @@ export class ConfigComponent implements OnInit, ComponentCanDeactivate {
         this.showToast('Configuração do bot atualizada com sucesso!', 'success');
         this.saving.set(false);
       },
-      error: () => {
-        this.showToast('Falha ao salvar configuração.', 'error');
+      error: (err) => {
+        const mensagem = err.error?.ativo?.[0] || err.error?.detail || 'Falha ao salvar configuração.';
+        this.showToast(mensagem, 'error');
         this.saving.set(false);
       }
     });

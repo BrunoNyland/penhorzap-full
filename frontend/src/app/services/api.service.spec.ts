@@ -54,7 +54,7 @@ describe('ApiService', () => {
 
   describe('updateBotConfig', () => {
     it('should PATCH /api/configs/bot/ with the given body', () => {
-      const payload = { ativo: false, freshness_horas: 12 };
+      const payload = { ativo: false, debounce_segundos: 60 };
 
       service.updateBotConfig(payload).subscribe();
 

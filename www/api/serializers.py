@@ -38,7 +38,6 @@ class BotConfigSerializer(serializers.ModelSerializer):
         fields = [
             "ativo",
             "ultima_atualizacao_dados",
-            "freshness_horas",
             "debounce_segundos",
             "horario_encerramento",
             "responder_desconhecidos",
@@ -51,6 +50,17 @@ class BotConfigSerializer(serializers.ModelSerializer):
 
     def get_database_atualizada(self, obj):
         return obj.database_atualizada()
+
+    def validate_ativo(self, value):
+        # Bloqueia ligar o bot com a base do ERP desatualizada (validade de 1
+        # dia -- import de dia anterior conta como desatualizado). Desligar
+        # (value=False) sempre é permitido, mesmo com base velha.
+        if value and self.instance and not self.instance.database_atualizada():
+            raise serializers.ValidationError(
+                "Não é possível ativar o bot: a base de dados do ERP está desatualizada "
+                "(o último import não é de hoje). Rode a importação do dia atual antes de ativar."
+            )
+        return value
 
 
 class EvolutionVersionStatusSerializer(serializers.ModelSerializer):
@@ -75,7 +85,6 @@ class MensagensConfigSerializer(serializers.ModelSerializer):
             "msg_pedir_cpf",
             "msg_cpf_invalido",
             "msg_cpf_nao_bate",
-            "msg_db_desatualizada",
             "msg_sem_contratos_ativos",
             "msg_solicitacao_criada",
             "msg_boleto_intro",

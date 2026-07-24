@@ -323,24 +323,58 @@ class APIEndpointsTestCase(APITestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["ativo"], False)
-        self.assertEqual(response.data["freshness_horas"], 24)
 
     def test_bot_config_patch(self):
         self.client.force_authenticate(user=self.staff_user)
         url = reverse("api:bot-config")
-        payload = {"ativo": True, "freshness_horas": 48}
+        payload = {"debounce_segundos": 48}
         response = self.client.patch(url, payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["ativo"], True)
-        self.assertEqual(response.data["freshness_horas"], 48)
+        self.assertEqual(response.data["debounce_segundos"], 48)
 
     def test_bot_config_patch_invalid(self):
         self.client.force_authenticate(user=self.staff_user)
         url = reverse("api:bot-config")
-        payload = {"freshness_horas": "not-an-int"}
+        payload = {"debounce_segundos": "not-an-int"}
         response = self.client.patch(url, payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("freshness_horas", response.data)
+        self.assertIn("debounce_segundos", response.data)
+
+    def test_bot_config_patch_bloqueia_ativar_com_database_desatualizada(self):
+        bot = BotConfig.get_solo()
+        bot.ultima_atualizacao_dados = timezone.now() - timedelta(days=1)
+        bot.save(update_fields=["ultima_atualizacao_dados"])
+
+        self.client.force_authenticate(user=self.staff_user)
+        url = reverse("api:bot-config")
+        response = self.client.patch(url, {"ativo": True}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("ativo", response.data)
+        bot.refresh_from_db()
+        self.assertFalse(bot.ativo)
+
+    def test_bot_config_patch_permite_desligar_com_database_desatualizada(self):
+        bot = BotConfig.get_solo()
+        bot.ultima_atualizacao_dados = timezone.now() - timedelta(days=1)
+        bot.ativo = True
+        bot.save(update_fields=["ultima_atualizacao_dados", "ativo"])
+
+        self.client.force_authenticate(user=self.staff_user)
+        url = reverse("api:bot-config")
+        response = self.client.patch(url, {"ativo": False}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["ativo"])
+
+    def test_bot_config_patch_permite_ativar_com_database_atualizada_hoje(self):
+        bot = BotConfig.get_solo()
+        bot.ultima_atualizacao_dados = timezone.now()
+        bot.save(update_fields=["ultima_atualizacao_dados"])
+
+        self.client.force_authenticate(user=self.staff_user)
+        url = reverse("api:bot-config")
+        response = self.client.patch(url, {"ativo": True}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["ativo"])
 
     def test_mensagens_config_get(self):
         self.client.force_authenticate(user=self.staff_user)

@@ -85,7 +85,6 @@ class WhatsappTasksTestCase(TestCase):
         self.bot = BotConfig.get_solo()
         self.bot.ativo = True
         self.bot.ultima_atualizacao_dados = timezone.now()
-        self.bot.freshness_horas = 24
         # Fase 3 (debounce): kill-switch ligado por padrão nos testes
         # existentes -- mantém o processamento síncrono (1 mensagem = 1
         # chamada de IA imediata) sem precisar reescrever toda a suíte.
@@ -715,24 +714,23 @@ class MultiAcaoLoteTests(WhatsappTasksTestCase):
         )
         self.assertEqual(outs, ["oi", "Sim, sábado até meio-dia!", self.msgs.msg_pedir_cpf])
 
-    def test_gate_db_suprime_infos_mas_faq_sai(self):
+    def test_database_desatualizada_impede_bot_de_responder(self):
+        # Validade de 1 dia: import de 10 dias atrás já é desatualizado.
+        # deve_processar_mensagens() barra ANTES de chegar na IA -- nenhuma
+        # resposta sai, nem a FAQ (o bot inteiro para, não só infos_contrato).
         self.bot.ultima_atualizacao_dados = timezone.now() - timedelta(days=10)
-        self.bot.freshness_horas = 1
         self.bot.save()
         with patch("whatsapp.tasks.extrair_intencao") as mock_ia:
-            mock_ia.return_value = _classificacao(
-                faq_ids=[self.faq.id],
-                infos_contrato=[InfoContratoPedido(info=InfoContrato.VENCIMENTO)],
-            )
             mensagem = self._in(self.conv, "vcs abrem sábado? quando vence meu contrato?")
             process_mensagem(mensagem.id)
+            mock_ia.assert_not_called()
 
         outs = list(
             self.conv.mensagens.filter(direcao=Mensagem.Direcao.OUT)
             .order_by("criado_em")
             .values_list("texto", flat=True)
         )
-        self.assertEqual(outs, ["oi", "Sim, sábado até meio-dia!", self.msgs.msg_db_desatualizada])
+        self.assertEqual(outs, ["oi"])  # só o fixture do setUp, nada novo
         self.conv.refresh_from_db()
         self.assertTrue(self.conv.precisa_revisao_humana)
 
