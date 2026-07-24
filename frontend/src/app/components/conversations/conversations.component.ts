@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, OnInit, OnDestroy, ChangeDetectionStrategy, ViewChild, ElementRef } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, OnDestroy, ChangeDetectionStrategy, ViewChild, ElementRef, Injector, afterNextRender } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { DatePipe, NgClass } from '@angular/common';
@@ -798,6 +798,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
 })
 export class ConversationsComponent implements OnInit, OnDestroy {
   private apiService = inject(ApiService);
+  private injector = inject(Injector);
 
   conversas = signal<any[]>([]);
   activeChat = signal<any | null>(null);
@@ -911,7 +912,7 @@ export class ConversationsComponent implements OnInit, OnDestroy {
         this.activeChat.set(data);
         this.loadingDetails.set(false);
         if (scrollAfter) {
-          setTimeout(() => this.scrollToBottom(), 0);
+          this.scrollToBottom();
         }
       },
       error: () => this.loadingDetails.set(false)
@@ -919,8 +920,17 @@ export class ConversationsComponent implements OnInit, OnDestroy {
   }
 
   private scrollToBottom(): void {
-    const el = this.messagesContainer?.nativeElement;
-    if (el) el.scrollTop = el.scrollHeight;
+    // afterNextRender (não setTimeout) -- garante que o DOM já foi
+    // atualizado com o @if/@for da conversa antes de medir scrollHeight;
+    // com a estratégia de change detection Eager (Angular 22) um
+    // setTimeout(0) podia disparar antes do Angular pintar a mudança.
+    afterNextRender(
+      () => {
+        const el = this.messagesContainer?.nativeElement;
+        if (el) el.scrollTop = el.scrollHeight;
+      },
+      { injector: this.injector }
+    );
   }
 
   toggleRevisao(id: number): void {
