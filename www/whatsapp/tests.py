@@ -1066,6 +1066,18 @@ class WhatsappWebhookTestCase(TestCase):
         self.assertEqual(Mensagem.objects.count(), 0)
         mock_async_task.assert_not_called()
 
+    @patch("whatsapp.views.async_task")
+    def test_data_vazia_e_ignorada_sem_criar_conversa_fantasma(self, mock_async_task):
+        # Evolution manda `data: {}` em alguns eventos sem conteúdo real
+        # (ex.: durante reconexão/resync da sessão) -- não deve criar
+        # Conversa "desconhecido" nem Mensagem vazia.
+        response = self._post({"event": "messages.upsert", "data": {}})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json().get("reason"), "missing remoteJid")
+        self.assertEqual(Mensagem.objects.count(), 0)
+        self.assertEqual(Conversa.objects.count(), 0)
+        mock_async_task.assert_not_called()
+
 
 class RespostasContratoUnitTests(TestCase):
     def test_formatar_moeda(self):

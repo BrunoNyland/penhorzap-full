@@ -106,6 +106,13 @@ def whatsapp_webhook(request):
         key = data.get("key") or {}
         remote_jid = key.get("remoteJid", "")
 
+        # Evolution manda `data: {}` em alguns eventos sem conteúdo real
+        # (observado durante reconexão/resync da sessão WhatsApp) -- sem essa
+        # checagem, isso criava uma Conversa fantasma "desconhecido" com
+        # Mensagem vazia. Ignora sem persistir nada quando não há remoteJid.
+        if not remote_jid:
+            return JsonResponse({"status": "ignored", "reason": "missing remoteJid"}, status=200)
+
         if remote_jid.endswith("@g.us"):
             return JsonResponse({"status": "ignored", "reason": "group"}, status=200)
 
