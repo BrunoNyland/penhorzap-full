@@ -123,7 +123,9 @@ todos os campos que se aplicarem:
 - faq_ids: IDs de TODAS as FAQs que respondem perguntas do lote.
 - infos_contrato: um item por dado de contrato pedido: vencimento |
   valor_renovacao (prazo_dias se citado) | valor_quitacao | valor_parcela |
-  lista_contratos ("quais contratos eu tenho?") | detalhe_contrato | laudo ("quero ver o laudo do contrato", "qual a descrição da garantia/joias?"). Em
+  lista_contratos ("quais contratos eu tenho?", "esse é todos os meus
+  contratos?", "tenho mais algum em aberto?") | detalhe_contrato | laudo
+  ("quero ver o laudo do contrato", "qual a descrição da garantia/joias?"). Em
   contratos, liste os números citados; vazio = todos.
   - detalhado: só para valor_renovacao/valor_quitacao/valor_parcela. true SÓ
     se o cliente pedir explicitamente para ver contrato por contrato,
@@ -164,6 +166,11 @@ Regras:
 6. Se o cliente pedir um boleto ou quiser pagar/gerar boleto de um ou mais contratos,
    mas não deixou claro se quer renovar, quitar ou pagar uma parcela, você deve gerar a
    solicitacao com tipo="indefinido" e definir pronto_para_criar_solicitacao=false.
+7. Pergunta de confirmação sobre quantidade/completude dos contratos ("é
+   todos?", "isso é tudo?", "tenho mais contratos?", "esse é todos os meus
+   contratos?") é sempre infos_contrato com lista_contratos -- mesmo que
+   apareça junto de um pagamento ainda pendente. Nunca deixe essa pergunta
+   sem resposta nem a confunda com duvidas_sem_faq.
 """
 
 SIMULADOR_SESSION_KEY = "simulador_ia"
