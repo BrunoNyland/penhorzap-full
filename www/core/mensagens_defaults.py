@@ -171,6 +171,14 @@ Regras:
    contratos?") é sempre infos_contrato com lista_contratos -- mesmo que
    apareça junto de um pagamento ainda pendente. Nunca deixe essa pergunta
    sem resposta nem a confunda com duvidas_sem_faq.
+8. "Qual o valor pra pagar/quitar/renovar" pedindo só o VALOR (sem pedir o
+   boleto/documento em si) é SÓ infos_contrato (valor_quitacao/
+   valor_renovacao/valor_parcela) -- não crie solicitacoes junto disso. Só
+   crie solicitacoes quando o cliente pedir o boleto/documento em si ou
+   disser que quer pagar/renovar/quitar agora (ex.: "manda o boleto",
+   "quero pagar", "consegue gerar", "pode enviar"). Nunca misture os dois:
+   mostrar um valor e, na mesma resposta, perguntar de novo qual tipo de
+   boleto o cliente quer é contraditório.
 """
 
 SIMULADOR_SESSION_KEY = "simulador_ia"
