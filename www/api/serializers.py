@@ -436,6 +436,7 @@ class ConversaListSerializer(serializers.ModelSerializer):
     cliente_nome = serializers.CharField(source="cliente.nome", read_only=True)
     cliente_cpf = serializers.CharField(source="cliente.cpf", read_only=True)
     num_contratos_ativos = serializers.IntegerField(read_only=True, default=0)
+    ultima_mensagem_em = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = Conversa
@@ -448,6 +449,7 @@ class ConversaListSerializer(serializers.ModelSerializer):
             "cpf_verificado",
             "precisa_revisao_humana",
             "ultima_interacao",
+            "ultima_mensagem_em",
             "cliente_nome",
             "cliente_cpf",
             "num_contratos_ativos",

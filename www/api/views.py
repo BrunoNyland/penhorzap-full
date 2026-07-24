@@ -7,8 +7,8 @@ from datetime import timedelta
 from django.contrib.auth import authenticate, login, logout
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import Count, Q, Sum
-from django.db.models.functions import ExtractDay, ExtractWeekDay, TruncDate
+from django.db.models import Count, OuterRef, Q, Subquery, Sum
+from django.db.models.functions import Coalesce, ExtractDay, ExtractWeekDay, TruncDate
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -790,7 +790,21 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
                 distinct=True,
             )
         )
-        return qs.order_by("-ultima_interacao")
+
+        # Horário real da última mensagem trocada (mensagem_em quando
+        # disponível, senão criado_em) -- diferente de `ultima_interacao`,
+        # que é tocado por QUALQUER save() da Conversa (toggle de revisão,
+        # classificação etc.), não só por mensagens novas. Cai pra
+        # `ultima_interacao` só em conversas sem nenhuma mensagem ainda.
+        ultima_mensagem = Mensagem.objects.filter(conversa=OuterRef("pk")).order_by("-criado_em")
+        qs = qs.annotate(
+            ultima_mensagem_em=Coalesce(
+                Subquery(ultima_mensagem.values("mensagem_em")[:1]),
+                Subquery(ultima_mensagem.values("criado_em")[:1]),
+                "ultima_interacao",
+            )
+        )
+        return qs.order_by("-ultima_mensagem_em")
 
     @action(detail=True, methods=["post"], url_path="toggle-revisao")
     def toggle_revisao(self, request, pk=None):

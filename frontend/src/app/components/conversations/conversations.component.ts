@@ -87,7 +87,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
                 <div class="chat-item-header flex justify-between">
                   <strong>{{ getDisplayName(chat) }}</strong>
                   <div class="flex align-center gap-1">
-                    <span class="chat-time">{{ formatTime(chat.ultima_interacao) }}</span>
+                    <span class="chat-time">{{ formatTime(chat.ultima_mensagem_em) }}</span>
                     <button
                       class="chat-item-delete"
                       title="Apagar esta conversa"

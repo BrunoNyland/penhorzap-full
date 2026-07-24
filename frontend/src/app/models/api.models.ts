@@ -154,6 +154,7 @@ export interface ConversaListItem {
   cpf_verificado: string | null;
   precisa_revisao_humana: boolean;
   ultima_interacao: string;
+  ultima_mensagem_em: string;
   cliente_nome: string | null;
   cliente_cpf: string | null;
   num_contratos_ativos: number;
