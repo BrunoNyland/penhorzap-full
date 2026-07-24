@@ -987,8 +987,8 @@ export class ConversationsComponent implements OnInit, OnDestroy {
           d.getDate() === hoje.getDate()
         );
       })
-      .map((m: any) => (m.texto || '').trim())
-      .filter((texto: string) => texto.length > 0);
+      .map((m: any) => ({ texto: (m.texto || '').trim(), data: m.mensagem_em || m.criado_em }))
+      .filter((m: { texto: string }) => m.texto.length > 0);
 
     if (mensagensHoje.length === 0) {
       alert('Não há mensagens do cliente hoje nesta conversa para simular.');

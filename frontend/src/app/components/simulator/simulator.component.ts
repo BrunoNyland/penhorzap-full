@@ -524,7 +524,11 @@ export class SimulatorComponent implements OnInit, AfterViewChecked {
   // fosse a conversa real acontecendo aqui.
   seedNomeOrigem = signal<string | null>(null);
   seedEnviando = signal(false);
-  private pendingSeed: { mensagens: string[]; clienteCpf: string | null; nome: string } | null = null;
+  private pendingSeed: {
+    mensagens: { texto: string; data: string }[];
+    clienteCpf: string | null;
+    nome: string;
+  } | null = null;
 
   // Debounce (igual BotConfig.debounce_segundos do robô real, mas
   // configurável só aqui pra testes -- não persiste, é só do simulador).
@@ -545,6 +549,28 @@ export class SimulatorComponent implements OnInit, AfterViewChecked {
         nome: navState.seedNomeOrigem || 'contato'
       };
     }
+  }
+
+  /** Agrupa mensagens (com timestamp real) em lotes: uma nova mensagem só
+   * inicia um lote novo se o intervalo até a anterior for >= debounceSegundos
+   * -- reproduz exatamente como o debounce real teria batchado essas
+   * mensagens do cliente, em vez de mandar 1 por 1 pra IA. */
+  private agruparPorDebounce(mensagens: { texto: string; data: string }[]): string[][] {
+    const segundos = Number(this.debounceSegundos) || 0;
+    const grupos: string[][] = [];
+    let ultimaData: number | null = null;
+
+    for (const m of mensagens) {
+      const ts = new Date(m.data).getTime();
+      const gapSegundos = ultimaData !== null ? (ts - ultimaData) / 1000 : Infinity;
+      if (gapSegundos >= segundos || grupos.length === 0) {
+        grupos.push([m.texto]);
+      } else {
+        grupos[grupos.length - 1].push(m.texto);
+      }
+      ultimaData = ts;
+    }
+    return grupos;
   }
 
   onSearchInput(): void {
@@ -569,7 +595,11 @@ export class SimulatorComponent implements OnInit, AfterViewChecked {
     }
   }
 
-  private iniciarSimulacaoComSeed(seed: { mensagens: string[]; clienteCpf: string | null; nome: string }): void {
+  private iniciarSimulacaoComSeed(seed: {
+    mensagens: { texto: string; data: string }[];
+    clienteCpf: string | null;
+    nome: string;
+  }): void {
     this.seedNomeOrigem.set(seed.nome);
     this.seedEnviando.set(true);
     this.sending.set(true);
@@ -582,7 +612,8 @@ export class SimulatorComponent implements OnInit, AfterViewChecked {
       next: (res) => {
         this.selectedCliente.set(res.cliente);
         this.turnos.set(res.turnos || []);
-        this.enviarSeedSequencialmente(seed.mensagens, 0);
+        const grupos = this.agruparPorDebounce(seed.mensagens);
+        this.enviarSeedSequencialmente(grupos, 0);
       },
       error: () => {
         this.sending.set(false);
@@ -591,20 +622,20 @@ export class SimulatorComponent implements OnInit, AfterViewChecked {
     });
   }
 
-  private enviarSeedSequencialmente(mensagens: string[], idx: number): void {
-    if (idx >= mensagens.length) {
+  private enviarSeedSequencialmente(grupos: string[][], idx: number): void {
+    if (idx >= grupos.length) {
       this.sending.set(false);
       this.seedEnviando.set(false);
       return;
     }
 
-    const texto = mensagens[idx];
-    this.turnos.update(list => [...list, { direcao: 'in', texto }]);
+    const mensagens = grupos[idx];
+    this.turnos.update(list => [...list, ...mensagens.map(texto => ({ direcao: 'in', texto }))]);
 
-    this.apiService.postSimulatorAction({ acao: 'enviar', mensagem: texto }).subscribe({
+    this.apiService.postSimulatorAction({ acao: 'enviar', mensagens }).subscribe({
       next: (res) => {
         this.turnos.set(res.turnos || []);
-        this.enviarSeedSequencialmente(mensagens, idx + 1);
+        this.enviarSeedSequencialmente(grupos, idx + 1);
       },
       error: () => {
         this.sending.set(false);
