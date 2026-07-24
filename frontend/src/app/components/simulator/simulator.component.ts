@@ -2,6 +2,7 @@ import { Component, inject, signal, computed, OnInit, AfterViewChecked, ViewChil
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { NgClass, JsonPipe } from '@angular/common';
+import { Router } from '@angular/router';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 import { ApiService } from '../../services/api.service';
@@ -67,6 +68,13 @@ import { IconComponent } from '../../shared/icon/icon.component';
         <div class="chat-header border-bottom padding-bottom-sm">
           <h3>Chat de Simulação</h3>
           <p class="text-muted text-small">As mensagens são temporárias (salvas apenas na sessão).</p>
+          @if (seedNomeOrigem()) {
+            <p class="badge badge-info margin-top-xs">
+              <app-icon name="play" [size]="12"></app-icon>
+              Reproduzindo mensagens de hoje de {{ seedNomeOrigem() }}
+              @if (seedEnviando()) { (enviando...) }
+            </p>
+          }
         </div>
 
         <!-- Chat History viewport -->
@@ -472,6 +480,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
 })
 export class SimulatorComponent implements OnInit, AfterViewChecked {
   private apiService = inject(ApiService);
+  private router = inject(Router);
 
   @ViewChild('messagesContainer') private messagesContainer!: ElementRef;
 
@@ -488,9 +497,25 @@ export class SimulatorComponent implements OnInit, AfterViewChecked {
   modalPromptAberto = signal(false);
   activeDebugData = signal<any | null>(null);
 
+  // Seed vindo do botão "Simular" da tela de Conversas: reproduz as
+  // mensagens de hoje do cliente em sequência, uma por uma, como se
+  // fosse a conversa real acontecendo aqui.
+  seedNomeOrigem = signal<string | null>(null);
+  seedEnviando = signal(false);
+  private pendingSeed: { mensagens: string[]; clienteCpf: string | null; nome: string } | null = null;
+
   constructor() {
     // Evita 1 requisição por tecla digitada e respostas fora de ordem.
     this.searchInput$.pipe(debounceTime(300), takeUntilDestroyed()).subscribe(() => this.buscarClientes());
+
+    const navState = this.router.getCurrentNavigation()?.extras?.state as any;
+    if (navState?.seedMensagens?.length) {
+      this.pendingSeed = {
+        mensagens: navState.seedMensagens,
+        clienteCpf: navState.seedClienteCpf || null,
+        nome: navState.seedNomeOrigem || 'contato'
+      };
+    }
   }
 
   onSearchInput(): void {
@@ -508,7 +533,55 @@ export class SimulatorComponent implements OnInit, AfterViewChecked {
   }
 
   ngOnInit(): void {
-    this.fetchSimulatorState();
+    if (this.pendingSeed) {
+      this.iniciarSimulacaoComSeed(this.pendingSeed);
+    } else {
+      this.fetchSimulatorState();
+    }
+  }
+
+  private iniciarSimulacaoComSeed(seed: { mensagens: string[]; clienteCpf: string | null; nome: string }): void {
+    this.seedNomeOrigem.set(seed.nome);
+    this.seedEnviando.set(true);
+    this.sending.set(true);
+
+    const reset$ = seed.clienteCpf
+      ? this.apiService.postSimulatorAction({ acao: 'selecionar_cliente', cpf: seed.clienteCpf })
+      : this.apiService.postSimulatorAction({ acao: 'reiniciar' });
+
+    reset$.subscribe({
+      next: (res) => {
+        this.selectedCliente.set(res.cliente);
+        this.turnos.set(res.turnos || []);
+        this.enviarSeedSequencialmente(seed.mensagens, 0);
+      },
+      error: () => {
+        this.sending.set(false);
+        this.seedEnviando.set(false);
+      }
+    });
+  }
+
+  private enviarSeedSequencialmente(mensagens: string[], idx: number): void {
+    if (idx >= mensagens.length) {
+      this.sending.set(false);
+      this.seedEnviando.set(false);
+      return;
+    }
+
+    const texto = mensagens[idx];
+    this.turnos.update(list => [...list, { direcao: 'in', texto }]);
+
+    this.apiService.postSimulatorAction({ acao: 'enviar', mensagem: texto }).subscribe({
+      next: (res) => {
+        this.turnos.set(res.turnos || []);
+        this.enviarSeedSequencialmente(mensagens, idx + 1);
+      },
+      error: () => {
+        this.sending.set(false);
+        this.seedEnviando.set(false);
+      }
+    });
   }
 
   ngAfterViewChecked(): void {

@@ -2,6 +2,7 @@ import { Component, inject, signal, computed, OnInit, OnDestroy, ChangeDetection
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { DatePipe, NgClass } from '@angular/common';
+import { Router } from '@angular/router';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 import { ApiService } from '../../services/api.service';
@@ -165,6 +166,13 @@ import { IconComponent } from '../../shared/icon/icon.component';
             </div>
             
             <div class="flex gap-2 detail-actions">
+              <button
+                class="btn btn-secondary"
+                title="Abre o Simulador IA com as mensagens de hoje deste cliente, em sequência"
+                (click)="simularComMensagensDeHoje()"
+              >
+                <app-icon name="play" [size]="14"></app-icon> Simular
+              </button>
               <button
                 class="btn"
                 [class.btn-danger]="!activeChat().precisa_revisao_humana"
@@ -799,6 +807,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
 export class ConversationsComponent implements OnInit, OnDestroy {
   private apiService = inject(ApiService);
   private injector = inject(Injector);
+  private router = inject(Router);
 
   conversas = signal<any[]>([]);
   activeChat = signal<any | null>(null);
@@ -959,6 +968,40 @@ export class ConversationsComponent implements OnInit, OnDestroy {
         }
       });
     }
+  }
+
+  simularComMensagensDeHoje(): void {
+    const chat = this.activeChat();
+    if (!chat) return;
+
+    const hoje = new Date();
+    const mensagensHoje = (chat.mensagens || [])
+      .filter((m: any) => m.direcao === 'in')
+      .filter((m: any) => {
+        const dataStr = m.mensagem_em || m.criado_em;
+        if (!dataStr) return false;
+        const d = new Date(dataStr);
+        return (
+          d.getFullYear() === hoje.getFullYear() &&
+          d.getMonth() === hoje.getMonth() &&
+          d.getDate() === hoje.getDate()
+        );
+      })
+      .map((m: any) => (m.texto || '').trim())
+      .filter((texto: string) => texto.length > 0);
+
+    if (mensagensHoje.length === 0) {
+      alert('Não há mensagens do cliente hoje nesta conversa para simular.');
+      return;
+    }
+
+    this.router.navigate(['/simulator'], {
+      state: {
+        seedMensagens: mensagensHoje,
+        seedClienteCpf: chat.cliente?.cpf || null,
+        seedNomeOrigem: this.getDisplayName(chat)
+      }
+    });
   }
 
   deletarConversa(id: number, event: Event): void {

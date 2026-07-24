@@ -19,7 +19,8 @@ export type IconName =
   | 'settings'
   | 'chevron-up'
   | 'chevron-down'
-  | 'arrow-left';
+  | 'arrow-left'
+  | 'play';
 
 @Component({
   selector: 'app-icon',
@@ -116,6 +117,9 @@ export type IconName =
         @case ('arrow-left') {
           <line x1="19" y1="12" x2="5" y2="12"/>
           <polyline points="12 19 5 12 12 5"/>
+        }
+        @case ('play') {
+          <polygon points="5 3 19 12 5 21 5 3"/>
         }
       }
     </svg>
