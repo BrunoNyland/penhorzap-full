@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, OnInit, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, OnDestroy, ChangeDetectionStrategy, ViewChild, ElementRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { DatePipe, NgClass } from '@angular/common';
@@ -836,6 +836,8 @@ export class ConversationsComponent implements OnInit, OnDestroy {
   private pollingInterval: any;
   private searchInput$ = new Subject<void>();
 
+  @ViewChild('messagesContainer') messagesContainer?: ElementRef<HTMLDivElement>;
+
   constructor() {
     // Evita 1 requisição por tecla digitada e as respostas fora de ordem
     // que isso causava (resposta lenta de uma busca antiga sobrescrevendo
@@ -902,15 +904,23 @@ export class ConversationsComponent implements OnInit, OnDestroy {
     this.cancelarAnexo();
   }
 
-  loadActiveChatDetails(id: number, silent = false): void {
+  loadActiveChatDetails(id: number, silent = false, scrollAfter = !silent): void {
     if (!silent) this.loadingDetails.set(true);
     this.apiService.getConversa(id).subscribe({
       next: (data) => {
         this.activeChat.set(data);
         this.loadingDetails.set(false);
+        if (scrollAfter) {
+          setTimeout(() => this.scrollToBottom(), 0);
+        }
       },
       error: () => this.loadingDetails.set(false)
     });
+  }
+
+  private scrollToBottom(): void {
+    const el = this.messagesContainer?.nativeElement;
+    if (el) el.scrollTop = el.scrollHeight;
   }
 
   toggleRevisao(id: number): void {
@@ -969,7 +979,7 @@ export class ConversationsComponent implements OnInit, OnDestroy {
       next: () => {
         this.enviando.set(false);
         this.respostaTexto = '';
-        this.loadActiveChatDetails(chatId, true);
+        this.loadActiveChatDetails(chatId, true, true);
       },
       error: () => this.enviando.set(false)
     });
@@ -1087,7 +1097,7 @@ export class ConversationsComponent implements OnInit, OnDestroy {
       next: () => {
         this.enviandoAnexo.set(false);
         this.cancelarAnexo();
-        this.loadActiveChatDetails(chatId, true);
+        this.loadActiveChatDetails(chatId, true, true);
       },
       error: (err) => {
         this.enviandoAnexo.set(false);
@@ -1136,7 +1146,9 @@ export class ConversationsComponent implements OnInit, OnDestroy {
   formatTime(dateStr: string): string {
     if (!dateStr) return '';
     const date = new Date(dateStr);
-    return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const dataFormatada = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    const horaFormatada = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    return `${dataFormatada} ${horaFormatada}`;
   }
 
   getStateDisplay(state: string): string {
