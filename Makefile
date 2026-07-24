@@ -5,13 +5,14 @@
 # Uso:
 #   make test          — roda testes da API (backend)
 #   make test-int      — roda testes de integração
+#   make test-bot-cenarios — testa o bot com mensagens adversariais (clientes reais)
 #   make build         — build do Angular SPA
 #   make deploy        — build + collect static + restart
 #   make lint          — verificações básicas
 #   make all           — test + build + deploy
 # =============================================================================
 
-.PHONY: help test test-int build deploy restart lint all clean
+.PHONY: help test test-int test-bot-cenarios build deploy restart lint all clean
 
 # Prepend local Node 24 bin to PATH for Angular 22 compatibility
 export PATH := /var/www/pwa.brunonyland.com/node-v24.15.0-linux-x64/bin:$(PATH)
@@ -41,6 +42,9 @@ test-int: ## Roda testes de integração (API + SPA + Nginx)
 	cd www && $(TEST_ENV) $(PYTHON) manage.py test api.tests_integration -v2
 
 test-all: test test-int ## Roda todos os testes
+
+test-bot-cenarios: ## Testa o bot com mensagens adversariais em 10 clientes reais (só leitura, chama a Gemini de verdade)
+	$(MANAGE) testar_cenarios_bot
 
 # ── Lint / Checks ──────────────────────────────────────────────────────────────
 lint: ## Verificações básicas de integridade
