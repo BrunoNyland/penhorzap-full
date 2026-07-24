@@ -8,6 +8,7 @@ from .views import (
     ClienteViewSet,
     ConversaViewSet,
     DashboardStatsAPIView,
+    EvolutionVersionStatusAPIView,
     FAQSugeridaViewSet,
     FAQViewSet,
     ImportSqliteAPIView,
@@ -47,6 +48,11 @@ urlpatterns = router.urls + [
     path("dashboard/", DashboardStatsAPIView.as_view(), name="dashboard-stats"),
     path("configs/bot/", BotConfigAPIView.as_view(), name="bot-config"),
     path("configs/mensagens/", MensagensConfigAPIView.as_view(), name="mensagens-config"),
+    path(
+        "configs/evolution-version/",
+        EvolutionVersionStatusAPIView.as_view(),
+        name="evolution-version-status",
+    ),
     path("whatsapp/state/", WhatsappConnectionView.as_view(), name="whatsapp-connection"),
     path("simulador/", SimulatorView.as_view(), name="simulador"),
     # Prompt Request Endpoints

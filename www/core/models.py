@@ -789,3 +789,32 @@ class ImportDataJob(models.Model):
     def __str__(self):
         name = self.arquivo.name.split("/")[-1] if self.arquivo.name else "(sem arquivo)"
         return f"{name} — {self.get_status_display()} — {self.criado_em:%d/%m/%Y %H:%M}"
+
+
+class EvolutionVersionStatus(models.Model):
+    """Singleton com o resultado da última checagem diária de versão da
+    Evolution API (comparada com a tag semver mais recente no Docker Hub).
+    Consultado pelo painel (badge) e usado pra evitar reenviar o aviso por
+    WhatsApp mais de uma vez pra mesma versão nova."""
+
+    versao_atual = models.CharField(max_length=20, blank=True)
+    versao_mais_recente = models.CharField(max_length=20, blank=True)
+    atualizacao_disponivel = models.BooleanField(default=False)
+    verificado_em = models.DateTimeField(null=True, blank=True)
+    ultima_versao_alertada = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text="Última versão pra qual já mandamos aviso por WhatsApp — evita repetir todo dia.",
+    )
+
+    class Meta:
+        verbose_name = "Status de versão da Evolution API"
+        verbose_name_plural = "Status de versão da Evolution API"
+
+    def __str__(self):
+        return f"Evolution API v{self.versao_atual or '?'}"
+
+    @classmethod
+    def get_solo(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj

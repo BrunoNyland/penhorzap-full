@@ -25,6 +25,11 @@ export class AppComponent {
   // Badge de FAQs sugeridas pendentes de curadoria (item de menu "FAQs & Respostas").
   faqsSugeridasPendentes = signal(0);
 
+  // Badge de versão nova da Evolution API (item de menu "Conexão WhatsApp").
+  // Checado 1x/dia no backend (Schedule); aqui só lê o status já calculado.
+  evolutionAtualizacaoDisponivel = signal(false);
+  evolutionVersaoMaisRecente = signal('');
+
   constructor() {
     // Read theme from localStorage or default to dark
     const savedTheme = localStorage.getItem('theme') || 'dark';
@@ -35,6 +40,7 @@ export class AppComponent {
     effect(() => {
       if (this.authService.isAuthenticated()) {
         this.loadFaqsSugeridasPendentes();
+        this.loadEvolutionVersionStatus();
       }
     });
 
@@ -54,6 +60,16 @@ export class AppComponent {
   private loadFaqsSugeridasPendentes(): void {
     this.apiService.getDashboardStats().subscribe({
       next: (res) => this.faqsSugeridasPendentes.set(res?.faqs_sugeridas_pendentes || 0),
+      error: () => {}
+    });
+  }
+
+  private loadEvolutionVersionStatus(): void {
+    this.apiService.getEvolutionVersionStatus().subscribe({
+      next: (res) => {
+        this.evolutionAtualizacaoDisponivel.set(res?.atualizacao_disponivel || false);
+        this.evolutionVersaoMaisRecente.set(res?.versao_mais_recente || '');
+      },
       error: () => {}
     });
   }

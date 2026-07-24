@@ -9,6 +9,7 @@ from core.models import (
     Cliente,
     ContratoPenhor,
     Conversa,
+    EvolutionVersionStatus,
     FAQResposta,
     FAQSugerida,
     Mensagem,
@@ -50,6 +51,17 @@ class BotConfigSerializer(serializers.ModelSerializer):
 
     def get_database_atualizada(self, obj):
         return obj.database_atualizada()
+
+
+class EvolutionVersionStatusSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EvolutionVersionStatus
+        fields = [
+            "versao_atual",
+            "versao_mais_recente",
+            "atualizacao_disponivel",
+            "verificado_em",
+        ]
 
 
 class MensagensConfigSerializer(serializers.ModelSerializer):

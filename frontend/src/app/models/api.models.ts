@@ -19,6 +19,13 @@ export interface BotConfig {
   atualizado_em: string;
 }
 
+export interface EvolutionVersionStatus {
+  versao_atual: string;
+  versao_mais_recente: string;
+  atualizacao_disponivel: boolean;
+  verificado_em: string | null;
+}
+
 export interface MensagensConfig {
   system_prompt: string;
   msg_saudacao: string;

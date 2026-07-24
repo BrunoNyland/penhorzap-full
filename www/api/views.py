@@ -31,6 +31,7 @@ from core.models import (
     BotConfig,
     Cliente,
     Conversa,
+    EvolutionVersionStatus,
     FAQResposta,
     FAQSugerida,
     ImportDataJob,
@@ -50,6 +51,7 @@ from .serializers import (
     ClienteListSerializer,
     ConversaDetailSerializer,
     ConversaListSerializer,
+    EvolutionVersionStatusSerializer,
     FAQSerializer,
     FAQSugeridaAprovarSerializer,
     FAQSugeridaSerializer,
@@ -409,6 +411,20 @@ class BotConfigAPIView(GenericAPIView):
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class EvolutionVersionStatusAPIView(GenericAPIView):
+    """Somente leitura -- o status é atualizado 1x/dia pelo Schedule
+    `verificar_versao_evolution` (whatsapp/tasks.py), não editável pelo painel."""
+
+    permission_classes = [permissions.IsAdminUser]
+    serializer_class = EvolutionVersionStatusSerializer
+
+    @extend_schema(responses={200: EvolutionVersionStatusSerializer})
+    def get(self, request):
+        status_obj = EvolutionVersionStatus.get_solo()
+        serializer = EvolutionVersionStatusSerializer(status_obj)
+        return Response(serializer.data)
 
 
 class MensagensConfigAPIView(GenericAPIView):

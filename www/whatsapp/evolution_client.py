@@ -61,6 +61,35 @@ class EvolutionClient:
             logger.exception("Falha ao consultar estado da conexão Evolution API")
             return "unknown"
 
+    def get_version(self) -> str | None:
+        """Return the running Evolution API version (e.g. '2.3.7'), or None on failure.
+        Endpoint raiz da API, sem apikey (usado no health check da própria Evolution)."""
+        try:
+            resp = requests.get(f"{self.base_url}/", timeout=DEFAULT_TIMEOUT)
+            resp.raise_for_status()
+            return resp.json().get("version")
+        except requests.RequestException:
+            logger.exception("Falha ao consultar versão da Evolution API")
+            return None
+
+    def get_owner_jid(self) -> str | None:
+        """Return the WhatsApp JID (ex.: '5567...@s.whatsapp.net') do número
+        conectado a esta instância, ou None se não conectada/erro."""
+        url = f"{self.base_url}/instance/fetchInstances"
+        try:
+            resp = requests.get(
+                url, headers=self._headers(), params={"instanceName": self.instance}, timeout=DEFAULT_TIMEOUT
+            )
+            resp.raise_for_status()
+            instancias = resp.json()
+            for inst in instancias:
+                if inst.get("name") == self.instance:
+                    return inst.get("ownerJid")
+            return None
+        except requests.RequestException:
+            logger.exception("Falha ao consultar ownerJid da Evolution API")
+            return None
+
     def get_qrcode_base64(self):
         """Return the current pairing QR code as base64 (no data: prefix), or None."""
         url = f"{self.base_url}/instance/connect/{self.instance}"

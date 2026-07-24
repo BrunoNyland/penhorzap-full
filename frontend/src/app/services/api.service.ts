@@ -8,6 +8,7 @@ import {
   ConversaDetail,
   ConversaListItem,
   DashboardStats,
+  EvolutionVersionStatus,
   FAQ,
   FAQSugerida,
   ImportJobStatus,
@@ -38,6 +39,10 @@ export class ApiService {
 
   getMensagensConfig(): Observable<MensagensConfig> {
     return this.http.get<MensagensConfig>('/api/configs/mensagens/');
+  }
+
+  getEvolutionVersionStatus(): Observable<EvolutionVersionStatus> {
+    return this.http.get<EvolutionVersionStatus>('/api/configs/evolution-version/');
   }
 
   updateMensagensConfig(data: Partial<MensagensConfig>): Observable<MensagensConfig> {

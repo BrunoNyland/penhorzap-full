@@ -46,6 +46,7 @@ import re
 import time
 from datetime import timedelta
 
+import requests
 from django.db import transaction
 from django.utils import timezone
 
@@ -57,6 +58,7 @@ from core.models import (
     ContatoSalvo,
     ContratoPenhor,
     Conversa,
+    EvolutionVersionStatus,
     FAQSugerida,
     Mensagem,
     MensagensConfig,
@@ -1284,3 +1286,99 @@ def verificar_encerramento():
         bot.ultimo_encerramento_auto = hoje
         bot.save(update_fields=["ativo", "ultimo_encerramento_auto", "atualizado_em"])
         logger.info("Bot desativado automaticamente (encerramento %s)", bot.horario_encerramento)
+
+
+def _versao_para_tupla(versao: str) -> tuple[int, ...] | None:
+    """'2.3.7' -> (2, 3, 7). Tolerante a prefixo 'v' e a tags não-semver
+    (retorna None pra essas, pra não quebrar a comparação)."""
+    partes = versao.lstrip("vV").split(".")
+    try:
+        return tuple(int(p) for p in partes)
+    except ValueError:
+        return None
+
+
+def _buscar_versao_mais_recente_docker_hub(repo: str = "evoapicloud/evolution-api") -> str | None:
+    """Consulta o Docker Hub e devolve a tag semver mais recente (ex.: '2.3.7'),
+    ignorando tags não-semver ('latest', 'homolog' etc). None em caso de erro."""
+    try:
+        resp = requests.get(
+            f"https://hub.docker.com/v2/repositories/{repo}/tags",
+            params={"page_size": 100},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        tags = [r["name"] for r in resp.json().get("results", [])]
+    except (requests.RequestException, ValueError, KeyError):
+        logger.exception("Falha ao consultar tags do Docker Hub para %s", repo)
+        return None
+
+    candidatas = [(t, _versao_para_tupla(t)) for t in tags]
+    candidatas = [(t, v) for t, v in candidatas if v is not None]
+    if not candidatas:
+        return None
+    tag_mais_recente, _ = max(candidatas, key=lambda item: item[1])
+    return tag_mais_recente.lstrip("vV")
+
+
+def verificar_versao_evolution():
+    """Agendada (django-q2 cron, 1x/dia): compara a versão rodando da
+    Evolution API com a tag semver mais recente do Docker Hub. Atualiza
+    `EvolutionVersionStatus` (badge no painel) e, se houver versão nova
+    ainda não avisada, manda uma mensagem de WhatsApp pro próprio dono
+    (não atualiza nada sozinho -- update de conector WhatsApp pode exigir
+    novo QR code, então fica sempre manual)."""
+    status = EvolutionVersionStatus.get_solo()
+    client = get_client()
+
+    versao_atual = client.get_version()
+    if not versao_atual:
+        logger.warning("verificar_versao_evolution: não foi possível obter a versão rodando")
+        return
+
+    versao_mais_recente = _buscar_versao_mais_recente_docker_hub()
+    if not versao_mais_recente:
+        logger.warning("verificar_versao_evolution: não foi possível consultar o Docker Hub")
+        return
+
+    atual_tupla = _versao_para_tupla(versao_atual)
+    recente_tupla = _versao_para_tupla(versao_mais_recente)
+    atualizacao_disponivel = bool(
+        atual_tupla and recente_tupla and recente_tupla > atual_tupla
+    )
+
+    status.versao_atual = versao_atual
+    status.versao_mais_recente = versao_mais_recente
+    status.atualizacao_disponivel = atualizacao_disponivel
+    status.verificado_em = timezone.now()
+
+    if atualizacao_disponivel and status.ultima_versao_alertada != versao_mais_recente:
+        owner_jid = client.get_owner_jid()
+        numero_dono = _remote_jid_para_numero(owner_jid) if owner_jid else None
+        if numero_dono:
+            enviado = client.send_text(
+                numero_dono,
+                (
+                    f"🔔 Evolution API: versão nova disponível (v{versao_mais_recente}).\n"
+                    f"Rodando atualmente: v{versao_atual}.\n"
+                    "Atualize manualmente quando puder (troca o tag da imagem em "
+                    "evolution/docker-compose.yml + docker compose up -d) -- confira o "
+                    "changelog antes, updates de conector WhatsApp às vezes pedem novo QR code."
+                ),
+            )
+            if enviado:
+                status.ultima_versao_alertada = versao_mais_recente
+        else:
+            logger.warning(
+                "verificar_versao_evolution: não foi possível obter o número do dono pra avisar"
+            )
+
+    status.save(
+        update_fields=[
+            "versao_atual",
+            "versao_mais_recente",
+            "atualizacao_disponivel",
+            "verificado_em",
+            "ultima_versao_alertada",
+        ]
+    )
