@@ -95,6 +95,10 @@ export class ApiService {
     return this.http.post<void>('/api/conversas/limpar-todas/', { confirmacao: 'DELETAR_TUDO' });
   }
 
+  deletarConversa(id: number): Observable<void> {
+    return this.http.delete<void>(`/api/conversas/${id}/`);
+  }
+
   enviarMensagemConversa(id: number, texto: string): Observable<ConversaDetail> {
     return this.http.post<ConversaDetail>(`/api/conversas/${id}/enviar/`, { texto });
   }

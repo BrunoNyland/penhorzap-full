@@ -86,7 +86,16 @@ import { IconComponent } from '../../shared/icon/icon.component';
               >
                 <div class="chat-item-header flex justify-between">
                   <strong>{{ getDisplayName(chat) }}</strong>
-                  <span class="chat-time">{{ formatTime(chat.ultima_interacao) }}</span>
+                  <div class="flex align-center gap-1">
+                    <span class="chat-time">{{ formatTime(chat.ultima_interacao) }}</span>
+                    <button
+                      class="chat-item-delete"
+                      title="Apagar esta conversa"
+                      (click)="deletarConversa(chat.id, $event)"
+                    >
+                      <app-icon name="trash" [size]="13"></app-icon>
+                    </button>
+                  </div>
                 </div>
                 <div class="chat-item-body flex justify-between align-center margin-top-xs">
                   <span class="chat-jid text-muted">{{ formatJid(chat.remote_jid) }}</span>
@@ -205,7 +214,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
                         <app-icon name="alert-triangle" [size]="11"></app-icon>
                       </span>
                     }
-                    {{ msg.criado_em | date:'HH:mm' }}
+                    {{ msg.criado_em | date:'dd/MM/yyyy HH:mm' }}
                   </div>
                 </div>
               </div>
@@ -442,6 +451,20 @@ import { IconComponent } from '../../shared/icon/icon.component';
     .chat-time {
       font-size: 11px;
       color: var(--text-muted);
+    }
+    .chat-item-delete {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      color: var(--text-muted);
+      border-radius: var(--radius-sm);
+    }
+    .chat-item-delete:hover {
+      color: var(--color-danger);
     }
     .chat-jid {
       font-size: 12px;
@@ -916,6 +939,24 @@ export class ConversationsComponent implements OnInit, OnDestroy {
         }
       });
     }
+  }
+
+  deletarConversa(id: number, event: Event): void {
+    event.stopPropagation();
+    const confirmacao = confirm('Apagar permanentemente esta conversa e todo o histórico de mensagens?');
+    if (!confirmacao) return;
+
+    this.apiService.deletarConversa(id).subscribe({
+      next: () => {
+        this.conversas.update(list => list.filter(c => c.id !== id));
+        if (this.selectedChatId() === id) {
+          this.clearSelection();
+        }
+      },
+      error: (err) => {
+        alert('Erro ao apagar conversa: ' + (err.error?.detail || err.message));
+      }
+    });
   }
 
   enviarResposta(): void {

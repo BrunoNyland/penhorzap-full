@@ -799,6 +799,11 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
         conversa.save(update_fields=["precisa_revisao_humana", "ultima_interacao"])
         return Response(ConversaDetailSerializer(conversa).data)
 
+    def destroy(self, request, *args, **kwargs):
+        conversa = self.get_object()
+        conversa.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     @action(detail=False, methods=["post"], url_path="limpar-todas")
     def limpar_todas(self, request):
         if not request.user.is_superuser:
