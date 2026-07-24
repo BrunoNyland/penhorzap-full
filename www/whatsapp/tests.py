@@ -21,6 +21,7 @@ from core.models import (
     FAQ,
     BotConfig,
     Cliente,
+    ContatoSalvo,
     ContratoPenhor,
     Conversa,
     FAQResposta,
@@ -1003,12 +1004,17 @@ class DesembrulharNoMensagemTests(TestCase):
 @override_settings(WEBHOOK_TOKEN="test-token-123")
 class WhatsappWebhookTestCase(TestCase):
     def _payload(
-        self, remote_jid="5567999999999@s.whatsapp.net", message=None, wa_id="WA1", from_me=False
+        self,
+        remote_jid="5567999999999@s.whatsapp.net",
+        message=None,
+        wa_id="WA1",
+        from_me=False,
+        push_name="Fulano",
     ):
         return {
             "data": {
                 "key": {"remoteJid": remote_jid, "id": wa_id, "fromMe": from_me},
-                "pushName": "Fulano",
+                "pushName": push_name,
                 "message": message or {"conversation": "oi"},
             }
         }
@@ -1063,6 +1069,28 @@ class WhatsappWebhookTestCase(TestCase):
         self.assertEqual(response.json().get("reason"), "group")
         self.assertEqual(Mensagem.objects.count(), 0)
         mock_async_task.assert_not_called()
+
+    @patch("whatsapp.views.async_task")
+    def test_from_me_nao_usa_pushname_proprio_para_classificar_conversa(self, mock_async_task):
+        # fromMe=true -> pushName é o nome de perfil de QUEM ENVIOU (o dono
+        # da conta, respondendo pelo próprio celular), não do destinatário.
+        # Bug real: isso rotulava a Conversa E o cache ContatoSalvo com o
+        # nome do próprio dono em vez de deixar em branco.
+        remote_jid = "5567988887777@s.whatsapp.net"
+        ContatoSalvo.objects.create(
+            remote_jid=remote_jid, nome_salvo="", tipo=ContatoSalvo.Tipo.PESSOAL
+        )
+        payload = self._payload(
+            remote_jid=remote_jid, wa_id="WA-FROMME-1", from_me=True, push_name="Bruno Nyland"
+        )
+        response = self._post(payload)
+        self.assertEqual(response.status_code, 200)
+
+        conv = Conversa.objects.get(remote_jid=remote_jid)
+        self.assertEqual(conv.nome_salvo, "")
+
+        cs = ContatoSalvo.objects.get(remote_jid=remote_jid)
+        self.assertEqual(cs.nome_salvo, "")
 
     @patch("whatsapp.views.async_task")
     def test_data_vazia_e_ignorada_sem_criar_conversa_fantasma(self, mock_async_task):

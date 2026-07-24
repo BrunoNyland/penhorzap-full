@@ -135,11 +135,16 @@ def whatsapp_webhook(request):
                 payload_bruto=body,
                 mensagem_em=_extrair_timestamp_mensagem(data),
             )
-            # Classifica a conversa (ContatoSalvo > Telefone > sem push_name)
+            # Classifica a conversa (ContatoSalvo > Telefone > sem push_name).
+            # NUNCA passa push_name aqui: em fromMe=true, pushName é o nome de
+            # perfil de QUEM ENVIOU (nós mesmos), não do destinatário -- usá-lo
+            # rotulava a conversa (e o cache ContatoSalvo) com o nosso próprio
+            # nome. Só é seguro usar pushName no caminho IN, onde o remetente
+            # é de fato o contato da conversa.
             try:
                 from whatsapp.tasks import classificar_e_atualizar_conversa
 
-                classificar_e_atualizar_conversa(conversa, push_name)
+                classificar_e_atualizar_conversa(conversa, "")
             except Exception:
                 logger.debug("Classificação no webhook (OUT) falhou (não-crítico)", exc_info=True)
             return JsonResponse({"status": "ok", "direction": "out"}, status=200)
