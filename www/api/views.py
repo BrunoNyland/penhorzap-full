@@ -1071,6 +1071,23 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
         return response
 
 
+def _faqs_para_ia() -> list:
+    """Mesma lógica de `whatsapp.tasks._processar_lote` para montar as FAQs
+    passadas à IA: só inclui os textos de resposta (`respostas`) quando
+    `BotConfig.enviar_respostas_faq_ia` está ativo -- o simulador precisa
+    espelhar esse toggle, senão o teste na tela não reflete o que o bot
+    real vai enviar pra IA."""
+    bot = BotConfig.get_solo()
+    enviar_respostas = getattr(bot, "enviar_respostas_faq_ia", False)
+    faqs = []
+    for faq in FAQ.objects.filter(ativo=True):
+        faq_dict = {"id": faq.id, "pergunta": faq.pergunta}
+        if enviar_respostas:
+            faq_dict["respostas"] = [resp.texto for resp in faq.respostas.all() if resp.texto]
+        faqs.append(faq_dict)
+    return faqs
+
+
 def _montar_resposta_simulador(resultado, cliente, msgs) -> list:
     """Espelha (sem efeitos colaterais em BD) o dispatch sequencial
     multi-ação de `whatsapp.tasks._processar_mensagem_com_lock` para o
@@ -1323,7 +1340,7 @@ class SimulatorView(GenericAPIView):
                 if cliente is not None:
                     contratos_cliente = _contratos_ativos_values(cliente)
 
-                faqs = list(FAQ.objects.filter(ativo=True).values("id", "pergunta"))
+                faqs = _faqs_para_ia()
 
                 resultado = extrair_intencao(
                     mensagens,
@@ -1409,7 +1426,7 @@ class SimulatorChatAPIView(GenericAPIView):
         if cliente is not None:
             contratos_cliente = _contratos_ativos_values(cliente)
 
-        faqs = list(FAQ.objects.filter(ativo=True).values("id", "pergunta"))
+        faqs = _faqs_para_ia()
 
         resultado = extrair_intencao(
             mensagem,
