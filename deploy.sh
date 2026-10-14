@@ -29,7 +29,9 @@ BACKUPS_DIR="$PROJECT_DIR/backups"
 VENV_PYTHON="$PROJECT_DIR/venv/bin/python"
 GUNICORN_SVC="gunicorn@pwa.brunonyland.com.service"
 QCLUSTER_SVC="penhorzap-qcluster.service"
-BACKUPS_TO_KEEP=7
+# Cada pg_dump do banco tinha ~400 MB (mídia em base64 nas mensagens); 7 cópias
+# passavam de 2,5 GB. Três cobrem os últimos deploys.
+BACKUPS_TO_KEEP=3
 
 cd "$PROJECT_DIR"
 
@@ -220,9 +222,20 @@ fi
 systemctl restart "$GUNICORN_SVC"
 ok "Gunicorn reiniciado."
 
-if systemctl is-active --quiet "$QCLUSTER_SVC" 2>/dev/null; then
+# Pelo is-enabled, não pelo is-active: na migração para o PostgreSQL
+# (14/10/2026) o qcluster estava parado na hora do deploy, o script pulou o
+# restart e a fila ficou sem processar até alguém subir o serviço à mão.
+# `restart` também sobe um serviço parado.
+if systemctl is-enabled --quiet "$QCLUSTER_SVC" 2>/dev/null; then
     systemctl restart "$QCLUSTER_SVC"
-    ok "Q-Cluster reiniciado."
+    if systemctl is-active --quiet "$QCLUSTER_SVC"; then
+        ok "Q-Cluster reiniciado."
+    else
+        warn "Q-Cluster não subiu! Veja: journalctl -u $QCLUSTER_SVC -n 50"
+        HEALTH_QCLUSTER_FALHOU=1
+    fi
+else
+    warn "Q-Cluster desabilitado no systemd: a fila de mensagens não será processada."
 fi
 
 echo ""
@@ -247,6 +260,11 @@ rollback_instructions() {
 }
 
 HEALTH_OK=true
+
+if [ -n "${HEALTH_QCLUSTER_FALHOU:-}" ]; then
+    warn "Q-Cluster não está rodando!"
+    HEALTH_OK=false
+fi
 
 # Check Gunicorn
 if systemctl is-active --quiet "$GUNICORN_SVC"; then
