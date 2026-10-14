@@ -81,6 +81,27 @@ def _extrair_conteudo(message: dict) -> tuple[str, str]:
     return "", ""
 
 
+# A Evolution manda a mídia em base64 dentro do JSON do webhook, e uma foto ou
+# áudio passa fácil dos 2,5 MB do DATA_UPLOAD_MAX_MEMORY_SIZE: em 13/10/2026
+# duas mensagens foram recusadas com RequestDataTooBig e se perderam. O limite
+# maior vale só aqui (depois do token), não no resto do site.
+WEBHOOK_MAX_BYTES = 25 * 1024 * 1024
+
+
+def _ler_corpo_webhook(request) -> bytes | None:
+    """Corpo da requisição com o limite do webhook, ou None se passar dele.
+    `request.read()` não aplica o DATA_UPLOAD_MAX_MEMORY_SIZE (o `request.body`
+    aplica); o tamanho é conferido pelo Content-Length e pela leitura em si."""
+    try:
+        declarado = int(request.META.get("CONTENT_LENGTH") or 0)
+    except ValueError:
+        declarado = 0
+    if declarado > WEBHOOK_MAX_BYTES:
+        return None
+    corpo = request.read(WEBHOOK_MAX_BYTES + 1)
+    return None if len(corpo) > WEBHOOK_MAX_BYTES else corpo
+
+
 @csrf_exempt
 @require_POST
 def whatsapp_webhook(request):
@@ -88,8 +109,13 @@ def whatsapp_webhook(request):
     if not settings.WEBHOOK_TOKEN or token != settings.WEBHOOK_TOKEN:
         return JsonResponse({"detail": "forbidden"}, status=403)
 
+    corpo = _ler_corpo_webhook(request)
+    if corpo is None:
+        logger.warning("Webhook recusado: corpo acima de %d bytes", WEBHOOK_MAX_BYTES)
+        return JsonResponse({"detail": "payload too large"}, status=413)
+
     try:
-        body = json.loads(request.body or b"{}")
+        body = json.loads(corpo or b"{}")
     except json.JSONDecodeError:
         return JsonResponse({"detail": "invalid json"}, status=400)
 

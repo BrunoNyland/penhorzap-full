@@ -1093,6 +1093,27 @@ class WhatsappWebhookTestCase(TestCase):
         self.assertEqual(cs.nome_salvo, "")
 
     @patch("whatsapp.views.async_task")
+    def test_midia_grande_em_base64_acima_do_limite_padrao_e_aceita(self, mock_async_task):
+        # Foto em base64 de ~5 MB: passa do DATA_UPLOAD_MAX_MEMORY_SIZE (2,5 MB),
+        # que recusava o webhook com RequestDataTooBig e perdia a mensagem.
+        payload = self._payload(wa_id="WA-GRANDE-1", message={"imageMessage": {"caption": "foto"}})
+        payload["data"]["message"]["base64"] = "A" * (5 * 1024 * 1024)
+        response = self._post(payload)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Mensagem.objects.get(wa_message_id="WA-GRANDE-1").tipo_midia, "image")
+        mock_async_task.assert_called_once()
+
+    @patch("whatsapp.views.WEBHOOK_MAX_BYTES", 1024)
+    @patch("whatsapp.views.async_task")
+    def test_corpo_acima_do_limite_do_webhook_recebe_413(self, mock_async_task):
+        payload = self._payload(wa_id="WA-ENORME-1")
+        payload["data"]["message"]["base64"] = "A" * 2048
+        response = self._post(payload)
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(Mensagem.objects.count(), 0)
+        mock_async_task.assert_not_called()
+
+    @patch("whatsapp.views.async_task")
     def test_data_vazia_e_ignorada_sem_criar_conversa_fantasma(self, mock_async_task):
         # Evolution manda `data: {}` em alguns eventos sem conteúdo real
         # (ex.: durante reconexão/resync da sessão) -- não deve criar

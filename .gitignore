@@ -66,3 +66,7 @@ Thumbs.db
 node-v*
 node-v*-linux-x64/
 
+
+# venv é link para .venv (uv); venv-*/ são reservas temporárias de uma troca
+venv
+venv-*/
