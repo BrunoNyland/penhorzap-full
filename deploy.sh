@@ -28,9 +28,6 @@ FRONTEND_DIR="$PROJECT_DIR/frontend"
 BACKUPS_DIR="$PROJECT_DIR/backups"
 VENV_PYTHON="$PROJECT_DIR/venv/bin/python"
 GUNICORN_SVC="gunicorn@pwa.brunonyland.com.service"
-
-# Prepend local Node 24 bin to PATH for Angular 22 compatibility
-export PATH="/var/www/pwa.brunonyland.com/node-v24.15.0-linux-x64/bin:$PATH"
 QCLUSTER_SVC="penhorzap-qcluster.service"
 BACKUPS_TO_KEEP=7
 
@@ -54,8 +51,23 @@ echo "║              PenhorZap — Deploy Automatizado                ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 
+# ── Etapa 0: Dependências Python ──────────────────────────────────────────────
+# uv sync é exato: instala o que o uv.lock pede e remove o que não está nele.
+# Sem mudança no lock, não faz nada. O Python vem de /opt/uv-python (o www-data
+# precisa executar o interpretador; em /root não conseguiria). venv/ é link
+# para .venv/ (systemd e o template gunicorn@ usam venv/).
+log "📋 Etapa 0: Dependências Python (uv sync --locked)..."
+UV_PYTHON_INSTALL_DIR=/opt/uv-python /root/.local/bin/uv sync --locked
+chmod -R a+rX "$PROJECT_DIR/.venv"
+ok "Dependências em dia."
+echo ""
+
 # ── Etapa 1: Testes ────────────────────────────────────────────────────────────
 if [ "$SKIP_TESTS" = false ]; then
+    log "📋 Etapa 1a: Ruff..."
+    "$PROJECT_DIR/venv/bin/ruff" check www || fail "Ruff encontrou problemas. Deploy abortado."
+    ok "Ruff sem apontamentos."
+
     log "📋 Etapa 1: Rodando testes (api, core, whatsapp, ia)..."
     cd "$WWW_DIR"
 
@@ -102,7 +114,7 @@ log "📋 Etapa 3: Backup do banco de dados..."
 
 mkdir -p "$BACKUPS_DIR"
 
-# Lê DB_ENGINE (e credenciais MySQL, se aplicável) do .env em PROJECT_ROOT.
+# Lê DB_ENGINE (e credenciais do PostgreSQL, se aplicável) do .env em PROJECT_ROOT.
 DB_ENGINE_FROM_ENV=""
 if [ -f "$PROJECT_DIR/.env" ]; then
     set -a
@@ -114,16 +126,18 @@ fi
 
 TIMESTAMP="$(date +%F-%H%M%S)"
 
-if [ "$DB_ENGINE_FROM_ENV" = "mysql" ]; then
-    BACKUP_FILE="$BACKUPS_DIR/db-$TIMESTAMP.sql.gz"
-    if MYSQL_PWD="${DB_PASSWORD:-}" mysqldump \
-            --host="${DB_HOST:-localhost}" \
-            --port="${DB_PORT:-3306}" \
-            --user="${DB_USER:-}" \
-            "${DB_NAME:-}" | gzip > "$BACKUP_FILE"; then
-        ok "Backup MySQL criado em $BACKUP_FILE."
+if [ "$DB_ENGINE_FROM_ENV" = "postgresql" ]; then
+    # Formato custom (-Fc): já comprimido; restaura com pg_restore.
+    BACKUP_FILE="$BACKUPS_DIR/db-$TIMESTAMP.dump"
+    if PGPASSWORD="${DB_PASSWORD:-}" pg_dump -Fc \
+            --host="${DB_HOST:-127.0.0.1}" \
+            --port="${DB_PORT:-5432}" \
+            --username="${DB_USER:-}" \
+            --file="$BACKUP_FILE" \
+            "${DB_NAME:-}"; then
+        ok "Backup PostgreSQL criado em $BACKUP_FILE."
     else
-        fail "Backup do MySQL falhou. Deploy abortado (não seguimos sem backup)."
+        fail "Backup do PostgreSQL falhou. Deploy abortado (não seguimos sem backup)."
     fi
 else
     SQLITE_DB="$PROJECT_DIR/db.sqlite3"
@@ -165,10 +179,18 @@ echo ""
 log "📋 Etapa 5: Build do Angular SPA..."
 cd "$FRONTEND_DIR"
 
-if npx ng build --base-href /painel/ --configuration production 2>&1; then
+# Builda em dist/novo e só troca se passar: o ng build apaga a pasta de saída
+# antes de compilar, e o nginx serve o painel direto de dist/frontend/browser.
+# Buildar no lugar e falhar deixaria o painel fora do ar.
+rm -rf dist/novo dist/antigo
+if npx ng build --base-href /painel/ --configuration production --output-path dist/novo 2>&1; then
+    [ -d dist/frontend ] && mv dist/frontend dist/antigo
+    mv dist/novo dist/frontend
+    rm -rf dist/antigo
     ok "Angular build concluído."
 else
-    fail "Angular build falhou. Deploy abortado."
+    rm -rf dist/novo
+    fail "Angular build falhou. Deploy abortado (o painel no ar não foi tocado)."
 fi
 
 cd "$PROJECT_DIR"
@@ -215,7 +237,7 @@ rollback_instructions() {
     echo "  1. Restaurar o backup do banco feito na Etapa 3:"
     echo "       ls -t $BACKUPS_DIR | head -1"
     echo "       # sqlite: cp <backup> $PROJECT_DIR/db.sqlite3"
-    echo "       # mysql:  gunzip -c <backup> | mysql -h \$DB_HOST -u \$DB_USER -p \$DB_NAME"
+    echo "       # postgresql: pg_restore --clean --if-exists -h 127.0.0.1 -U \$DB_USER -d \$DB_NAME <backup>"
     echo "  2. Voltar o código para a tag do deploy anterior:"
     echo "       git -C $PROJECT_DIR tag -l 'deploy-*' | sort | tail -5"
     echo "       git -C $PROJECT_DIR checkout <tag-anterior>"

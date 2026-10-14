@@ -1,5 +1,50 @@
+# Dependências do backend, gerenciadas pelo uv (antes: www/requirements.in +
+# pip freeze). Versões exatas em uv.lock; o ambiente é o .venv/ da raiz, com
+# venv/ como link para ele (systemd, Makefile e o template gunicorn@ usam venv/).
+#
+#   uv sync --locked          instala exatamente o que está no uv.lock
+#   uv add <pacote>           adiciona dependência e atualiza o lock
+#   uv lock --upgrade-package <pacote>   atualiza um pacote
+#
+# O Python vem do uv, em /opt/uv-python (fora de /root, senão o www-data não
+# executa): exporte UV_PYTHON_INSTALL_DIR=/opt/uv-python antes de usar o uv.
+[project]
+name = "penhorzap"
+version = "0.1.0"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "django>=6.1.2,<6.2",
+    "djangorestframework>=3.18.3",
+    "drf-spectacular>=0.30.0",
+    # Só PostgreSQL. Não adicione mysqlclient.
+    "psycopg[binary]>=3.3.6",
+    "python-dotenv>=1.2.4",
+    "django-q2>=1.11.1",
+    "google-genai>=2.30.1",
+    "requests>=2.33",
+    "pillow>=12.3.0",
+    "gunicorn>=26.2.0",
+    # Esquemas da resposta da IA (ia/schemas.py).
+    "pydantic>=2.13",
+    # Boleto em PDF (core/boleto_pdf.py): HTML pelo Jinja2, PDF pelo wkhtmltopdf.
+    "jinja2>=3.1.6",
+    "pdfkit>=1.0.0",
+    "python-barcode>=0.16.1",
+]
+
+[dependency-groups]
+# Instalado no mesmo ambiente desta VPS: o deploy.sh roda lint e testes.
+dev = [
+    "coverage>=7.16",
+    "ruff>=0.16.10",
+]
+
+[tool.uv]
+package = false
+
 [tool.ruff]
-target-version = "py312"
+# Alvo igual ao Python em uso.
+target-version = "py314"
 line-length = 100
 src = ["www"]
 exclude = [

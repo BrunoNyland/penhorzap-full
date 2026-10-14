@@ -1,7 +1,6 @@
 import json
 import logging
-from datetime import datetime
-from datetime import timezone as dt_timezone
+from datetime import UTC, datetime
 
 from django.conf import settings
 from django.http import JsonResponse
@@ -54,7 +53,7 @@ def _extrair_timestamp_mensagem(data: dict):
     if not ts:
         return None
     try:
-        return datetime.fromtimestamp(int(ts), tz=dt_timezone.utc)
+        return datetime.fromtimestamp(int(ts), tz=UTC)
     except (TypeError, ValueError, OSError):
         return None
 

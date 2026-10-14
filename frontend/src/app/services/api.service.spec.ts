@@ -253,7 +253,7 @@ describe('ApiService', () => {
 
   describe('updateFaqSugerida', () => {
     it('should PATCH /api/faqs-sugeridas/{id}/', () => {
-      const payload = { status: 'APROVADA' };
+      const payload = { status: 'aprovada' as const };
       service.updateFaqSugerida(5, payload).subscribe();
       const req = httpMock.expectOne('/api/faqs-sugeridas/5/');
       expect(req.request.method).toBe('PATCH');

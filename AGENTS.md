@@ -1,6 +1,6 @@
 # AGENTS.md — PenhorZap monorepo
 
-Bot de WhatsApp com IA (Google Gemini) para casa de penhores. Django 5.2 + django-q2 + Evolution API no backend; Angular 19 SPA no painel admin. UI e prompts em pt-BR; `TIME_ZONE = America/Sao_Paulo`.
+Bot de WhatsApp com IA (Google Gemini) para casa de penhores. Python 3.14 + Django 6.1 + PostgreSQL 18 + django-q2 + Evolution API no backend; Angular 22 SPA no painel admin. UI e prompts em pt-BR; `TIME_ZONE = America/Sao_Paulo`.
 
 Para detalhes do backend Django (apps, invariantes de privacidade, fluxo de mensagens, modelo de dados), leia **`www/AGENTS.md`** — este arquivo cobre só o que é específico do monorepo e do runtime.
 
@@ -9,15 +9,15 @@ Para detalhes do backend Django (apps, invariantes de privacidade, fluxo de mens
 ```
 /var/www/pwa.brunonyland.com/        <- repo root = PROJECT_ROOT do Django
 ├── www/                             <- backend Django (manage.py, settings, apps api/core/ia/painel/whatsapp)
-├── frontend/                        <- Angular 19 SPA, build -> frontend/dist/frontend/browser/ (servida em /painel/ pelo nginx)
+├── frontend/                        <- Angular 22 SPA, build -> frontend/dist/frontend/browser/ (servida em /painel/ pelo nginx)
 ├── evolution/docker-compose.yml     <- Evolution API (WhatsApp) + Postgres, em 127.0.0.1:8080
 ├── Makefile                         <- test/lint/build/deploy
 ├── deploy.sh                        <- deploy completo (test -> migrate -> build -> collectstatic -> restart)
 ├── graphify-out/                    <- knowledge graph (ver CLAUDE.md)
 ├── .env                             <- TODAS as env vars (não há .env dentro de www/ nem frontend/)
-├── venv/                            <- Python 3.12 (gitignored)
+├── .venv/  venv -> .venv            <- Python 3.14 do uv (pyproject.toml + uv.lock; gitignored)
 ├── staticfiles/  media/             <- saídas do collectstatic / uploads (gitignored)
-└── db.sqlite3                       <- só quando DB_ENGINE != mysql
+└── db.sqlite3                       <- só quando DB_ENGINE não é postgresql
 ```
 
 ## Runtime root é o pai de `www/`
@@ -35,6 +35,14 @@ Para detalhes do backend Django (apps, invariantes de privacidade, fluxo de mens
 O `qcluster` executa as tasks; o gunicorn/runserver só servem HTTP. **Mudanças em `whatsapp/tasks.py`, `api/tasks.py` ou `ia/services.py` exigem restart do qcluster** — o processo web não recarrega esse código.
 
 ⚠️ `make deploy` reinicia **apenas gunicorn + nginx**, NÃO o qcluster. Use `./deploy.sh` (reinicia qcluster se ativo) ou reinicie manualmente: `systemctl restart penhorzap-qcluster.service`. Esse é o único motivo prático para preferir `deploy.sh` ao `make deploy`.
+
+## Banco: PostgreSQL 18
+
+Desde 10/2026 (antes: MySQL 8.0). Banco e papel `penhorzap` no cluster 18/main da VPS (127.0.0.1:5432), o mesmo do sintraffms e do rabeachtennis. Senha no `.env` e em `/root/backups-pg/.senha-penhorzap`.
+
+- **Buscas ignoram acento e maiúscula**, como no MySQL (utf8mb4_unicode_ci): o ENGINE é `penhorzap.postgresql_sem_acento`, que passa os dois lados dos lookups `i*` por `UNACCENT` (extensão criada na migration core/0035). O `exact` continua exato, inclusive em maiúscula.
+- **Listagem sem `order_by` não tem ordem garantida** no PostgreSQL (o MySQL devolvia pela PK). Quem depende de ordem precisa pedir, com desempate por `id`.
+- Testes no PostgreSQL (o papel tem CREATEDB): `cd www && DB_ENGINE=postgresql DB_NAME=penhorzap DB_USER=penhorzap DB_PASSWORD=... ../venv/bin/python manage.py test api core whatsapp ia`.
 
 ## Comandos
 
@@ -57,7 +65,7 @@ make all           # test + build + deploy
 ./deploy.sh --test-only
 ```
 
-`make test` força `DB_ENGINE=sqlite` e `DJANGO_IS_PRODUCTION=0` (SQLite em temp, sem redirect HTTPS) — rode testes pelo Makefile, não direto, senão o env de prod (MySQL) vaza.
+`make test` força `DB_ENGINE=sqlite` e `DJANGO_IS_PRODUCTION=0` (SQLite em temp, sem redirect HTTPS) — rode testes pelo Makefile, não direto, senão o env de prod (PostgreSQL) vaza.
 
 ## Frontend (Angular)
 
@@ -69,7 +77,7 @@ make all           # test + build + deploy
 
 ## VPS rules (do ~/.claude/CLAUDE.md)
 
-- **Nunca instale pacotes Python como root** (sem `pip install`/`pipx`/`uv` com sudo ou `--break-system-packages`). Use o `venv/` existente ou crie um em `/tmp/opencode/venv-*`. Reinstalar pacotes dpkg com `apt-get install --reinstall` é permitido.
+- **Nunca instale pacotes Python como root** (sem `pip install`/`pipx`/`uv` com sudo ou `--break-system-packages`). Dependências: `UV_PYTHON_INSTALL_DIR=/opt/uv-python uv sync --locked` na raiz (o `deploy.sh` já faz); `uv add`/`uv lock --upgrade-package` para mudar versões. Reinstalar pacotes dpkg com `apt-get install --reinstall` é permitido.
 
 ## Graphify
 

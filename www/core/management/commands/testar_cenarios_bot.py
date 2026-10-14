@@ -25,7 +25,7 @@ import time
 from django.core.management.base import BaseCommand
 from django.core.management.color import no_style
 
-from core.models import Cliente, ContratoPenhor, FAQ, MensagensConfig, SITUACOES_LIQUIDADAS_COD
+from core.models import FAQ, SITUACOES_LIQUIDADAS_COD, Cliente, ContratoPenhor, MensagensConfig
 from ia.schemas import InfoContrato, TipoPagamento
 from ia.services import extrair_intencao
 from whatsapp.tasks import _contratos_ativos_values

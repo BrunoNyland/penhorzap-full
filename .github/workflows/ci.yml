@@ -6,6 +6,13 @@ on:
 jobs:
     backend:
         runs-on: ubuntu-latest
+        services:
+            postgres:
+                image: postgres:18
+                env: { POSTGRES_USER: penhorzap, POSTGRES_PASSWORD: penhorzap, POSTGRES_DB: penhorzap }
+                ports: ["5432:5432"]
+                options: >-
+                    --health-cmd "pg_isready -U penhorzap" --health-interval 5s --health-timeout 5s --health-retries 10
         defaults: { run: { working-directory: www } }
         env:
             DB_ENGINE: sqlite
@@ -13,17 +20,20 @@ jobs:
             DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-prod
         steps:
             - uses: actions/checkout@v4
-            - uses: actions/setup-python@v5
-              with: { python-version: "3.12", cache: pip, cache-dependency-path: www/requirements.txt }
-            - name: Install system deps for mysqlclient
-              run: sudo apt-get update && sudo apt-get install -y default-libmysqlclient-dev build-essential pkg-config
-            - run: pip install -r requirements.txt
-            - name: Run Ruff linter
-              run: ruff check .
-            - run: python manage.py makemigrations --check --dry-run
-            - run: python manage.py test api core whatsapp ia -v2
+            - uses: astral-sh/setup-uv@v6
+              with: { enable-cache: true }
+            - run: uv sync --locked
+              working-directory: .
+            - name: Ruff
+              run: ../.venv/bin/ruff check .
+            - run: ../.venv/bin/python manage.py makemigrations --check --dry-run
+            - name: Testes (SQLite)
+              run: ../.venv/bin/python manage.py test api core whatsapp ia -v2
+            - name: Testes (PostgreSQL, como em produção)
+              env: { DB_ENGINE: postgresql, DB_NAME: penhorzap, DB_USER: penhorzap, DB_PASSWORD: penhorzap, DB_HOST: 127.0.0.1 }
+              run: ../.venv/bin/python manage.py test api core whatsapp ia -v2
             - name: Deploy checks (informational only)
-              run: DJANGO_IS_PRODUCTION=1 DJANGO_SECRET_KEY=ci-long-random-key-abcdef123456 python manage.py check --deploy || true
+              run: DJANGO_IS_PRODUCTION=1 DJANGO_SECRET_KEY=ci-long-random-key-abcdef123456 ../.venv/bin/python manage.py check --deploy || true
 
     frontend:
         runs-on: ubuntu-latest
@@ -31,7 +41,7 @@ jobs:
         steps:
             - uses: actions/checkout@v4
             - uses: actions/setup-node@v4
-              with: { node-version: "22.22", cache: npm, cache-dependency-path: frontend/package-lock.json }
+              with: { node-version: "24", cache: npm, cache-dependency-path: frontend/package-lock.json }
             - run: npm ci
             - run: npx ng build --base-href /painel/ --configuration production
             - run: npx ng test --watch=false

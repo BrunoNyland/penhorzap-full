@@ -16,8 +16,7 @@ Uso:
 import json
 import logging
 import subprocess
-from datetime import datetime
-from datetime import timezone as dt_timezone
+from datetime import UTC, datetime
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone as dj_timezone
@@ -123,7 +122,7 @@ class Command(BaseCommand):
             mensagem_em = None
             if ts:
                 try:
-                    mensagem_em = datetime.fromtimestamp(int(ts), tz=dt_timezone.utc)
+                    mensagem_em = datetime.fromtimestamp(int(ts), tz=UTC)
                 except (TypeError, ValueError, OSError):
                     mensagem_em = None
 

@@ -1,6 +1,6 @@
 """
 Import the legacy 0886.sqlite3 export (clientes, contratos, agencias_penhor,
-licitacoes) into the real penhorzap MySQL database.
+licitacoes) into the real penhorzap database.
 
 Usage:
     python manage.py import_sqlite /projects/penhorzap/0886.sqlite3
@@ -20,7 +20,7 @@ logger = logging.getLogger("core.import_sqlite")
 
 class Command(BaseCommand):
     help = (
-        "Importa clientes, contratos, agencias_penhor e licitacoes do sqlite legado para o MySQL."
+        "Importa clientes, contratos, agencias_penhor e licitacoes do sqlite legado para o banco do penhorzap."
     )
 
     def add_arguments(self, parser):

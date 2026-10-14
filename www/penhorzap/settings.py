@@ -88,19 +88,24 @@ WSGI_APPLICATION = "wsgi.application"
 DB_ENGINE = os.environ.get("DB_ENGINE", "sqlite3")
 
 if DB_ENGINE == "mysql":
+    raise ImproperlyConfigured(
+        "O penhorzap saiu do MySQL em 10/2026: use DB_ENGINE=postgresql (ou sqlite nos testes)."
+    )
+
+if DB_ENGINE == "postgresql":
     DATABASES = {
         "default": {
-            "ENGINE": "django.db.backends.mysql",
+            # PostgreSQL com UNACCENT nos lookups i*: "joao" acha "JOÃO", como
+            # no MySQL (utf8mb4_unicode_ci). Ver o docstring do módulo.
+            "ENGINE": "penhorzap.postgresql_sem_acento",
             "NAME": os.environ.get("DB_NAME", ""),
             "USER": os.environ.get("DB_USER", ""),
             "PASSWORD": os.environ.get("DB_PASSWORD", ""),
-            "HOST": os.environ.get("DB_HOST", "localhost"),
-            "PORT": os.environ.get("DB_PORT", "3306"),
-            "OPTIONS": {
-                "charset": "utf8mb4",
-                "init_command": "SET collation_connection = utf8mb4_unicode_ci, sql_mode='STRICT_TRANS_TABLES'",
-                "use_unicode": True,
-            },
+            "HOST": os.environ.get("DB_HOST", "127.0.0.1"),
+            "PORT": os.environ.get("DB_PORT", "5432"),
+            # Conexão reaproveitada entre requisições, conferida antes do uso.
+            "CONN_MAX_AGE": 60,
+            "CONN_HEALTH_CHECKS": True,
         }
     }
 else:
@@ -207,7 +212,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 WEBHOOK_TOKEN = os.environ.get("WEBHOOK_TOKEN", "")
 
-# --- django-q2 (async task queue, ORM broker on the same MySQL database) --
+# --- django-q2 (async task queue, ORM broker on the same database) ---------
 
 Q_CLUSTER = {
     "name": "penhorzap",

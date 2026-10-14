@@ -8,7 +8,9 @@ whatsapp/tasks.py nem ia/ aqui — ver whatsapp/tests.py e ia/tests.py
 
 from datetime import timedelta
 from decimal import Decimal
+from unittest import skipUnless
 
+from django.db import connection
 from django.test import TestCase
 from django.utils import timezone
 
@@ -136,9 +138,9 @@ class BotConfigDatabaseAtualizadaTests(TestCase):
 class FAQSugeridaRegistrarTests(TestCase):
     # Nota: usamos texto sem acentuação nas perguntas de teste porque o
     # `UPPER()`/`LOWER()` do SQLite (backend de teste) só faz case-fold ASCII;
-    # "á" vs "Á" não colapsam via `iexact` nesse backend (MySQL em produção
-    # não tem essa limitação). O teste cobre a semântica de case-insensitivity
-    # do método, não a colação de acentos do banco.
+    # "á" vs "Á" não colapsam via `iexact` nesse backend (o PostgreSQL de
+    # produção não tem essa limitação: UNACCENT + UPPER). O teste cobre a
+    # semântica de case-insensitivity do método, não a colação do banco.
     def test_registrar_cria_pendente(self):
         sugestao = FAQSugerida.registrar("Qual o horario de atendimento?")
         self.assertEqual(sugestao.status, FAQSugerida.Status.PENDENTE)
@@ -364,3 +366,22 @@ class ImportarSqliteArquivoTests(TestCase):
         # Assert conversation was reassociated to client
         conversa.refresh_from_db()
         self.assertEqual(conversa.cliente_id, "52998224725")
+
+
+@skipUnless(connection.vendor == "postgresql", "UNACCENT só existe no PostgreSQL")
+class BuscaSemAcentoTests(TestCase):
+    """O MySQL (utf8mb4_unicode_ci) ignorava acento; o backend
+    penhorzap.postgresql_sem_acento mantém isso nos lookups i*."""
+
+    def setUp(self):
+        Cliente.objects.create(cpf="52998224725", nome="JOÃO DA CONCEIÇÃO")
+
+    def test_icontains_ignora_acento_e_maiuscula(self):
+        self.assertTrue(Cliente.objects.filter(nome__icontains="joao da conceicao").exists())
+        self.assertTrue(Cliente.objects.filter(nome__icontains="Conceição").exists())
+
+    def test_iexact_ignora_acento(self):
+        self.assertTrue(Cliente.objects.filter(nome__iexact="joao da conceicao").exists())
+
+    def test_exact_continua_exato(self):
+        self.assertFalse(Cliente.objects.filter(nome="joao da conceicao").exists())

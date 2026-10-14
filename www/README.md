@@ -41,10 +41,10 @@ Login usa a autenticação do Django admin (staff); a raiz `/` redireciona para 
 
 ## Stack
 
-- Python 3.12 · Django 5.2 · MySQL (utf8mb4)
+- Python 3.14 · Django 6.1 · PostgreSQL 18 (buscas sem acento: `penhorzap.postgresql_sem_acento`)
 - [Evolution API](https://doc.evolution-api.com/) (WhatsApp)
 - Google Gemini (`google-genai`, saída estruturada com Pydantic)
-- django-q2 (fila assíncrona, broker no próprio MySQL)
+- django-q2 (fila assíncrona, broker no próprio banco)
 - Django REST Framework + drf-spectacular (Swagger)
 - gunicorn atrás de nginx; CSS próprio sem dependências de frontend
 
@@ -55,12 +55,12 @@ Variáveis de ambiente (arquivo `.env` no diretório pai do projeto, fora do rep
 ```env
 DJANGO_IS_PRODUCTION=1
 DJANGO_SECRET_KEY=...
-DB_ENGINE=mysql
+DB_ENGINE=postgresql
 DB_NAME=...
 DB_USER=...
 DB_PASSWORD=...
-DB_HOST=localhost
-DB_PORT=3306
+DB_HOST=127.0.0.1
+DB_PORT=5432
 EVOLUTION_API_URL=http://127.0.0.1:8080
 EVOLUTION_API_KEY=...
 EVOLUTION_INSTANCE=penhorzap
@@ -73,8 +73,9 @@ Sem `GEMINI_API_KEY`, o bot degrada com segurança: registra a mensagem, respond
 ## Rodando
 
 ```bash
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+# na raiz do repo; o Python 3.14 vem do uv (deps em pyproject.toml + uv.lock)
+UV_PYTHON_INSTALL_DIR=/opt/uv-python uv sync --locked && ln -sfn .venv venv
+source venv/bin/activate && cd www
 python manage.py migrate
 python manage.py createsuperuser
 python manage.py collectstatic --noinput

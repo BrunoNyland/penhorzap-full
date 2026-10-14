@@ -14,13 +14,9 @@
 
 .PHONY: help test test-int test-bot-cenarios build deploy restart lint all clean
 
-# Prepend local Node 24 bin to PATH for Angular 22 compatibility
-export PATH := /var/www/pwa.brunonyland.com/node-v24.15.0-linux-x64/bin:$(PATH)
-
 # ── Variáveis ──────────────────────────────────────────────────────────────────
 VENV         := /var/www/pwa.brunonyland.com/venv/bin
 PYTHON       := $(VENV)/python
-PIP          := $(VENV)/pip
 MANAGE       := cd www && $(PYTHON) manage.py
 NPX          := npx
 FRONTEND_DIR := frontend

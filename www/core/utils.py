@@ -4,7 +4,10 @@ import ast
 import datetime
 import logging
 import re
+from contextlib import nullcontext
 from decimal import Decimal, InvalidOperation
+
+from django.db import transaction
 
 
 def parse_br_decimal(value):
@@ -171,8 +174,8 @@ def normalizar_cpfs_clientes(
     dígitos), atualizando em cascata as FKs de `telefone_model`,
     `contrato_model` e `conversa_model` que apontam para o cliente.
 
-    Usa SQL bruto com checagem de FK temporariamente desligada (MySQL:
-    `SET FOREIGN_KEY_CHECKS`; SQLite: `PRAGMA foreign_keys`) porque alterar o
+    Usa SQL bruto com checagem de FK adiada ou desligada (PostgreSQL:
+    `SET CONSTRAINTS ALL DEFERRED`; SQLite: `PRAGMA foreign_keys`) porque alterar o
     valor de uma primary key via `Model.save()` do Django não faz UPDATE —
     cria uma linha nova e deixa as FKs das linhas filhas órfãs.
 
@@ -235,9 +238,15 @@ def normalizar_cpfs_clientes(
     ]
 
     vendor = connection.vendor
-    with connection.cursor() as cursor:
-        if vendor == "mysql":
-            cursor.execute("SET FOREIGN_KEY_CHECKS=0")
+    # PostgreSQL: as FKs do Django são DEFERRABLE, então basta adiá-las para
+    # o commit dentro de uma transação; pai e filhas já batem quando ele chega.
+    # No SQLite não: lá o PRAGMA é ignorado dentro de transação.
+    transacao = (
+        transaction.atomic(using=connection.alias) if vendor == "postgresql" else nullcontext()
+    )
+    with transacao, connection.cursor() as cursor:
+        if vendor == "postgresql":
+            cursor.execute("SET CONSTRAINTS ALL DEFERRED")
         elif vendor == "sqlite":
             cursor.execute("PRAGMA foreign_keys=OFF")
         try:
@@ -252,9 +261,7 @@ def normalizar_cpfs_clientes(
                     [new, old],
                 )
         finally:
-            if vendor == "mysql":
-                cursor.execute("SET FOREIGN_KEY_CHECKS=1")
-            elif vendor == "sqlite":
+            if vendor == "sqlite":
                 cursor.execute("PRAGMA foreign_keys=ON")
 
     return {"renomeados": len(to_apply), "colisoes": colisoes}
