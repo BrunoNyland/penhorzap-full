@@ -944,6 +944,39 @@ class BaixarMediaMensagemTestCase(APITestCase):
         response = self.client.get(self._url())
         self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
 
+    @patch("requests.post")
+    def test_midia_expirada_e_marcada_e_nao_consulta_de_novo(self, mock_post):
+        """Mídia antiga cujo link no CDN do WhatsApp venceu: a Evolution leva
+        ~5 s para devolver 400. Marcar a mensagem evita repetir a chamada a
+        cada abertura da conversa (foi o que saturou os workers em 14/10)."""
+        mock_post.return_value = MagicMock(
+            status_code=400,
+            text='{"status":400,"response":{"message":["Error: Failed to fetch stream from https://mmg.whatsapp.net/x"]}}',
+        )
+        self.client.force_authenticate(user=self.staff_user)
+
+        response = self.client.get(self._url())
+        self.assertEqual(response.status_code, status.HTTP_410_GONE)
+        self.mensagem.refresh_from_db()
+        self.assertTrue(self.mensagem.midia_indisponivel)
+
+        response = self.client.get(self._url())
+        self.assertEqual(response.status_code, status.HTTP_410_GONE)
+        self.assertEqual(mock_post.call_count, 1)
+
+        detalhe = self.client.get(f"/api/conversas/{self.conversa.id}/")
+        mensagens = {m["id"]: m for m in detalhe.json()["mensagens"]}
+        self.assertTrue(mensagens[self.mensagem.id]["midia_indisponivel"])
+
+    @patch("requests.post")
+    def test_outro_400_da_evolution_nao_marca_a_midia(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=400, text='{"message":"instance not connected"}')
+        self.client.force_authenticate(user=self.staff_user)
+        response = self.client.get(self._url())
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
+        self.mensagem.refresh_from_db()
+        self.assertFalse(self.mensagem.midia_indisponivel)
+
     def test_mensagem_sem_midia_retorna_404(self):
         mensagem_texto = Mensagem.objects.create(
             conversa=self.conversa,

@@ -195,17 +195,22 @@ import { IconComponent } from '../../shared/icon/icon.component';
                 <div class="message-balloon">
                   @if (msg.possui_midia) {
                     <div class="message-media">
-                      @if (msg.tipo_midia === 'image') {
+                      @if (msg.midia_indisponivel) {
+                        <div class="message-text"><em>Mídia expirada: o WhatsApp não guarda mais este arquivo.</em></div>
+                        @if (msg.legenda) {
+                          <div class="message-text margin-top-xs">{{ msg.legenda }}</div>
+                        }
+                      } @else if (msg.tipo_midia === 'image') {
                         <a [href]="getMediaUrl(activeChat().id, msg)" target="_blank">
-                          <img [src]="getMediaUrl(activeChat().id, msg)" alt="Imagem" class="chat-media-image" />
+                          <img [src]="getMediaUrl(activeChat().id, msg)" alt="Imagem" class="chat-media-image" loading="lazy" />
                         </a>
                         @if (msg.legenda) {
                           <div class="message-text margin-top-xs">{{ msg.legenda }}</div>
                         }
                       } @else if (msg.tipo_midia === 'audio') {
-                        <audio controls [src]="getMediaUrl(activeChat().id, msg)" class="chat-media-audio"></audio>
+                        <audio controls preload="none" [src]="getMediaUrl(activeChat().id, msg)" class="chat-media-audio"></audio>
                       } @else if (msg.tipo_midia === 'video') {
-                        <video controls [src]="getMediaUrl(activeChat().id, msg)" class="chat-media-video"></video>
+                        <video controls preload="none" [src]="getMediaUrl(activeChat().id, msg)" class="chat-media-video"></video>
                       } @else if (msg.tipo_midia === 'document') {
                         <a [href]="getMediaUrl(activeChat().id, msg)" target="_blank" download class="chat-media-document">
                           <app-icon name="file-text" [size]="18"></app-icon>

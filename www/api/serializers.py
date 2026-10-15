@@ -342,6 +342,7 @@ class MensagemPainelSerializer(serializers.ModelSerializer):
             "legenda",
             "arquivo",
             "enviado_ok",
+            "midia_indisponivel",
         ]
 
     def _get_media_message_node(self, obj):

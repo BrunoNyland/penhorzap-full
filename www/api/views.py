@@ -65,6 +65,11 @@ from .serializers import (
 
 logger = logging.getLogger(__name__)
 
+# Erro da Evolution quando o link da mídia no CDN do WhatsApp (mmg.whatsapp.net)
+# já venceu; o arquivo não pode mais ser baixado.
+MIDIA_EXPIRADA_MARCA = "Failed to fetch stream"
+MIDIA_EXPIRADA_DETALHE = "Mídia expirada: o WhatsApp não guarda mais este arquivo."
+
 
 def custom_exception_handler(exc, context):
     response = exception_handler(exc, context)
@@ -1012,6 +1017,15 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
         if not media_type or not media_node:
             raise Http404("Esta mensagem não é do tipo mídia ou não contém arquivo.")
 
+        # Mídia que já expirou no WhatsApp: responde na hora. Cada tentativa
+        # na Evolution segura um worker por ~5 s, e abrir uma conversa com
+        # muita mídia antiga ocupava os 3 workers e derrubava o painel em 504.
+        if mensagem.midia_indisponivel:
+            return Response(
+                {"detail": MIDIA_EXPIRADA_DETALHE},
+                status=status.HTTP_410_GONE,
+            )
+
         # Obtém credenciais da Evolution API da settings
         url = f"{settings.EVOLUTION_API_URL.rstrip('/')}/chat/getBase64FromMediaMessage/{settings.EVOLUTION_INSTANCE}"
         headers = {
@@ -1022,6 +1036,15 @@ class ConversaViewSet(viewsets.ReadOnlyModelViewSet):
         # Faz requisição para descriptografar e baixar a mídia
         try:
             resp = requests.post(url, json={"message": data_node}, headers=headers, timeout=20)
+            if resp.status_code == 400 and MIDIA_EXPIRADA_MARCA in resp.text:
+                # O link da mídia no CDN do WhatsApp venceu: não volta mais.
+                mensagem.midia_indisponivel = True
+                mensagem.save(update_fields=["midia_indisponivel"])
+                logger.info("Mídia da mensagem %s expirou no WhatsApp", mensagem.id)
+                return Response(
+                    {"detail": MIDIA_EXPIRADA_DETALHE},
+                    status=status.HTTP_410_GONE,
+                )
             if resp.status_code != 201:
                 logger.warning("Evolution API retornou status %s ao obter mídia", resp.status_code)
                 return Response(

@@ -178,6 +178,7 @@ export interface MensagemPainel {
   legenda: string;
   arquivo: string | null;
   enviado_ok: boolean;
+  midia_indisponivel: boolean;
 }
 
 export interface ConversaDetail {

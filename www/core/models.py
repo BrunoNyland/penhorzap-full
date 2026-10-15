@@ -396,6 +396,10 @@ class Mensagem(models.Model):
         blank=True,
         help_text="OUT: resultado do envio via Evolution. None = mensagem IN ou registro legado.",
     )
+    midia_indisponivel = models.BooleanField(
+        default=False,
+        help_text="IN: a mídia expirou nos servidores do WhatsApp e a Evolution não a baixa mais.",
+    )
     payload_bruto = models.JSONField(default=dict, blank=True)
     respondida_em = models.DateTimeField(
         null=True,
