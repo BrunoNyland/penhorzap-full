@@ -85,7 +85,10 @@ def _extrair_conteudo(message: dict) -> tuple[str, str]:
 # áudio passa fácil dos 2,5 MB do DATA_UPLOAD_MAX_MEMORY_SIZE: em 13/10/2026
 # duas mensagens foram recusadas com RequestDataTooBig e se perderam. O limite
 # maior vale só aqui (depois do token), não no resto do site.
-WEBHOOK_MAX_BYTES = 25 * 1024 * 1024
+# Em 17/10/2026 um anexo de ~18 MB (25 MB em base64) foi recusado 10 vezes e
+# se perdeu; o limite subiu para o mesmo client_max_body_size do vhost no
+# nginx (100M), o que cobre arquivos de até ~75 MB.
+WEBHOOK_MAX_BYTES = 100 * 1024 * 1024
 
 
 def _ler_corpo_webhook(request) -> bytes | None:
