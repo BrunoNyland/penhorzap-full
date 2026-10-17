@@ -419,8 +419,9 @@ class BotConfigAPIView(GenericAPIView):
 
 
 class EvolutionVersionStatusAPIView(GenericAPIView):
-    """Somente leitura -- o status é atualizado 1x/dia pelo Schedule
-    `verificar_versao_evolution` (whatsapp/tasks.py), não editável pelo painel."""
+    """Somente leitura, não editável pelo painel. Era atualizado pelo Schedule
+    `verificar_versao_evolution`, removido na migration core/0037: a versão
+    da Evolution agora é acompanhada pelo vigia-whatsapp da VPS."""
 
     permission_classes = [permissions.IsAdminUser]
     serializer_class = EvolutionVersionStatusSerializer

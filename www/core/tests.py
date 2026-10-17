@@ -385,3 +385,22 @@ class BuscaSemAcentoTests(TestCase):
 
     def test_exact_continua_exato(self):
         self.assertFalse(Cliente.objects.filter(nome="joao da conceicao").exists())
+
+
+class SchedulesTests(TestCase):
+    """As migrations 0007 e 0029 criaram os Schedules com repeats=0, que o
+    django-q2 trata como "não repetir mais": nenhum dos dois rodou nunca.
+    A 0037 corrige; estes testes valem para o banco depois do migrate."""
+
+    def test_encerramento_repete_para_sempre(self):
+        from django_q.models import Schedule
+
+        sched = Schedule.objects.get(name="penhorzap_verificar_encerramento")
+        self.assertEqual(sched.repeats, -1)
+        self.assertEqual(sched.func, "whatsapp.tasks.verificar_encerramento")
+        self.assertEqual(sched.cron, "*/5 * * * *")
+
+    def test_versao_evolution_removido(self):
+        from django_q.models import Schedule
+
+        self.assertFalse(Schedule.objects.filter(name="penhorzap_verificar_versao_evolution").exists())
