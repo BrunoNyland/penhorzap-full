@@ -398,7 +398,10 @@ class SchedulesTests(TestCase):
         sched = Schedule.objects.get(name="penhorzap_verificar_encerramento")
         self.assertEqual(sched.repeats, -1)
         self.assertEqual(sched.func, "whatsapp.tasks.verificar_encerramento")
-        self.assertEqual(sched.cron, "*/5 * * * *")
+        # Cron exigiria o croniter, que o projeto não instala (migration 0038).
+        self.assertEqual(sched.schedule_type, Schedule.MINUTES)
+        self.assertEqual(sched.minutes, 5)
+        sched.calculate_next_run()  # com cron, lançava ImportError
 
     def test_versao_evolution_removido(self):
         from django_q.models import Schedule
