@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from datetime import UTC, datetime
 
 from django.conf import settings
@@ -56,6 +57,14 @@ def _extrair_timestamp_mensagem(data: dict):
         return datetime.fromtimestamp(int(ts), tz=UTC)
     except (TypeError, ValueError, OSError):
         return None
+
+
+# Mensagem de teste do vigia do WhatsApp (/usr/local/bin/vigia-whatsapp): todo
+# dia este número e o do RA Beach Tennis trocam "[canário] <código>" para provar
+# que enviar e receber pela Evolution continua funcionando. Não é conversa de
+# cliente: não vira Conversa/Mensagem nem aciona o bot. O log em INFO é o que o
+# vigia confere para saber que o webhook chegou até aqui.
+CANARIO_RE = re.compile(r"^\[canário\] [A-Z0-9]{8}$")
 
 
 def _extrair_conteudo(message: dict) -> tuple[str, str]:
@@ -143,6 +152,13 @@ def whatsapp_webhook(request):
 
         if remote_jid.endswith("@g.us"):
             return JsonResponse({"status": "ignored", "reason": "group"}, status=200)
+
+        texto_canario, _ = _extrair_conteudo(data.get("message") or {})
+        if CANARIO_RE.match(texto_canario.strip()):
+            logger.info(
+                "Canário %s: %s", "enviado" if key.get("fromMe") else "recebido", key.get("id")
+            )
+            return JsonResponse({"status": "ignored", "reason": "canary"}, status=200)
 
         push_name = str(data.get("pushName") or body.get("pushName") or "")
 

@@ -1028,6 +1028,38 @@ class WhatsappWebhookTestCase(TestCase):
         )
 
     @patch("whatsapp.views.async_task")
+    def test_canario_recebido_nao_vira_conversa_nem_aciona_bot(self, mock_async_task):
+        payload = self._payload(wa_id="WA-CAN-1", message={"conversation": "[canário] 7F3K9Q2A"})
+        with self.assertLogs("whatsapp.views", level="INFO") as logs:
+            response = self._post(payload)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["reason"], "canary")
+        self.assertIn("Canário recebido: WA-CAN-1", logs.output[0])
+        self.assertEqual(Conversa.objects.count(), 0)
+        self.assertEqual(Mensagem.objects.count(), 0)
+        mock_async_task.assert_not_called()
+
+    @patch("whatsapp.views.async_task")
+    def test_canario_enviado_por_nos_tambem_e_descartado(self, mock_async_task):
+        payload = self._payload(
+            wa_id="WA-CAN-2", from_me=True, message={"extendedTextMessage": {"text": "[canário] AB12CD34"}}
+        )
+        with self.assertLogs("whatsapp.views", level="INFO") as logs:
+            response = self._post(payload)
+        self.assertEqual(response.json()["reason"], "canary")
+        self.assertIn("Canário enviado: WA-CAN-2", logs.output[0])
+        self.assertEqual(Mensagem.objects.count(), 0)
+
+    @patch("whatsapp.views.async_task")
+    def test_texto_parecido_com_canario_segue_o_fluxo_normal(self, mock_async_task):
+        # Só o formato exato é teste; um cliente citando "[canário]" é conversa.
+        payload = self._payload(wa_id="WA-CAN-3", message={"conversation": "[canário] oi, tudo bem?"})
+        response = self._post(payload)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Mensagem.objects.get(wa_message_id="WA-CAN-3").direcao, Mensagem.Direcao.IN)
+        mock_async_task.assert_called_once()
+
+    @patch("whatsapp.views.async_task")
     def test_token_invalido_rejeitado(self, mock_async_task):
         response = self._post(self._payload(), token="token-errado")
         self.assertEqual(response.status_code, 403)
